@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: Arial, ui-sans-serif, system-ui, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    
+    /* DXC Light theme colors */
+    color: theme('colors.dxc.dark-gray');
+    background-color: white;
+
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background-color: white;
+    color: theme('colors.dxc.dark-gray');
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: Arial, sans-serif;
+    font-weight: 700;
+    color: theme('colors.dxc.bright-purple');
+  }
+
+  a {
+    color: theme('colors.dxc.bright-purple');
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+
+  a:hover {
+    color: theme('colors.dxc.dark-purple');
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-dxc-bright-purple text-white px-6 py-3 rounded-dxc font-semibold hover:bg-dxc-dark-purple transition-colors duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-dxc-bright-purple border-2 border-dxc-bright-purple px-6 py-3 rounded-dxc font-semibold hover:bg-dxc-bright-purple hover:text-white transition-colors duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-dxc-lg shadow-lg border border-dxc-light-gray p-dxc-md;
+  }
+
+  .input {
+    @apply border border-dxc-light-gray rounded-dxc px-3 py-2 focus:outline-none focus:ring-2 focus:ring-dxc-bright-purple focus:border-transparent;
+  }
+
+  .table {
+    @apply w-full border-collapse;
+  }
+
+  .table th {
+    @apply bg-dxc-bright-purple text-white px-4 py-3 text-left font-semibold;
+  }
+
+  .table td {
+    @apply px-4 py-3 border-b border-dxc-light-gray;
+  }
+
+  .table tr:nth-child(even) {
+    @apply bg-gray-50;
+  }
+}

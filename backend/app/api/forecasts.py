@@ -1,0 +1,124 @@
+from fastapi import APIRouter, Depends, Query
+from sqlmodel import Session, select
+from typing import Dict, List, Optional
+import structlog
+
+from app.models.database import engine
+from app.models.opportunity import Opportunity, OpportunityLineItem
+
+logger = structlog.get_logger()
+router = APIRouter()
+
+
+def get_session():
+    """Database session dependency."""
+    with Session(engine) as session:
+        yield session
+
+
+@router.get("/summary")
+async def get_forecast_summary(
+    session: Session = Depends(get_session),
+    stage: Optional[str] = Query(None),
+    category: Optional[str] = Query(None)
+):
+    """Get forecast summary metrics."""
+    logger.info("Fetching forecast summary", filters={"stage": stage, "category": category})
+    
+    statement = select(Opportunity)
+    
+    if stage:
+        statement = statement.where(Opportunity.stage == stage)
+    if category:
+        statement = statement.where(Opportunity.category == category)
+    
+    opportunities = session.exec(statement).all()
+    
+    total_opportunities = len(opportunities)
+    total_value = sum(opp.amount for opp in opportunities)
+    avg_value = total_value / total_opportunities if total_opportunities > 0 else 0
+    
+    # Define stage ordering for proper sorting
+    STAGE_ORDER = ['01', '02', '03', '04A', '04B', '05A', '05B']
+    CATEGORY_ORDER = ['Cat A', 'Cat B', 'Cat C', 'Sub $5M', 'Negative']
+    
+    # Group by stage
+    stage_breakdown = {}
+    for opp in opportunities:
+        stage_breakdown[opp.stage] = stage_breakdown.get(opp.stage, 0) + opp.amount
+    
+    # Sort stage breakdown by proper order
+    stage_breakdown = {stage: stage_breakdown.get(stage, 0) for stage in STAGE_ORDER if stage in stage_breakdown}
+    
+    # Group by category
+    category_breakdown = {}
+    for opp in opportunities:
+        cat = opp.category or "Uncategorized"
+        category_breakdown[cat] = category_breakdown.get(cat, 0) + opp.amount
+    
+    # Sort category breakdown by proper order  
+    sorted_category_breakdown = {}
+    for category in CATEGORY_ORDER:
+        if category in category_breakdown:
+            sorted_category_breakdown[category] = category_breakdown[category]
+    # Add any remaining categories not in the predefined order
+    for category, value in category_breakdown.items():
+        if category not in sorted_category_breakdown:
+            sorted_category_breakdown[category] = value
+    category_breakdown = sorted_category_breakdown
+    
+    summary = {
+        "total_opportunities": total_opportunities,
+        "total_value": total_value,
+        "average_value": avg_value,
+        "stage_breakdown": stage_breakdown,
+        "category_breakdown": category_breakdown
+    }
+    
+    logger.info("Generated forecast summary", summary=summary)
+    return summary
+
+
+@router.get("/service-lines")
+async def get_service_line_forecast(
+    session: Session = Depends(get_session),
+    service_line: Optional[str] = Query(None)
+):
+    """Get service line breakdown and forecasts."""
+    logger.info("Fetching service line forecast", service_line=service_line)
+    
+    statement = select(OpportunityLineItem)
+    line_items = session.exec(statement).all()
+    
+    service_line_totals = {
+        "CES": sum(item.ces_revenue or 0 for item in line_items),
+        "INS": sum(item.ins_revenue or 0 for item in line_items),
+        "BPS": sum(item.bps_revenue or 0 for item in line_items),
+        "SEC": sum(item.sec_revenue or 0 for item in line_items),
+        "ITOC": sum(item.itoc_revenue or 0 for item in line_items),
+        "MW": sum(item.mw_revenue or 0 for item in line_items)
+    }
+    
+    total_revenue = sum(service_line_totals.values())
+    
+    # Calculate percentages
+    service_line_percentages = {
+        line: (value / total_revenue * 100) if total_revenue > 0 else 0
+        for line, value in service_line_totals.items()
+    }
+    
+    forecast = {
+        "service_line_totals": service_line_totals,
+        "service_line_percentages": service_line_percentages,
+        "total_revenue": total_revenue
+    }
+    
+    if service_line:
+        forecast["filtered_service_line"] = {
+            "name": service_line,
+            "revenue": service_line_totals.get(service_line, 0),
+            "percentage": service_line_percentages.get(service_line, 0)
+        }
+    
+    logger.info("Generated service line forecast", forecast=forecast)
+    return forecast
