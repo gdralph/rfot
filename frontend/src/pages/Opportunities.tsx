@@ -2,9 +2,43 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Filter, Eye } from 'lucide-react';
 import { useOpportunities } from '../hooks/useOpportunities';
-import type { OpportunityFilters } from '../types/index.js';
+import { useCategories } from '../hooks/useConfig';
+import type { OpportunityFilters, Opportunity, OpportunityCategory } from '../types/index.js';
 import { SALES_STAGES, STAGE_ORDER, OPPORTUNITY_CATEGORIES, CATEGORY_ORDER, SERVICE_LINES } from '../types/index.js';
 import LoadingSpinner from '../components/LoadingSpinner';
+
+// Helper function to calculate opportunity category based on TCV using backend categories
+const getOpportunityCategory = (tcvMillions: number | undefined, categories: OpportunityCategory[]): string => {
+  if (!tcvMillions || tcvMillions < 0) return 'Negative';
+  if (!categories || categories.length === 0) return 'Unknown';
+  
+  // Find the category where TCV falls within the min/max range
+  // Categories should be ordered by min_tcv
+  for (const category of categories.sort((a, b) => a.min_tcv - b.min_tcv)) {
+    if (tcvMillions >= category.min_tcv && 
+        (category.max_tcv === null || tcvMillions < category.max_tcv)) {
+      return category.name;
+    }
+  }
+  
+  // If no category matches, return the highest category (usually Cat A)
+  const highestCategory = categories.find(cat => cat.max_tcv === null);
+  return highestCategory?.name || 'Unknown';
+};
+
+// Helper function to map API opportunity to display format
+const mapOpportunityForDisplay = (opp: Opportunity, categories: OpportunityCategory[]) => {
+  return {
+    ...opp,
+    name: opp.opportunity_name,
+    amount: opp.tcv_millions || 0,
+    close_date: opp.decision_date,
+    stage: opp.sales_stage,
+    category: getOpportunityCategory(opp.tcv_millions, categories),
+    assigned_resource: opp.opportunity_owner,
+    status: opp.in_forecast === 'Y' ? 'Active' : opp.in_forecast === 'N' ? 'Inactive' : 'Unknown'
+  };
+};
 
 const Opportunities: React.FC = () => {
   const [filters, setFilters] = useState<OpportunityFilters>({
@@ -17,6 +51,7 @@ const Opportunities: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const { data: opportunities, isLoading, error } = useOpportunities(filters);
+  const { data: categories, isLoading: categoriesLoading } = useCategories();
 
   const handleSearch = () => {
     setFilters(prev => ({
@@ -44,29 +79,35 @@ const Opportunities: React.FC = () => {
   };
 
   const sortedOpportunities = React.useMemo(() => {
-    if (!opportunities || !sortBy) return opportunities;
+    if (!opportunities || !categories) {
+      return [];
+    }
     
-    // Create a stable copy to avoid sorting the original array
-    return [...opportunities].sort((a, b) => {
+    if (!sortBy) {
+      return opportunities.map(opp => mapOpportunityForDisplay(opp, categories));
+    }
+    
+    // Map opportunities to display format and sort
+    return [...opportunities].map(opp => mapOpportunityForDisplay(opp, categories)).sort((a, b) => {
       let aVal: any;
       let bVal: any;
       
       switch (sortBy) {
         case 'name':
-          aVal = a.name.toLowerCase();
-          bVal = b.name.toLowerCase();
+          aVal = (a.name || '').toLowerCase();
+          bVal = (b.name || '').toLowerCase();
           break;
         case 'stage':
-          aVal = STAGE_ORDER[a.stage] ?? 999;
-          bVal = STAGE_ORDER[b.stage] ?? 999;
+          aVal = STAGE_ORDER[a.stage || ''] ?? 999;
+          bVal = STAGE_ORDER[b.stage || ''] ?? 999;
           break;
         case 'amount':
-          aVal = a.amount;
-          bVal = b.amount;
+          aVal = a.amount || 0;
+          bVal = b.amount || 0;
           break;
         case 'close_date':
-          aVal = new Date(a.close_date);
-          bVal = new Date(b.close_date);
+          aVal = a.close_date ? new Date(a.close_date) : new Date(0);
+          bVal = b.close_date ? new Date(b.close_date) : new Date(0);
           break;
         case 'category':
           aVal = CATEGORY_ORDER[a.category || ''] ?? 999;
@@ -88,7 +129,7 @@ const Opportunities: React.FC = () => {
       if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [opportunities, sortBy, sortOrder]);
+  }, [opportunities, categories, sortBy, sortOrder]);
 
   const getSortIcon = (field: string) => {
     if (sortBy !== field) return '↕️';
@@ -96,23 +137,29 @@ const Opportunities: React.FC = () => {
   };
 
   const formatCurrency = (value: number) => {
+    if (!value || isNaN(value)) return '$0M';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
+      maximumFractionDigits: 2,
+    }).format(value) + 'M'; // Value is already in millions
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return 'No Date';
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return 'Invalid Date';
+    }
   };
 
-  if (isLoading) {
+  if (isLoading || categoriesLoading) {
     return <LoadingSpinner text="Loading opportunities..." />;
   }
 
@@ -212,11 +259,12 @@ const Opportunities: React.FC = () => {
                 className="input w-full"
               >
                 <option value="">All Categories</option>
-                {OPPORTUNITY_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
+                {categories?.map((category) => (
+                  <option key={category.id} value={category.name}>
+                    {category.name}
                   </option>
                 ))}
+                <option value="Negative">Negative</option>
               </select>
             </div>
             
@@ -269,6 +317,7 @@ const Opportunities: React.FC = () => {
         <table className="table">
           <thead>
             <tr>
+              <th>Account</th>
               <th>
                 <button 
                   onClick={() => handleSort('name')}
@@ -331,6 +380,13 @@ const Opportunities: React.FC = () => {
           <tbody>
             {sortedOpportunities?.map((opportunity) => (
               <tr key={opportunity.id}>
+                <td>
+                  <div className="text-dxc-dark-gray">
+                    {opportunity.account_name || (
+                      <span className="text-dxc-medium-gray italic">No account</span>
+                    )}
+                  </div>
+                </td>
                 <td>
                   <div>
                     <div className="font-semibold text-dxc-dark-gray">

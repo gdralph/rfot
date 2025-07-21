@@ -1,0 +1,50 @@
+# Logs
+*.log
+backend.log
+
+# Build outputs  
+frontend/dist/
+frontend/build/
+backend/dist/
+backend/build/
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Database files in wrong locations
+frontend/database.db
+frontend/*.db
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.bak
+*.orig

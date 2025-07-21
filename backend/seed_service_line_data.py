@@ -20,47 +20,47 @@ from app.models.config import ServiceLineStageEffort, OpportunityCategory
 MW_TEMPLATES = {
     # Category A (≥$50M) - Total: 70.0 FTE-weeks
     "Cat A": {
-        "SS-01": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-02": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-03": {"duration_weeks": 8, "fte_required": 0.25},  # 2.0 FTE-weeks
-        "SS-04a": {"duration_weeks": 26, "fte_required": 2.5}, # 65.0 FTE-weeks
-        "SS-04b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05a": {"duration_weeks": 8, "fte_required": 0.25}, # 2.0 FTE-weeks
-        "SS-05b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-06": {"duration_weeks": 4, "fte_required": 0.25}   # 1.0 FTE-weeks
+        "01": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "02": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "03": {"duration_weeks": 8, "fte_required": 0.25},  # 2.0 FTE-weeks
+        "04A": {"duration_weeks": 26, "fte_required": 2.5}, # 65.0 FTE-weeks
+        "04B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05A": {"duration_weeks": 8, "fte_required": 0.25}, # 2.0 FTE-weeks
+        "05B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "06": {"duration_weeks": 4, "fte_required": 0.25}   # 1.0 FTE-weeks
     },
     # Category B ($25-50M) - Total: 37.0 FTE-weeks
     "Cat B": {
-        "SS-01": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-02": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-03": {"duration_weeks": 4, "fte_required": 0.25},  # 1.0 FTE-weeks
-        "SS-04a": {"duration_weeks": 17, "fte_required": 2.0}, # 34.0 FTE-weeks
-        "SS-04b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05a": {"duration_weeks": 4, "fte_required": 0.25}, # 1.0 FTE-weeks
-        "SS-05b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-06": {"duration_weeks": 4, "fte_required": 0.25}   # 1.0 FTE-weeks
+        "01": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "02": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "03": {"duration_weeks": 4, "fte_required": 0.25},  # 1.0 FTE-weeks
+        "04A": {"duration_weeks": 17, "fte_required": 2.0}, # 34.0 FTE-weeks
+        "04B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05A": {"duration_weeks": 4, "fte_required": 0.25}, # 1.0 FTE-weeks
+        "05B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "06": {"duration_weeks": 4, "fte_required": 0.25}   # 1.0 FTE-weeks
     },
     # Category C ($5-25M) - Total: 9.0 FTE-weeks
     "Cat C": {
-        "SS-01": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-02": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-03": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-04a": {"duration_weeks": 9, "fte_required": 1.0},  # 9.0 FTE-weeks
-        "SS-04b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05a": {"duration_weeks": 2, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-06": {"duration_weeks": 2, "fte_required": 0.0}    # 0.0 FTE-weeks
+        "01": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "02": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "03": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "04A": {"duration_weeks": 9, "fte_required": 1.0},  # 9.0 FTE-weeks
+        "04B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05A": {"duration_weeks": 2, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "06": {"duration_weeks": 2, "fte_required": 0.0}    # 0.0 FTE-weeks
     },
     # Sub $5M (< $5M) - Minimal resource requirements - Total: 2.0 FTE-weeks
     "Sub $5M": {
-        "SS-01": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-02": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-03": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-04a": {"duration_weeks": 4, "fte_required": 0.5},  # 2.0 FTE-weeks
-        "SS-04b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05a": {"duration_weeks": 1, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-06": {"duration_weeks": 1, "fte_required": 0.0}    # 0.0 FTE-weeks
+        "01": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "02": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "03": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "04A": {"duration_weeks": 4, "fte_required": 0.5},  # 2.0 FTE-weeks
+        "04B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05A": {"duration_weeks": 1, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "06": {"duration_weeks": 1, "fte_required": 0.0}    # 0.0 FTE-weeks
     }
 }
 
@@ -68,47 +68,47 @@ MW_TEMPLATES = {
 ITOC_TEMPLATES = {
     # Category A (≥$50M) - Total: 75.0 FTE-weeks
     "Cat A": {
-        "SS-01": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-02": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-03": {"duration_weeks": 8, "fte_required": 0.5},   # 4.0 FTE-weeks
-        "SS-04a": {"duration_weeks": 26, "fte_required": 2.5}, # 65.0 FTE-weeks
-        "SS-04b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05a": {"duration_weeks": 8, "fte_required": 0.5},  # 4.0 FTE-weeks
-        "SS-05b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-06": {"duration_weeks": 4, "fte_required": 0.5}    # 2.0 FTE-weeks
+        "01": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "02": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "03": {"duration_weeks": 8, "fte_required": 0.5},   # 4.0 FTE-weeks
+        "04A": {"duration_weeks": 26, "fte_required": 2.5}, # 65.0 FTE-weeks
+        "04B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05A": {"duration_weeks": 8, "fte_required": 0.5},  # 4.0 FTE-weeks
+        "05B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "06": {"duration_weeks": 4, "fte_required": 0.5}    # 2.0 FTE-weeks
     },
     # Category B ($25-50M) - Total: 37.0 FTE-weeks
     "Cat B": {
-        "SS-01": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-02": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-03": {"duration_weeks": 4, "fte_required": 0.25},  # 1.0 FTE-weeks
-        "SS-04a": {"duration_weeks": 17, "fte_required": 2.0}, # 34.0 FTE-weeks
-        "SS-04b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05a": {"duration_weeks": 4, "fte_required": 0.25}, # 1.0 FTE-weeks
-        "SS-05b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-06": {"duration_weeks": 4, "fte_required": 0.25}   # 1.0 FTE-weeks
+        "01": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "02": {"duration_weeks": 4, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "03": {"duration_weeks": 4, "fte_required": 0.25},  # 1.0 FTE-weeks
+        "04A": {"duration_weeks": 17, "fte_required": 2.0}, # 34.0 FTE-weeks
+        "04B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05A": {"duration_weeks": 4, "fte_required": 0.25}, # 1.0 FTE-weeks
+        "05B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "06": {"duration_weeks": 4, "fte_required": 0.25}   # 1.0 FTE-weeks
     },
     # Category C ($5-25M) - Total: 9.0 FTE-weeks
     "Cat C": {
-        "SS-01": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-02": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-03": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-04a": {"duration_weeks": 9, "fte_required": 1.0},  # 9.0 FTE-weeks
-        "SS-04b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05a": {"duration_weeks": 2, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-06": {"duration_weeks": 2, "fte_required": 0.0}    # 0.0 FTE-weeks
+        "01": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "02": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "03": {"duration_weeks": 2, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "04A": {"duration_weeks": 9, "fte_required": 1.0},  # 9.0 FTE-weeks
+        "04B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05A": {"duration_weeks": 2, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "06": {"duration_weeks": 2, "fte_required": 0.0}    # 0.0 FTE-weeks
     },
     # Sub $5M (< $5M) - Minimal resource requirements - Total: 2.0 FTE-weeks  
     "Sub $5M": {
-        "SS-01": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-02": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-03": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
-        "SS-04a": {"duration_weeks": 4, "fte_required": 0.5},  # 2.0 FTE-weeks
-        "SS-04b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05a": {"duration_weeks": 1, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-05b": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
-        "SS-06": {"duration_weeks": 1, "fte_required": 0.0}    # 0.0 FTE-weeks
+        "01": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "02": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "03": {"duration_weeks": 1, "fte_required": 0.0},   # 0.0 FTE-weeks
+        "04A": {"duration_weeks": 4, "fte_required": 0.5},  # 2.0 FTE-weeks
+        "04B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05A": {"duration_weeks": 1, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "05B": {"duration_weeks": 0, "fte_required": 0.0},  # 0.0 FTE-weeks
+        "06": {"duration_weeks": 1, "fte_required": 0.0}    # 0.0 FTE-weeks
     }
 }
 

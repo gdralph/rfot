@@ -2,9 +2,33 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOpportunity, useOpportunityLineItems, useUpdateOpportunity } from '../hooks/useOpportunities';
 import LoadingSpinner from '../components/LoadingSpinner';
-import type { OpportunityFormData, ServiceLine, ChartDataPoint } from '../types/index';
+import type { OpportunityFormData, ServiceLine, ChartDataPoint, Opportunity } from '../types/index';
 import { SERVICE_LINES, DXC_COLORS } from '../types/index';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis } from 'recharts';
+
+// Helper function to calculate opportunity category based on TCV
+const getOpportunityCategory = (tcvMillions: number | undefined): string => {
+  if (!tcvMillions || tcvMillions < 0) return 'Negative';
+  if (tcvMillions < 5) return 'Sub $5M';
+  if (tcvMillions < 50) return 'Cat C';
+  if (tcvMillions < 250) return 'Cat B';
+  return 'Cat A';
+};
+
+// Helper function to map API opportunity to display format
+const mapOpportunityForDisplay = (opp: Opportunity) => {
+  return {
+    ...opp,
+    name: opp.opportunity_name,
+    amount: opp.tcv_millions || 0,
+    close_date: opp.decision_date,
+    stage: opp.sales_stage,
+    category: getOpportunityCategory(opp.tcv_millions),
+    assigned_resource: opp.opportunity_owner,
+    status: opp.in_forecast === 'Y' ? 'Active' : opp.in_forecast === 'N' ? 'Inactive' : 'Unknown',
+    notes: '' // This field doesn't exist in the current schema
+  };
+};
 
 const OpportunityDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,10 +49,11 @@ const OpportunityDetail: React.FC = () => {
   // Initialize form data when opportunity loads
   React.useEffect(() => {
     if (opportunity) {
+      const mappedOpp = mapOpportunityForDisplay(opportunity);
       setFormData({
-        assigned_resource: opportunity.assigned_resource || '',
-        status: opportunity.status || '',
-        notes: opportunity.notes || '',
+        assigned_resource: mappedOpp.assigned_resource || '',
+        status: mappedOpp.status || '',
+        notes: mappedOpp.notes || '',
       });
     }
   }, [opportunity]);
@@ -41,10 +66,11 @@ const OpportunityDetail: React.FC = () => {
     setIsEditing(false);
     // Reset form data to original values
     if (opportunity) {
+      const mappedOpp = mapOpportunityForDisplay(opportunity);
       setFormData({
-        assigned_resource: opportunity.assigned_resource || '',
-        status: opportunity.status || '',
-        notes: opportunity.notes || '',
+        assigned_resource: mappedOpp.assigned_resource || '',
+        status: mappedOpp.status || '',
+        notes: mappedOpp.notes || '',
       });
     }
   };
@@ -105,20 +131,26 @@ const OpportunityDetail: React.FC = () => {
   };
 
   const formatCurrency = (amount: number) => {
+    if (!amount || isNaN(amount)) return '$0M';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
+      maximumFractionDigits: 2,
+    }).format(amount) + 'M'; // Amount is already in millions
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return 'No Date';
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return 'Invalid Date';
+    }
   };
 
   if (opportunityLoading) {
@@ -182,8 +214,11 @@ const OpportunityDetail: React.FC = () => {
             )}
           </div>
         </div>
-        <h1 className="text-dxc-slide text-dxc-purple mb-2">{opportunity.name}</h1>
+        <h1 className="text-dxc-slide text-dxc-purple mb-2">{opportunity.opportunity_name}</h1>
         <p className="text-dxc-body text-gray-600">ID: {opportunity.opportunity_id}</p>
+        {opportunity.account_name && (
+          <p className="text-dxc-body text-gray-600">Account: {opportunity.account_name}</p>
+        )}
       </div>
 
       {/* Main Content Grid */}
@@ -195,23 +230,23 @@ const OpportunityDetail: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Stage</label>
-                <p className="text-dxc-body font-medium">{opportunity.stage}</p>
+                <p className="text-dxc-body font-medium">{opportunity.sales_stage}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
                 <p className="text-dxc-body font-medium text-dxc-purple">
-                  {formatCurrency(opportunity.amount)}
+                  {formatCurrency(opportunity.tcv_millions || 0)}
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Close Date</label>
-                <p className="text-dxc-body">{formatDate(opportunity.close_date)}</p>
+                <p className="text-dxc-body">{formatDate(opportunity.decision_date)}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <p className="text-dxc-body">{opportunity.category || 'Not categorized'}</p>
+                <p className="text-dxc-body">{getOpportunityCategory(opportunity.tcv_millions)}</p>
               </div>
             </div>
           </div>
@@ -234,7 +269,7 @@ const OpportunityDetail: React.FC = () => {
                   placeholder="Enter resource name"
                 />
               ) : (
-                <p className="text-dxc-body">{opportunity.assigned_resource || 'Not assigned'}</p>
+                <p className="text-dxc-body">{opportunity.opportunity_owner || 'Not assigned'}</p>
               )}
             </div>
             <div>
@@ -252,7 +287,7 @@ const OpportunityDetail: React.FC = () => {
                   <option value="Cancelled">Cancelled</option>
                 </select>
               ) : (
-                <p className="text-dxc-body">{opportunity.status || 'No status set'}</p>
+                <p className="text-dxc-body">{opportunity.in_forecast === 'Y' ? 'Active' : opportunity.in_forecast === 'N' ? 'Inactive' : 'Unknown'}</p>
               )}
             </div>
           </div>
@@ -272,7 +307,7 @@ const OpportunityDetail: React.FC = () => {
           />
         ) : (
           <p className="text-dxc-body whitespace-pre-wrap">
-            {opportunity.notes || 'No notes added'}
+            {'No notes available in current schema'}
           </p>
         )}
       </div>

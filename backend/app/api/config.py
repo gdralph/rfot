@@ -103,9 +103,17 @@ async def get_service_line_stage_efforts(
         query = query.where(ServiceLineStageEffort.category_id == category_id)
     
     efforts = session.exec(query).all()
-    logger.info("Retrieved service line stage efforts", count=len(efforts), 
+    
+    # Convert to response model with calculated effort_weeks
+    response_efforts = []
+    for effort in efforts:
+        effort_dict = effort.dict()
+        effort_dict['effort_weeks'] = effort.fte_required * effort.duration_weeks
+        response_efforts.append(ServiceLineStageEffortRead(**effort_dict))
+    
+    logger.info("Retrieved service line stage efforts", count=len(response_efforts), 
                service_line=service_line, category_id=category_id)
-    return efforts
+    return response_efforts
 
 
 @router.post("/service-line-stage-efforts", response_model=ServiceLineStageEffortRead)
@@ -134,11 +142,15 @@ async def create_service_line_stage_effort(
     session.commit()
     session.refresh(db_effort)
     
+    # Convert to response model with calculated effort_weeks
+    effort_dict = db_effort.dict()
+    effort_dict['effort_weeks'] = db_effort.fte_required * db_effort.duration_weeks
+    
     logger.info("Created service line stage effort", 
                effort_id=db_effort.id, 
                service_line=db_effort.service_line,
                stage=db_effort.stage_name)
-    return db_effort
+    return ServiceLineStageEffortRead(**effort_dict)
 
 
 @router.put("/service-line-stage-efforts/{effort_id}", response_model=ServiceLineStageEffortRead)
@@ -160,11 +172,15 @@ async def update_service_line_stage_effort(
     session.commit()
     session.refresh(db_effort)
     
+    # Convert to response model with calculated effort_weeks
+    effort_dict = db_effort.dict()
+    effort_dict['effort_weeks'] = db_effort.fte_required * db_effort.duration_weeks
+    
     logger.info("Updated service line stage effort", 
                effort_id=db_effort.id, 
                service_line=db_effort.service_line,
                stage=db_effort.stage_name)
-    return db_effort
+    return ServiceLineStageEffortRead(**effort_dict)
 
 
 @router.delete("/service-line-stage-efforts/{effort_id}")

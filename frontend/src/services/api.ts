@@ -90,7 +90,7 @@ class ApiClient {
   }
 
   // Forecast API
-  async getForecastSummary(filters?: { stage?: string; category?: string }): Promise<ForecastSummary> {
+  async getForecastSummary(filters?: { stage?: string; category?: string; service_line?: string }): Promise<ForecastSummary> {
     const params = new URLSearchParams();
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {

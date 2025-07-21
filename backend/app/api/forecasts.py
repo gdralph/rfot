@@ -5,6 +5,31 @@ import structlog
 
 from app.models.database import engine
 from app.models.opportunity import Opportunity, OpportunityLineItem
+from app.models.config import OpportunityCategory
+
+# Helper function to calculate opportunity category based on TCV using database categories
+def get_opportunity_category(tcv_millions: float, categories: List[OpportunityCategory]) -> str:
+    """Calculate category based on TCV in millions using database category definitions."""
+    if tcv_millions is None or tcv_millions < 0:
+        return 'Negative'
+    
+    if not categories:
+        return 'Unknown'
+    
+    # Sort categories by min_tcv to ensure proper ordering
+    sorted_categories = sorted(categories, key=lambda x: x.min_tcv)
+    
+    # Find the category where TCV falls within the min/max range
+    for category in sorted_categories:
+        if tcv_millions >= category.min_tcv and (category.max_tcv is None or tcv_millions < category.max_tcv):
+            return category.name
+    
+    # If no category matches, return the highest category (usually Cat A)
+    highest_category = next((cat for cat in sorted_categories if cat.max_tcv is None), None)
+    if highest_category:
+        return highest_category.name
+    
+    return 'Unknown'
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -20,40 +45,82 @@ def get_session():
 async def get_forecast_summary(
     session: Session = Depends(get_session),
     stage: Optional[str] = Query(None),
-    category: Optional[str] = Query(None)
+    category: Optional[str] = Query(None),
+    service_line: Optional[str] = Query(None)
 ):
     """Get forecast summary metrics."""
-    logger.info("Fetching forecast summary", filters={"stage": stage, "category": category})
+    logger.info("Fetching forecast summary", filters={"stage": stage, "category": category, "service_line": service_line})
+    
+    # Fetch categories from database
+    categories_statement = select(OpportunityCategory)
+    categories = session.exec(categories_statement).all()
     
     statement = select(Opportunity)
     
     if stage:
         statement = statement.where(Opportunity.sales_stage == stage)
-    if category:
-        statement = statement.where(Opportunity.category == category)
     
     opportunities = session.exec(statement).all()
+    
+    # Apply category filter after fetching opportunities (since category is calculated)
+    if category:
+        filtered_opportunities = []
+        for opp in opportunities:
+            opp_category = get_opportunity_category(opp.tcv_millions or 0, categories)
+            if opp_category == category:
+                filtered_opportunities.append(opp)
+        opportunities = filtered_opportunities
+    
+    # Apply service line filter after fetching all opportunities
+    if service_line:
+        # Filter opportunities that have revenue in the specified service line
+        filtered_opportunities = []
+        for opp in opportunities:
+            service_line_value = 0
+            if service_line == "CES":
+                service_line_value = opp.ces_millions or 0
+            elif service_line == "INS":
+                service_line_value = opp.ins_millions or 0
+            elif service_line == "BPS":
+                service_line_value = opp.bps_millions or 0
+            elif service_line == "SEC":
+                service_line_value = opp.sec_millions or 0
+            elif service_line == "ITOC":
+                service_line_value = opp.itoc_millions or 0
+            elif service_line == "MW":
+                service_line_value = opp.mw_millions or 0
+            
+            if service_line_value > 0:
+                filtered_opportunities.append(opp)
+        
+        opportunities = filtered_opportunities
     
     total_opportunities = len(opportunities)
     total_value = sum(opp.tcv_millions or 0 for opp in opportunities)
     avg_value = total_value / total_opportunities if total_opportunities > 0 else 0
     
-    # Define stage ordering for proper sorting
     STAGE_ORDER = ['01', '02', '03', '04A', '04B', '05A', '05B']
-    CATEGORY_ORDER = ['Cat A', 'Cat B', 'Cat C', 'Sub $5M', 'Negative']
     
-    # Group by stage
+    # Build category order from database categories
+    sorted_categories = sorted(categories, key=lambda x: x.min_tcv, reverse=True)
+    CATEGORY_ORDER = [cat.name for cat in sorted_categories]
+    # Add 'Negative' as it's not in the database but we calculate it for negative TCVs
+    CATEGORY_ORDER.append('Negative')
+    
+    # Group by stage (use database format directly)
     stage_breakdown = {}
     for opp in opportunities:
-        stage_breakdown[opp.sales_stage] = stage_breakdown.get(opp.sales_stage, 0) + (opp.tcv_millions or 0)
+        stage = opp.sales_stage
+        if stage:
+            stage_breakdown[stage] = stage_breakdown.get(stage, 0) + (opp.tcv_millions or 0)
     
     # Sort stage breakdown by proper order
     stage_breakdown = {stage: stage_breakdown.get(stage, 0) for stage in STAGE_ORDER if stage in stage_breakdown}
     
-    # Group by category  
+    # Group by category (calculate from TCV using database categories)
     category_breakdown = {}
     for opp in opportunities:
-        cat = getattr(opp, 'category', None) or "Uncategorized"
+        cat = get_opportunity_category(opp.tcv_millions or 0, categories)
         category_breakdown[cat] = category_breakdown.get(cat, 0) + (opp.tcv_millions or 0)
     
     # Sort category breakdown by proper order  

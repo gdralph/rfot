@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, Users, Calendar, BarChart3, Eye } from 'lucide-react';
+import { TrendingUp, Users, Calendar, BarChart3, Eye, Search, Filter } from 'lucide-react';
 import { useForecastSummary, useServiceLineForecast, useActiveServiceLines } from '../hooks/useForecasts';
+import { useCategories } from '../hooks/useConfig';
 import { DXC_COLORS, SERVICE_LINES, SALES_STAGES, STAGE_ORDER, CATEGORY_ORDER, OPPORTUNITY_CATEGORIES } from '../types/index.js';
 import LoadingSpinner from '../components/LoadingSpinner';
 import InteractiveForecastChart from '../components/charts/InteractiveForecastChart';
@@ -12,12 +13,16 @@ import TimelineView from '../components/charts/TimelineView';
 const Dashboard: React.FC = () => {
   const [activeView, setActiveView] = useState<'overview' | 'forecast' | 'resources' | 'timeline'>('overview');
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('quarter');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<{ stage?: string; category?: string; service_line?: string }>({});
+  const [serviceLineFilter, setServiceLineFilter] = useState<string>();
   
-  const { data: forecastSummary, isLoading: summaryLoading, error: summaryError } = useForecastSummary();
-  const { data: serviceLineForecast, isLoading: serviceLoading, error: serviceError } = useServiceLineForecast();
+  const { data: forecastSummary, isLoading: summaryLoading, error: summaryError } = useForecastSummary(filters);
+  const { data: serviceLineForecast, isLoading: serviceLoading, error: serviceError } = useServiceLineForecast(serviceLineFilter);
   const { data: activeServiceLines, isLoading: activeServiceLoading, error: activeServiceError } = useActiveServiceLines();
+  const { data: categories, isLoading: categoriesLoading } = useCategories();
 
-  if (summaryLoading || serviceLoading || activeServiceLoading) {
+  if (summaryLoading || serviceLoading || activeServiceLoading || categoriesLoading) {
     return <LoadingSpinner text="Loading dashboard data..." />;
   }
 
@@ -31,6 +36,27 @@ const Dashboard: React.FC = () => {
       </div>
     );
   }
+
+  const handleFilterChange = (key: string, value: string) => {
+    if (key === 'service_line') {
+      setServiceLineFilter(value || undefined);
+      // Also update filters to include service_line for forecast summary
+      setFilters(prev => ({
+        ...prev,
+        service_line: value || undefined,
+      }));
+    } else {
+      setFilters(prev => ({
+        ...prev,
+        [key]: value || undefined,
+      }));
+    }
+  };
+
+  const clearFilters = () => {
+    setFilters({});
+    setServiceLineFilter(undefined);
+  };
 
   // Prepare chart data
   const stageData = forecastSummary?.stage_breakdown ? 
@@ -74,12 +100,13 @@ const Dashboard: React.FC = () => {
   })) : [];
 
   const formatCurrency = (value: number) => {
+    if (!value || isNaN(value)) return '$0M';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
+      maximumFractionDigits: 2,
+    }).format(value) + 'M'; // Value is already in millions
   };
 
   const formatNumber = (value: number) => {
@@ -329,8 +356,89 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Filters */}
+      <div className="bg-gray-50 rounded-dxc p-4 space-y-4">
+        <div className="flex gap-4">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`btn-secondary flex items-center gap-2 ${showFilters ? 'bg-dxc-bright-purple text-white' : ''}`}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+          </button>
+          {(filters.stage || filters.category || serviceLineFilter) && (
+            <button
+              onClick={clearFilters}
+              className="text-dxc-purple hover:text-dxc-purple/80 text-sm"
+            >
+              Clear Filters
+            </button>
+          )}
+        </div>
+
+        {/* Filter Controls */}
+        {showFilters && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-dxc-light-gray">
+            <div>
+              <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                Stage
+              </label>
+              <select
+                value={filters.stage || ''}
+                onChange={(e) => handleFilterChange('stage', e.target.value)}
+                className="input w-full"
+              >
+                <option value="">All Stages</option>
+                {SALES_STAGES.map((stage) => (
+                  <option key={stage.code} value={stage.code}>
+                    {stage.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                Category
+              </label>
+              <select
+                value={filters.category || ''}
+                onChange={(e) => handleFilterChange('category', e.target.value)}
+                className="input w-full"
+              >
+                <option value="">All Categories</option>
+                {categories?.map((category) => (
+                  <option key={category.id} value={category.name}>
+                    {category.name}
+                  </option>
+                ))}
+                <option value="Negative">Negative</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                Service Line
+              </label>
+              <select
+                value={serviceLineFilter || ''}
+                onChange={(e) => handleFilterChange('service_line', e.target.value)}
+                className="input w-full"
+              >
+                <option value="">All Service Lines</option>
+                {SERVICE_LINES.map((serviceLine) => (
+                  <option key={serviceLine} value={serviceLine}>
+                    {serviceLine}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Navigation Tabs */}
-      <div className="tabs">
+      <div className="tabs flex">
         {[
           { key: 'overview', label: 'Overview', icon: BarChart3 },
           { key: 'forecast', label: 'Interactive Forecast', icon: TrendingUp },

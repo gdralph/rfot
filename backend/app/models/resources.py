@@ -20,7 +20,7 @@ class OpportunityResourceTimeline(SQLModel, table=True):
     # Foreign key relationships
     opportunity_id: str = Field(foreign_key="opportunity.opportunity_id", index=True)
     service_line: str = Field(max_length=10, index=True)  # MW, ITOC, etc.
-    stage_name: str = Field(max_length=10, index=True)    # SS-01, SS-02, etc.
+    stage_name: str = Field(max_length=10, index=True)    # 01, 02, 03, 04A, 04B, 05A, 05B, 06
     
     # Timeline data
     stage_start_date: datetime = Field(index=True)

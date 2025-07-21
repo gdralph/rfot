@@ -155,7 +155,7 @@ def get_opportunity_timeline(
     return OpportunityEffortPrediction(
         opportunity_id=opportunity.opportunity_id,
         opportunity_name=timeline_records[0].opportunity_name,
-        current_stage=opportunity.sales_stage or "SS-01",
+        current_stage=opportunity.sales_stage or "01",
         category=timeline_records[0].category,
         tcv_millions=timeline_records[0].tcv_millions,
         decision_date=timeline_records[0].decision_date,

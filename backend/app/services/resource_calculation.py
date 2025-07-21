@@ -14,14 +14,14 @@ from app.models.database import engine
 
 # Sales stage order for backward calculation
 SALES_STAGES_ORDER = [
-    "SS-01",  # Understand Customer
-    "SS-02",  # Validate Opportunity
-    "SS-03",  # Qualify Opportunity
-    "SS-04a", # Develop Solution
-    "SS-04b", # Propose Solution
-    "SS-05a", # Negotiate
-    "SS-05b", # Award & Close
-    "SS-06"   # Won, Deploy and Extend
+    "01",  # Understand Customer
+    "02",  # Validate Opportunity
+    "03",  # Qualify Opportunity
+    "04A", # Develop Solution
+    "04B", # Propose Solution
+    "05A", # Negotiate
+    "05B", # Award & Close
+    "06"   # Deploy & Extend
 ]
 
 # Service lines that have resource planning data
@@ -176,8 +176,8 @@ def calculate_opportunity_resource_timeline(
     if not category:
         raise ValueError(f"Could not determine category for TCV {tcv_millions}M")
     
-    # Current stage (default to SS-01 if not set)
-    current_stage = opportunity.sales_stage or "SS-01"
+    # Current stage (default to 01 if not set)
+    current_stage = opportunity.sales_stage or "01"
     
     # Calculate timeline for each service line that has revenue
     service_line_timelines = {}

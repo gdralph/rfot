@@ -53,7 +53,7 @@ class ServiceLineStageEffortBase(SQLModel):
     service_line: str  # MW, ITOC
     category_id: int = Field(foreign_key="opportunitycategory.id")
     stage_name: str
-    duration_weeks: int
+    duration_weeks: float  # Changed from int to float to match database
     fte_required: float
 
     @validator('service_line')
@@ -75,10 +75,6 @@ class ServiceLineStageEffortBase(SQLModel):
             raise ValueError('FTE required must be non-negative')
         return v
 
-    @property
-    def effort_weeks(self) -> float:
-        """Calculate total effort as FTE × Duration."""
-        return self.fte_required * self.duration_weeks
 
 
 class ServiceLineStageEffort(ServiceLineStageEffortBase, table=True):
@@ -94,11 +90,10 @@ class ServiceLineStageEffortCreate(ServiceLineStageEffortBase):
 class ServiceLineStageEffortRead(ServiceLineStageEffortBase):
     """Model for reading service line stage efforts."""
     id: int
+    effort_weeks: Optional[float] = None
     
-    @property
-    def effort_weeks(self) -> float:
-        """Calculate total effort as FTE × Duration."""
-        return self.fte_required * self.duration_weeks
+    class Config:
+        from_attributes = True
 
 
 class ServiceLineStageEffortUpdate(ServiceLineStageEffortBase):

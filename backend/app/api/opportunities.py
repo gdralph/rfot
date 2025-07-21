@@ -8,6 +8,7 @@ from app.models.opportunity import (
     Opportunity, OpportunityRead, OpportunityUpdate,
     OpportunityLineItem, OpportunityLineItemRead
 )
+from app.models.config import OpportunityCategory
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -54,6 +55,36 @@ async def get_opportunities(
     
     if stage:
         statement = statement.where(Opportunity.sales_stage == stage)
+    
+    if status:
+        if status == "In Forecast":
+            statement = statement.where(Opportunity.in_forecast == 'Y')
+        elif status == "Not In Forecast":
+            statement = statement.where(Opportunity.in_forecast == 'N')
+    
+    if category:
+        # Get the category configuration from database
+        category_config = session.exec(
+            select(OpportunityCategory).where(OpportunityCategory.name == category)
+        ).first()
+        
+        if category_config:
+            # Apply TCV range filtering based on configuration
+            if category_config.max_tcv is not None:
+                # Category has both min and max TCV
+                statement = statement.where(
+                    (Opportunity.tcv_millions >= category_config.min_tcv) & 
+                    (Opportunity.tcv_millions < category_config.max_tcv)
+                )
+            else:
+                # Category has only min TCV (no upper limit)
+                statement = statement.where(Opportunity.tcv_millions >= category_config.min_tcv)
+        elif category == 'Negative':
+            # Special case for negative/null TCV values
+            statement = statement.where(
+                (Opportunity.tcv_millions.is_(None)) | (Opportunity.tcv_millions <= 0)
+            )
+    
     if search:
         statement = statement.where(
             (Opportunity.opportunity_name.contains(search)) | 

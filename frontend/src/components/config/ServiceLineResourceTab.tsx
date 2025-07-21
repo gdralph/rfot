@@ -222,7 +222,7 @@ const ServiceLineResourceTab: React.FC<ServiceLineResourceTabProps> = ({ categor
                 </th>
                 {SALES_STAGES.map((stage) => (
                   <th key={stage.code} className="px-2 py-3 text-center text-xs font-semibold text-dxc-dark-gray min-w-[110px]">
-                    <div className="text-xs text-dxc-medium-gray">{stage.label.replace('Stage SS-0', '').replace('Stage SS-', '')}</div>
+                    <div className="text-xs text-dxc-medium-gray">{stage.code}</div>
                   </th>
                 ))}
               </tr>
@@ -233,7 +233,7 @@ const ServiceLineResourceTab: React.FC<ServiceLineResourceTabProps> = ({ categor
                   <td className="px-4 py-3 font-medium text-dxc-dark-gray">
                     <div className="text-sm font-semibold">{category.name}</div>
                     <div className="text-xs text-dxc-medium-gray">
-                      ${(category.min_tcv / 1000000).toFixed(category.min_tcv % 1000000 === 0 ? 0 : 2)}M{category.max_tcv ? ` - $${(category.max_tcv / 1000000).toFixed(category.max_tcv % 1000000 === 0 ? 0 : 2)}M` : '+'}
+                      ${category.min_tcv.toFixed(category.min_tcv % 1 === 0 ? 0 : 1)}M{category.max_tcv ? ` - $${category.max_tcv.toFixed(category.max_tcv % 1 === 0 ? 0 : 1)}M` : '+'}
                     </div>
                   </td>
                   {SALES_STAGES.map((stage) => {

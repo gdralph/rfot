@@ -150,7 +150,7 @@ npm run lint            # ESLint (using flat config format)
 ## Data Model Key Concepts
 
 **Core Entities:**
-- **Opportunity**: Main business record with stages (SS-01 through SS-06: Understand Customer → Validate → Qualify → Develop/Propose → Negotiate/Close → Deploy/Extend)
+- **Opportunity**: Main business record with stages (01: Understand Customer → 02: Validate Opportunity → 03: Qualify Opportunity → 04A: Develop Solution → 04B: Propose Solution → 05A: Negotiate → 05B: Award & Close → 06: Deploy & Extend)
 - **OpportunityLineItem**: Service line revenue breakdown (CES, INS, BPS, SEC, ITOC, MW)
 - **Categories**: TCV-based auto-categorization (Sub $5M, Cat C, Cat B, Cat A)
 - **ServiceLineStageEffort**: MW/ITOC-specific resource templates with duration, FTE, and calculated effort for each category-stage combination
@@ -187,3 +187,12 @@ Excel import uses background tasks with progress tracking:
 - Hot reloading enabled for both backend and frontend
 - Pre-commit hooks enforce code quality standards
 - Environment variables managed via `.env` files
+
+## Memories
+- Always use the opportunitycategory in the database for category definitions
+- Always use the servicelinestageeffort for resource/fte calculations against opportunities
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
