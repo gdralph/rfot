@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import structlog
 
 from app.config import settings
-from app.api import opportunities, forecasts, config as config_api, imports
+from app.api import opportunities, forecasts, config as config_api, imports, resources
 
 # Configure structured logging
 structlog.configure(
@@ -39,6 +39,7 @@ app.include_router(opportunities.router, prefix="/api/opportunities", tags=["opp
 app.include_router(forecasts.router, prefix="/api/forecast", tags=["forecast"])
 app.include_router(config_api.router, prefix="/api/config", tags=["config"])
 app.include_router(imports.router, prefix="/api/import", tags=["import"])
+app.include_router(resources.router, prefix="/api", tags=["resources"])
 
 @app.get("/api/health")
 async def health_check():

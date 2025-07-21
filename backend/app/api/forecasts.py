@@ -28,14 +28,14 @@ async def get_forecast_summary(
     statement = select(Opportunity)
     
     if stage:
-        statement = statement.where(Opportunity.stage == stage)
+        statement = statement.where(Opportunity.sales_stage == stage)
     if category:
         statement = statement.where(Opportunity.category == category)
     
     opportunities = session.exec(statement).all()
     
     total_opportunities = len(opportunities)
-    total_value = sum(opp.amount for opp in opportunities)
+    total_value = sum(opp.tcv_millions or 0 for opp in opportunities)
     avg_value = total_value / total_opportunities if total_opportunities > 0 else 0
     
     # Define stage ordering for proper sorting
@@ -45,16 +45,16 @@ async def get_forecast_summary(
     # Group by stage
     stage_breakdown = {}
     for opp in opportunities:
-        stage_breakdown[opp.stage] = stage_breakdown.get(opp.stage, 0) + opp.amount
+        stage_breakdown[opp.sales_stage] = stage_breakdown.get(opp.sales_stage, 0) + (opp.tcv_millions or 0)
     
     # Sort stage breakdown by proper order
     stage_breakdown = {stage: stage_breakdown.get(stage, 0) for stage in STAGE_ORDER if stage in stage_breakdown}
     
-    # Group by category
+    # Group by category  
     category_breakdown = {}
     for opp in opportunities:
-        cat = opp.category or "Uncategorized"
-        category_breakdown[cat] = category_breakdown.get(cat, 0) + opp.amount
+        cat = getattr(opp, 'category', None) or "Uncategorized"
+        category_breakdown[cat] = category_breakdown.get(cat, 0) + (opp.tcv_millions or 0)
     
     # Sort category breakdown by proper order  
     sorted_category_breakdown = {}

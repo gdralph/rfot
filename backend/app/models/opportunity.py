@@ -1,7 +1,10 @@
 from sqlmodel import SQLModel, Field, Relationship
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 from pydantic import validator
+
+if TYPE_CHECKING:
+    from app.models.resources import OpportunityResourceTimeline
 
 
 class OpportunityBase(SQLModel):
@@ -61,6 +64,7 @@ class Opportunity(OpportunityBase, table=True):
     
     # Relationships
     line_items: List["OpportunityLineItem"] = Relationship(back_populates="opportunity")
+    resource_timelines: List["OpportunityResourceTimeline"] = Relationship(back_populates="opportunity")
 
 
 class OpportunityCreate(OpportunityBase):

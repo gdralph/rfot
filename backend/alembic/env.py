@@ -18,6 +18,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 from app.models.opportunity import Opportunity, OpportunityLineItem
 from app.models.config import OpportunityCategory, ServiceLineStageEffort
+from app.models.resources import OpportunityResourceTimeline
 from sqlmodel import SQLModel
 target_metadata = SQLModel.metadata
 

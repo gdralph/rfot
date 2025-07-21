@@ -1,0 +1,158 @@
+INFO:     Will watch for changes in these directories: ['/Users/gdralph/Development/rfot/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [34931] using WatchFiles
+INFO:     Started server process [34948]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:63008 - "GET /api/health HTTP/1.1" 200 OK
+2025-07-21 21:55:58,473 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:55:58,480 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id, opportunity.sfdc_url, opportunity.account_name, opportunity.opportunity_name, opportunity.opportunity_type, opportunity.tcv_millions, opportunity.margin_percentage, opportunity.first_year_q1_rev, opportunity.first_year_q2_rev, opportunity.first_year_q3_rev, opportunity.first_year_q4_rev, opportunity.first_year_fy_rev, opportunity.second_year_q1_rev, opportunity.second_year_q2_rev, opportunity.second_year_q3_rev, opportunity.second_year_q4_rev, opportunity.second_year_fy_rev, opportunity.fy_rev_beyond_yr2, opportunity.sales_stage, opportunity.decision_date, opportunity.master_period, opportunity.contract_length, opportunity.in_forecast, opportunity.opportunity_owner, opportunity.lead_offering_l1, opportunity.ces_millions, opportunity.ins_millions, opportunity.bps_millions, opportunity.sec_millions, opportunity.itoc_millions, opportunity.mw_millions, opportunity.sales_org_l1, opportunity.id 
+FROM opportunity
+2025-07-21 21:55:58,480 INFO sqlalchemy.engine.Engine [generated in 0.00009s] ()
+2025-07-21 21:55:58,481 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:63073 - "GET /api/forecast/summary HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/uvicorn/protocols/http/httptools_impl.py", line 426, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/uvicorn/middleware/proxy_headers.py", line 84, in __call__
+    return await self.app(scope, receive, send)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/fastapi/applications.py", line 1106, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/applications.py", line 122, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/middleware/errors.py", line 184, in __call__
+    raise exc
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/middleware/errors.py", line 162, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/middleware/cors.py", line 83, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/middleware/exceptions.py", line 79, in __call__
+    raise exc
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/middleware/exceptions.py", line 68, in __call__
+    await self.app(scope, receive, sender)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/fastapi/middleware/asyncexitstack.py", line 20, in __call__
+    raise e
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/fastapi/middleware/asyncexitstack.py", line 17, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/routing.py", line 718, in __call__
+    await route.handle(scope, receive, send)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/starlette/routing.py", line 66, in app
+    response = await func(request)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/fastapi/routing.py", line 274, in app
+    raw_response = await run_endpoint_function(
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/fastapi/routing.py", line 191, in run_endpoint_function
+    return await dependant.call(**values)
+  File "/Users/gdralph/Development/rfot/backend/app/api/forecasts.py", line 38, in get_forecast_summary
+    total_value = sum(opp.amount for opp in opportunities)
+  File "/Users/gdralph/Development/rfot/backend/app/api/forecasts.py", line 38, in <genexpr>
+    total_value = sum(opp.amount for opp in opportunities)
+  File "/Users/gdralph/Library/Python/3.9/lib/python/site-packages/pydantic/main.py", line 991, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'Opportunity' object has no attribute 'amount'
+WARNING:  WatchFiles detected changes in 'app/api/forecasts.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [34948]
+INFO:     Started server process [35123]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app/api/forecasts.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [35123]
+INFO:     Started server process [35160]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app/api/forecasts.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [35160]
+INFO:     Started server process [35195]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'app/api/forecasts.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [35195]
+INFO:     Started server process [35228]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+2025-07-21 21:56:27,140 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:56:27,146 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id, opportunity.sfdc_url, opportunity.account_name, opportunity.opportunity_name, opportunity.opportunity_type, opportunity.tcv_millions, opportunity.margin_percentage, opportunity.first_year_q1_rev, opportunity.first_year_q2_rev, opportunity.first_year_q3_rev, opportunity.first_year_q4_rev, opportunity.first_year_fy_rev, opportunity.second_year_q1_rev, opportunity.second_year_q2_rev, opportunity.second_year_q3_rev, opportunity.second_year_q4_rev, opportunity.second_year_fy_rev, opportunity.fy_rev_beyond_yr2, opportunity.sales_stage, opportunity.decision_date, opportunity.master_period, opportunity.contract_length, opportunity.in_forecast, opportunity.opportunity_owner, opportunity.lead_offering_l1, opportunity.ces_millions, opportunity.ins_millions, opportunity.bps_millions, opportunity.sec_millions, opportunity.itoc_millions, opportunity.mw_millions, opportunity.sales_org_l1, opportunity.id 
+FROM opportunity
+2025-07-21 21:56:27,146 INFO sqlalchemy.engine.Engine [generated in 0.00009s] ()
+INFO:     127.0.0.1:63280 - "GET /api/forecast/summary HTTP/1.1" 200 OK
+2025-07-21 21:56:27,147 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:63308 - "OPTIONS /api/forecast/summary HTTP/1.1" 200 OK
+2025-07-21 21:56:47,946 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:56:47,947 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id, opportunity.sfdc_url, opportunity.account_name, opportunity.opportunity_name, opportunity.opportunity_type, opportunity.tcv_millions, opportunity.margin_percentage, opportunity.first_year_q1_rev, opportunity.first_year_q2_rev, opportunity.first_year_q3_rev, opportunity.first_year_q4_rev, opportunity.first_year_fy_rev, opportunity.second_year_q1_rev, opportunity.second_year_q2_rev, opportunity.second_year_q3_rev, opportunity.second_year_q4_rev, opportunity.second_year_fy_rev, opportunity.fy_rev_beyond_yr2, opportunity.sales_stage, opportunity.decision_date, opportunity.master_period, opportunity.contract_length, opportunity.in_forecast, opportunity.opportunity_owner, opportunity.lead_offering_l1, opportunity.ces_millions, opportunity.ins_millions, opportunity.bps_millions, opportunity.sec_millions, opportunity.itoc_millions, opportunity.mw_millions, opportunity.sales_org_l1, opportunity.id 
+FROM opportunity
+2025-07-21 21:56:47,947 INFO sqlalchemy.engine.Engine [cached since 20.8s ago] ()
+INFO:     127.0.0.1:63411 - "GET /api/forecast/summary HTTP/1.1" 200 OK
+2025-07-21 21:56:47,949 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:56:47,949 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id, opportunity.sfdc_url, opportunity.account_name, opportunity.opportunity_name, opportunity.opportunity_type, opportunity.tcv_millions, opportunity.margin_percentage, opportunity.first_year_q1_rev, opportunity.first_year_q2_rev, opportunity.first_year_q3_rev, opportunity.first_year_q4_rev, opportunity.first_year_fy_rev, opportunity.second_year_q1_rev, opportunity.second_year_q2_rev, opportunity.second_year_q3_rev, opportunity.second_year_q4_rev, opportunity.second_year_fy_rev, opportunity.fy_rev_beyond_yr2, opportunity.sales_stage, opportunity.decision_date, opportunity.master_period, opportunity.contract_length, opportunity.in_forecast, opportunity.opportunity_owner, opportunity.lead_offering_l1, opportunity.ces_millions, opportunity.ins_millions, opportunity.bps_millions, opportunity.sec_millions, opportunity.itoc_millions, opportunity.mw_millions, opportunity.sales_org_l1, opportunity.id 
+FROM opportunity
+2025-07-21 21:56:47,949 INFO sqlalchemy.engine.Engine [cached since 20.8s ago] ()
+INFO:     127.0.0.1:63414 - "GET /api/forecast/service-lines HTTP/1.1" 200 OK
+2025-07-21 21:56:47,950 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:56:47,950 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id, opportunity.sfdc_url, opportunity.account_name, opportunity.opportunity_name, opportunity.opportunity_type, opportunity.tcv_millions, opportunity.margin_percentage, opportunity.first_year_q1_rev, opportunity.first_year_q2_rev, opportunity.first_year_q3_rev, opportunity.first_year_q4_rev, opportunity.first_year_fy_rev, opportunity.second_year_q1_rev, opportunity.second_year_q2_rev, opportunity.second_year_q3_rev, opportunity.second_year_q4_rev, opportunity.second_year_fy_rev, opportunity.fy_rev_beyond_yr2, opportunity.sales_stage, opportunity.decision_date, opportunity.master_period, opportunity.contract_length, opportunity.in_forecast, opportunity.opportunity_owner, opportunity.lead_offering_l1, opportunity.ces_millions, opportunity.ins_millions, opportunity.bps_millions, opportunity.sec_millions, opportunity.itoc_millions, opportunity.mw_millions, opportunity.sales_org_l1, opportunity.id 
+FROM opportunity
+2025-07-21 21:56:47,950 INFO sqlalchemy.engine.Engine [cached since 20.8s ago] ()
+INFO:     127.0.0.1:63415 - "GET /api/forecast/active-service-lines HTTP/1.1" 200 OK
+2025-07-21 21:56:47,951 INFO sqlalchemy.engine.Engine ROLLBACK
+2025-07-21 21:56:47,951 INFO sqlalchemy.engine.Engine ROLLBACK
+2025-07-21 21:56:47,952 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:63469 - "OPTIONS /api/opportunities/?skip=0&limit=50 HTTP/1.1" 200 OK
+2025-07-21 21:56:55,949 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:56:55,951 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id, opportunity.sfdc_url, opportunity.account_name, opportunity.opportunity_name, opportunity.opportunity_type, opportunity.tcv_millions, opportunity.margin_percentage, opportunity.first_year_q1_rev, opportunity.first_year_q2_rev, opportunity.first_year_q3_rev, opportunity.first_year_q4_rev, opportunity.first_year_fy_rev, opportunity.second_year_q1_rev, opportunity.second_year_q2_rev, opportunity.second_year_q3_rev, opportunity.second_year_q4_rev, opportunity.second_year_fy_rev, opportunity.fy_rev_beyond_yr2, opportunity.sales_stage, opportunity.decision_date, opportunity.master_period, opportunity.contract_length, opportunity.in_forecast, opportunity.opportunity_owner, opportunity.lead_offering_l1, opportunity.ces_millions, opportunity.ins_millions, opportunity.bps_millions, opportunity.sec_millions, opportunity.itoc_millions, opportunity.mw_millions, opportunity.sales_org_l1, opportunity.id 
+FROM opportunity
+ LIMIT ? OFFSET ?
+2025-07-21 21:56:55,951 INFO sqlalchemy.engine.Engine [generated in 0.00019s] (50, 0)
+INFO:     127.0.0.1:63469 - "GET /api/opportunities/?skip=0&limit=50 HTTP/1.1" 200 OK
+2025-07-21 21:56:55,954 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:63469 - "OPTIONS /api/opportunities/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63510 - "OPTIONS /api/opportunities/1/line-items HTTP/1.1" 200 OK
+2025-07-21 21:57:00,540 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:57:00,543 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id AS opportunity_opportunity_id, opportunity.sfdc_url AS opportunity_sfdc_url, opportunity.account_name AS opportunity_account_name, opportunity.opportunity_name AS opportunity_opportunity_name, opportunity.opportunity_type AS opportunity_opportunity_type, opportunity.tcv_millions AS opportunity_tcv_millions, opportunity.margin_percentage AS opportunity_margin_percentage, opportunity.first_year_q1_rev AS opportunity_first_year_q1_rev, opportunity.first_year_q2_rev AS opportunity_first_year_q2_rev, opportunity.first_year_q3_rev AS opportunity_first_year_q3_rev, opportunity.first_year_q4_rev AS opportunity_first_year_q4_rev, opportunity.first_year_fy_rev AS opportunity_first_year_fy_rev, opportunity.second_year_q1_rev AS opportunity_second_year_q1_rev, opportunity.second_year_q2_rev AS opportunity_second_year_q2_rev, opportunity.second_year_q3_rev AS opportunity_second_year_q3_rev, opportunity.second_year_q4_rev AS opportunity_second_year_q4_rev, opportunity.second_year_fy_rev AS opportunity_second_year_fy_rev, opportunity.fy_rev_beyond_yr2 AS opportunity_fy_rev_beyond_yr2, opportunity.sales_stage AS opportunity_sales_stage, opportunity.decision_date AS opportunity_decision_date, opportunity.master_period AS opportunity_master_period, opportunity.contract_length AS opportunity_contract_length, opportunity.in_forecast AS opportunity_in_forecast, opportunity.opportunity_owner AS opportunity_opportunity_owner, opportunity.lead_offering_l1 AS opportunity_lead_offering_l1, opportunity.ces_millions AS opportunity_ces_millions, opportunity.ins_millions AS opportunity_ins_millions, opportunity.bps_millions AS opportunity_bps_millions, opportunity.sec_millions AS opportunity_sec_millions, opportunity.itoc_millions AS opportunity_itoc_millions, opportunity.mw_millions AS opportunity_mw_millions, opportunity.sales_org_l1 AS opportunity_sales_org_l1, opportunity.id AS opportunity_id_1 
+FROM opportunity 
+WHERE opportunity.id = ?
+2025-07-21 21:57:00,543 INFO sqlalchemy.engine.Engine [generated in 0.00023s] (1,)
+INFO:     127.0.0.1:63510 - "GET /api/opportunities/1 HTTP/1.1" 200 OK
+2025-07-21 21:57:00,545 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:57:00,545 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id AS opportunity_opportunity_id, opportunity.sfdc_url AS opportunity_sfdc_url, opportunity.account_name AS opportunity_account_name, opportunity.opportunity_name AS opportunity_opportunity_name, opportunity.opportunity_type AS opportunity_opportunity_type, opportunity.tcv_millions AS opportunity_tcv_millions, opportunity.margin_percentage AS opportunity_margin_percentage, opportunity.first_year_q1_rev AS opportunity_first_year_q1_rev, opportunity.first_year_q2_rev AS opportunity_first_year_q2_rev, opportunity.first_year_q3_rev AS opportunity_first_year_q3_rev, opportunity.first_year_q4_rev AS opportunity_first_year_q4_rev, opportunity.first_year_fy_rev AS opportunity_first_year_fy_rev, opportunity.second_year_q1_rev AS opportunity_second_year_q1_rev, opportunity.second_year_q2_rev AS opportunity_second_year_q2_rev, opportunity.second_year_q3_rev AS opportunity_second_year_q3_rev, opportunity.second_year_q4_rev AS opportunity_second_year_q4_rev, opportunity.second_year_fy_rev AS opportunity_second_year_fy_rev, opportunity.fy_rev_beyond_yr2 AS opportunity_fy_rev_beyond_yr2, opportunity.sales_stage AS opportunity_sales_stage, opportunity.decision_date AS opportunity_decision_date, opportunity.master_period AS opportunity_master_period, opportunity.contract_length AS opportunity_contract_length, opportunity.in_forecast AS opportunity_in_forecast, opportunity.opportunity_owner AS opportunity_opportunity_owner, opportunity.lead_offering_l1 AS opportunity_lead_offering_l1, opportunity.ces_millions AS opportunity_ces_millions, opportunity.ins_millions AS opportunity_ins_millions, opportunity.bps_millions AS opportunity_bps_millions, opportunity.sec_millions AS opportunity_sec_millions, opportunity.itoc_millions AS opportunity_itoc_millions, opportunity.mw_millions AS opportunity_mw_millions, opportunity.sales_org_l1 AS opportunity_sales_org_l1, opportunity.id AS opportunity_id_1 
+FROM opportunity 
+WHERE opportunity.id = ?
+2025-07-21 21:57:00,545 INFO sqlalchemy.engine.Engine [cached since 0.002112s ago] (1,)
+2025-07-21 21:57:00,548 INFO sqlalchemy.engine.Engine SELECT opportunitylineitem.opportunity_id, opportunitylineitem.offering_tcv, opportunitylineitem.offering_abr, opportunitylineitem.offering_iyr, opportunitylineitem.offering_iqr, opportunitylineitem.offering_margin, opportunitylineitem.offering_margin_percentage, opportunitylineitem.decision_date, opportunitylineitem.master_period, opportunitylineitem.lead_offering_l2, opportunitylineitem.internal_service, opportunitylineitem.simplified_offering, opportunitylineitem.product_name, opportunitylineitem.first_year_q1_rev, opportunitylineitem.first_year_q2_rev, opportunitylineitem.first_year_q3_rev, opportunitylineitem.first_year_q4_rev, opportunitylineitem.first_year_fy_rev, opportunitylineitem.second_year_q1_rev, opportunitylineitem.second_year_q2_rev, opportunitylineitem.second_year_q3_rev, opportunitylineitem.second_year_q4_rev, opportunitylineitem.second_year_fy_rev, opportunitylineitem.fy_rev_beyond_yr2, opportunitylineitem.id 
+FROM opportunitylineitem 
+WHERE opportunitylineitem.opportunity_id = ?
+2025-07-21 21:57:00,548 INFO sqlalchemy.engine.Engine [generated in 0.00028s] ('TEST-001',)
+INFO:     127.0.0.1:63469 - "GET /api/opportunities/1/line-items HTTP/1.1" 200 OK
+2025-07-21 21:57:00,549 INFO sqlalchemy.engine.Engine ROLLBACK
+2025-07-21 21:57:00,550 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO:     127.0.0.1:63604 - "OPTIONS /api/config/categories HTTP/1.1" 200 OK
+2025-07-21 21:57:08,783 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:57:08,783 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id, opportunity.sfdc_url, opportunity.account_name, opportunity.opportunity_name, opportunity.opportunity_type, opportunity.tcv_millions, opportunity.margin_percentage, opportunity.first_year_q1_rev, opportunity.first_year_q2_rev, opportunity.first_year_q3_rev, opportunity.first_year_q4_rev, opportunity.first_year_fy_rev, opportunity.second_year_q1_rev, opportunity.second_year_q2_rev, opportunity.second_year_q3_rev, opportunity.second_year_q4_rev, opportunity.second_year_fy_rev, opportunity.fy_rev_beyond_yr2, opportunity.sales_stage, opportunity.decision_date, opportunity.master_period, opportunity.contract_length, opportunity.in_forecast, opportunity.opportunity_owner, opportunity.lead_offering_l1, opportunity.ces_millions, opportunity.ins_millions, opportunity.bps_millions, opportunity.sec_millions, opportunity.itoc_millions, opportunity.mw_millions, opportunity.sales_org_l1, opportunity.id 
+FROM opportunity
+2025-07-21 21:57:08,783 INFO sqlalchemy.engine.Engine [cached since 41.64s ago] ()
+INFO:     127.0.0.1:63599 - "GET /api/forecast/summary HTTP/1.1" 200 OK
+2025-07-21 21:57:08,785 INFO sqlalchemy.engine.Engine ROLLBACK
+2025-07-21 21:57:08,785 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:57:08,786 INFO sqlalchemy.engine.Engine SELECT opportunitycategory.name, opportunitycategory.min_tcv, opportunitycategory.max_tcv, opportunitycategory.id 
+FROM opportunitycategory
+2025-07-21 21:57:08,786 INFO sqlalchemy.engine.Engine [generated in 0.00014s] ()
+INFO:     127.0.0.1:63604 - "GET /api/config/categories HTTP/1.1" 200 OK
+2025-07-21 21:57:08,787 INFO sqlalchemy.engine.Engine ROLLBACK
+2025-07-21 21:58:16,819 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2025-07-21 21:58:16,819 INFO sqlalchemy.engine.Engine SELECT opportunity.opportunity_id, opportunity.sfdc_url, opportunity.account_name, opportunity.opportunity_name, opportunity.opportunity_type, opportunity.tcv_millions, opportunity.margin_percentage, opportunity.first_year_q1_rev, opportunity.first_year_q2_rev, opportunity.first_year_q3_rev, opportunity.first_year_q4_rev, opportunity.first_year_fy_rev, opportunity.second_year_q1_rev, opportunity.second_year_q2_rev, opportunity.second_year_q3_rev, opportunity.second_year_q4_rev, opportunity.second_year_fy_rev, opportunity.fy_rev_beyond_yr2, opportunity.sales_stage, opportunity.decision_date, opportunity.master_period, opportunity.contract_length, opportunity.in_forecast, opportunity.opportunity_owner, opportunity.lead_offering_l1, opportunity.ces_millions, opportunity.ins_millions, opportunity.bps_millions, opportunity.sec_millions, opportunity.itoc_millions, opportunity.mw_millions, opportunity.sales_org_l1, opportunity.id 
+FROM opportunity
+2025-07-21 21:58:16,819 INFO sqlalchemy.engine.Engine [cached since 109.7s ago] ()
+INFO:     127.0.0.1:64085 - "GET /api/forecast/summary HTTP/1.1" 200 OK
+2025-07-21 21:58:16,819 INFO sqlalchemy.engine.Engine ROLLBACK
