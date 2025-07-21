@@ -4,10 +4,10 @@ import type {
   OpportunityUpdate,
   OpportunityFilters,
   OpportunityCategory,
-  StageEffortEstimate,
-  SMEAllocationRule,
+  ServiceLineStageEffort,
   ForecastSummary,
   ServiceLineForecast,
+  ActiveServiceLines,
   ImportTask,
   APIError
 } from '../types/index.js';
@@ -109,6 +109,10 @@ class ApiClient {
     return this.request(`/api/forecast/service-lines${params}`);
   }
 
+  async getActiveServiceLines(): Promise<ActiveServiceLines> {
+    return this.request('/api/forecast/active-service-lines');
+  }
+
   // Configuration API
   async getCategories(): Promise<OpportunityCategory[]> {
     return this.request('/api/config/categories');
@@ -121,23 +125,53 @@ class ApiClient {
     });
   }
 
-  async getStageEffortEstimates(): Promise<StageEffortEstimate[]> {
-    return this.request('/api/config/stage-effort');
+  async updateCategory(id: number, data: Omit<OpportunityCategory, 'id'>): Promise<OpportunityCategory> {
+    return this.request(`/api/config/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   }
 
-  async createStageEffortEstimate(data: Omit<StageEffortEstimate, 'id'>): Promise<StageEffortEstimate> {
-    return this.request('/api/config/stage-effort', {
+  async deleteCategory(id: number): Promise<void> {
+    return this.request(`/api/config/categories/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+
+
+  // Service Line Stage Efforts
+  async getServiceLineStageEfforts(serviceLine?: string, categoryId?: number): Promise<ServiceLineStageEffort[]> {
+    const params = new URLSearchParams();
+    if (serviceLine) params.append('service_line', serviceLine);
+    if (categoryId) params.append('category_id', categoryId.toString());
+    
+    const queryString = params.toString();
+    return this.request(`/api/config/service-line-stage-efforts${queryString ? '?' + queryString : ''}`);
+  }
+
+  async createServiceLineStageEffort(data: Omit<ServiceLineStageEffort, 'id' | 'effort_weeks'>): Promise<ServiceLineStageEffort> {
+    return this.request('/api/config/service-line-stage-efforts', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async getSMERules(): Promise<SMEAllocationRule[]> {
-    return this.request('/api/config/sme-rules');
+  async updateServiceLineStageEffort(id: number, data: Omit<ServiceLineStageEffort, 'id' | 'effort_weeks'>): Promise<ServiceLineStageEffort> {
+    return this.request(`/api/config/service-line-stage-efforts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   }
 
-  async createSMERule(data: Omit<SMEAllocationRule, 'id'>): Promise<SMEAllocationRule> {
-    return this.request('/api/config/sme-rules', {
+  async deleteServiceLineStageEffort(id: number): Promise<void> {
+    return this.request(`/api/config/service-line-stage-efforts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async bulkCreateServiceLineStageEfforts(data: Array<Omit<ServiceLineStageEffort, 'id' | 'effort_weeks'>>): Promise<ServiceLineStageEffort[]> {
+    return this.request('/api/config/service-line-stage-efforts/bulk', {
       method: 'POST',
       body: JSON.stringify(data),
     });

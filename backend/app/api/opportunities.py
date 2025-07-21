@@ -37,35 +37,30 @@ async def get_opportunities(
     
     statement = select(Opportunity)
     
-    # Add service line filtering via join with line items
+    # Add service line filtering based on opportunity table service line totals
     if service_line:
-        from app.models.opportunity import OpportunityLineItem
-        statement = statement.join(OpportunityLineItem)
-        
-        # Filter based on which service line has revenue > 0
         if service_line == 'CES':
-            statement = statement.where(OpportunityLineItem.ces_revenue > 0)
+            statement = statement.where(Opportunity.ces_millions > 0)
         elif service_line == 'INS':
-            statement = statement.where(OpportunityLineItem.ins_revenue > 0)
+            statement = statement.where(Opportunity.ins_millions > 0)
         elif service_line == 'BPS':
-            statement = statement.where(OpportunityLineItem.bps_revenue > 0)
+            statement = statement.where(Opportunity.bps_millions > 0)
         elif service_line == 'SEC':
-            statement = statement.where(OpportunityLineItem.sec_revenue > 0)
+            statement = statement.where(Opportunity.sec_millions > 0)
         elif service_line == 'ITOC':
-            statement = statement.where(OpportunityLineItem.itoc_revenue > 0)
+            statement = statement.where(Opportunity.itoc_millions > 0)
         elif service_line == 'MW':
-            statement = statement.where(OpportunityLineItem.mw_revenue > 0)
+            statement = statement.where(Opportunity.mw_millions > 0)
     
     if stage:
-        statement = statement.where(Opportunity.stage == stage)
-    if status:
-        statement = statement.where(Opportunity.status == status)
-    if category:
-        statement = statement.where(Opportunity.category == category)
+        statement = statement.where(Opportunity.sales_stage == stage)
     if search:
         statement = statement.where(
-            (Opportunity.name.contains(search)) | 
-            (Opportunity.opportunity_id.contains(search))
+            (Opportunity.opportunity_name.contains(search)) | 
+            (Opportunity.opportunity_id.contains(search)) |
+            (Opportunity.account_name.contains(search)) |
+            (Opportunity.lead_offering_l1.contains(search)) |
+            (Opportunity.sales_org_l1.contains(search))
         )
     
     statement = statement.offset(skip).limit(limit)
@@ -126,3 +121,36 @@ async def get_opportunity_line_items(
     
     logger.info("Retrieved line items", opportunity_id=opportunity_id, count=len(line_items))
     return line_items
+
+
+@router.get("/{opportunity_id}/quarterly-revenue")
+async def get_opportunity_quarterly_revenue(
+    opportunity_id: int,
+    session: Session = Depends(get_session)
+):
+    """Get quarterly revenue data for a specific opportunity from the opportunity record."""
+    opportunity = session.get(Opportunity, opportunity_id)
+    if not opportunity:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    
+    # Return quarterly revenue data from the opportunity record itself
+    quarterly_data = {
+        "first_year": {
+            "q1": opportunity.first_year_q1_rev,
+            "q2": opportunity.first_year_q2_rev,
+            "q3": opportunity.first_year_q3_rev,
+            "q4": opportunity.first_year_q4_rev,
+            "fy_total": opportunity.first_year_fy_rev
+        },
+        "second_year": {
+            "q1": opportunity.second_year_q1_rev,
+            "q2": opportunity.second_year_q2_rev,
+            "q3": opportunity.second_year_q3_rev,
+            "q4": opportunity.second_year_q4_rev,
+            "fy_total": opportunity.second_year_fy_rev
+        },
+        "beyond_year2": opportunity.fy_rev_beyond_yr2
+    }
+    
+    logger.info("Retrieved quarterly revenues", opportunity_id=opportunity_id)
+    return quarterly_data

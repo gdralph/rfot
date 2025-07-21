@@ -75,4 +75,188 @@
   .table tr:nth-child(even) {
     @apply bg-gray-50;
   }
+
+  /* Badge Components */
+  .badge {
+    @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply bg-dxc-bright-purple text-white;
+  }
+
+  .badge-secondary {
+    @apply bg-dxc-light-gray text-dxc-dark-gray;
+  }
+
+  .badge-success {
+    @apply bg-dxc-green bg-opacity-10 text-dxc-green border border-dxc-green border-opacity-20;
+  }
+
+  .badge-warning {
+    @apply bg-dxc-orange bg-opacity-10 text-dxc-orange border border-dxc-orange border-opacity-20;
+  }
+
+  .badge-info {
+    @apply bg-dxc-blue bg-opacity-10 text-dxc-blue border border-dxc-blue border-opacity-20;
+  }
+
+  /* Alert Components */
+  .alert {
+    @apply p-4 rounded-dxc border-l-4;
+  }
+
+  .alert-info {
+    @apply bg-blue-50 border-dxc-blue text-dxc-blue;
+  }
+
+  .alert-success {
+    @apply bg-green-50 border-dxc-green text-dxc-green;
+  }
+
+  .alert-warning {
+    @apply bg-orange-50 border-dxc-orange text-dxc-orange;
+  }
+
+  .alert-error {
+    @apply bg-red-50 border-red-500 text-red-700;
+  }
+
+  /* Progress Components */
+  .progress {
+    @apply w-full bg-dxc-light-gray rounded-full h-2;
+  }
+
+  .progress-bar {
+    @apply h-2 rounded-full transition-all duration-300 ease-in-out;
+  }
+
+  .progress-primary {
+    @apply bg-dxc-bright-purple;
+  }
+
+  .progress-secondary {
+    @apply bg-dxc-bright-teal;
+  }
+
+  .progress-success {
+    @apply bg-dxc-green;
+  }
+
+  /* Tabs Component */
+  .tabs {
+    @apply border-b border-dxc-light-gray;
+  }
+
+  .tab {
+    @apply px-6 py-3 font-medium text-dxc-medium-gray hover:text-dxc-bright-purple border-b-2 border-transparent hover:border-dxc-bright-purple transition-colors cursor-pointer;
+  }
+
+  .tab-active {
+    @apply text-dxc-bright-purple border-dxc-bright-purple;
+  }
+
+  /* Loading Spinner */
+  .spinner {
+    @apply animate-spin rounded-full border-4 border-dxc-light-gray border-t-dxc-bright-purple;
+  }
+
+  /* Dropdown */
+  .dropdown {
+    @apply absolute mt-1 bg-white border border-dxc-light-gray rounded-dxc shadow-lg z-10 min-w-full;
+  }
+
+  .dropdown-item {
+    @apply px-4 py-2 text-dxc-dark-gray hover:bg-dxc-bright-purple hover:text-white cursor-pointer transition-colors;
+  }
+
+  /* Status Indicators */
+  .status-dot {
+    @apply w-3 h-3 rounded-full inline-block;
+  }
+
+  .status-active {
+    @apply bg-dxc-green;
+  }
+
+  .status-pending {
+    @apply bg-dxc-orange;
+  }
+
+  .status-inactive {
+    @apply bg-dxc-medium-gray;
+  }
+
+  /* Chart Tooltips */
+  .chart-tooltip {
+    @apply bg-white p-3 border border-dxc-light-gray rounded-dxc shadow-lg;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center;
+  }
+
+  .modal {
+    @apply bg-white rounded-dxc-lg shadow-2xl max-w-lg w-full mx-4 max-h-screen overflow-auto;
+  }
+
+  .modal-header {
+    @apply px-6 py-4 border-b border-dxc-light-gray;
+  }
+
+  .modal-body {
+    @apply px-6 py-4;
+  }
+
+  .modal-footer {
+    @apply px-6 py-4 border-t border-dxc-light-gray flex justify-end gap-3;
+  }
+
+  /* Data Visualization Enhancements */
+  .chart-container {
+    @apply bg-white rounded-dxc-lg shadow-lg border border-dxc-light-gray p-6;
+  }
+
+  .chart-header {
+    @apply flex items-center justify-between mb-4;
+  }
+
+  .chart-title {
+    @apply text-dxc-subtitle font-semibold text-dxc-bright-purple;
+  }
+
+  .metric-card {
+    @apply bg-white rounded-dxc border border-dxc-light-gray p-4 hover:shadow-md transition-shadow;
+  }
+
+  .metric-value {
+    @apply text-3xl font-bold;
+  }
+
+  .metric-label {
+    @apply text-dxc-subtitle text-dxc-medium-gray;
+  }
+
+  /* Interactive Elements */
+  .interactive-element {
+    @apply cursor-pointer transition-all duration-200 hover:scale-105;
+  }
+
+  .hover-lift {
+    @apply hover:shadow-lg hover:-translate-y-1 transition-all duration-200;
+  }
+
+  /* Corporate Compliance Styles */
+  .dxc-section-divider {
+    @apply border-t-2 border-dxc-bright-purple my-8;
+  }
+
+  .dxc-highlight {
+    @apply bg-gradient-to-r from-dxc-bright-purple to-dxc-dark-purple text-white px-4 py-2 rounded-dxc;
+  }
+
+  .dxc-callout {
+    @apply bg-purple-50 border-l-4 border-dxc-bright-purple p-4 my-4;
+  }
 }

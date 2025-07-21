@@ -87,16 +87,16 @@ async def get_service_line_forecast(
     """Get service line breakdown and forecasts."""
     logger.info("Fetching service line forecast", service_line=service_line)
     
-    statement = select(OpportunityLineItem)
-    line_items = session.exec(statement).all()
+    statement = select(Opportunity)
+    opportunities = session.exec(statement).all()
     
     service_line_totals = {
-        "CES": sum(item.ces_revenue or 0 for item in line_items),
-        "INS": sum(item.ins_revenue or 0 for item in line_items),
-        "BPS": sum(item.bps_revenue or 0 for item in line_items),
-        "SEC": sum(item.sec_revenue or 0 for item in line_items),
-        "ITOC": sum(item.itoc_revenue or 0 for item in line_items),
-        "MW": sum(item.mw_revenue or 0 for item in line_items)
+        "CES": sum(opp.ces_millions or 0 for opp in opportunities),
+        "INS": sum(opp.ins_millions or 0 for opp in opportunities),
+        "BPS": sum(opp.bps_millions or 0 for opp in opportunities),
+        "SEC": sum(opp.sec_millions or 0 for opp in opportunities),
+        "ITOC": sum(opp.itoc_millions or 0 for opp in opportunities),
+        "MW": sum(opp.mw_millions or 0 for opp in opportunities)
     }
     
     total_revenue = sum(service_line_totals.values())
@@ -122,3 +122,44 @@ async def get_service_line_forecast(
     
     logger.info("Generated service line forecast", forecast=forecast)
     return forecast
+
+
+@router.get("/active-service-lines")
+async def get_active_service_lines(
+    session: Session = Depends(get_session)
+):
+    """Get count and details of service lines with revenue > 0."""
+    logger.info("Fetching active service lines count")
+    
+    statement = select(Opportunity)
+    opportunities = session.exec(statement).all()
+    
+    service_line_totals = {
+        "CES": sum(opp.ces_millions or 0 for opp in opportunities),
+        "INS": sum(opp.ins_millions or 0 for opp in opportunities),
+        "BPS": sum(opp.bps_millions or 0 for opp in opportunities),
+        "SEC": sum(opp.sec_millions or 0 for opp in opportunities),
+        "ITOC": sum(opp.itoc_millions or 0 for opp in opportunities),
+        "MW": sum(opp.mw_millions or 0 for opp in opportunities)
+    }
+    
+    # Filter active service lines (with revenue > 0)
+    active_service_lines = {
+        name: revenue for name, revenue in service_line_totals.items() 
+        if revenue > 0
+    }
+    
+    active_count = len(active_service_lines)
+    total_active_revenue = sum(active_service_lines.values())
+    
+    result = {
+        "active_count": active_count,
+        "active_service_lines": active_service_lines,
+        "total_active_revenue": total_active_revenue,
+        "all_service_lines": service_line_totals
+    }
+    
+    logger.info("Generated active service lines data", 
+               active_count=active_count, 
+               active_service_lines=list(active_service_lines.keys()))
+    return result

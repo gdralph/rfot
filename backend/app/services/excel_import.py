@@ -32,7 +32,9 @@ def validate_excel_data(df: pd.DataFrame, required_columns: List[str]) -> None:
     """Validate Excel data structure and content."""
     missing_cols = [col for col in required_columns if col not in df.columns]
     if missing_cols:
-        raise ValueError(f"Missing required columns: {missing_cols}")
+        # Show available columns for debugging
+        available_cols = list(df.columns)
+        raise ValueError(f"Missing required columns: {missing_cols}. Available columns: {available_cols}")
     
     if df.empty:
         raise ValueError("Excel file is empty")
@@ -53,6 +55,51 @@ def categorize_opportunity(amount: float) -> str:
         return "Cat A"
 
 
+def safe_float_convert(value, multiplier: float = 1.0) -> float:
+    """Safely convert value to float with optional multiplier."""
+    if pd.isna(value) or value is None:
+        return None
+    try:
+        return float(value) * multiplier
+    except (ValueError, TypeError):
+        return None
+
+
+def find_tcv_column(df: pd.DataFrame) -> str:
+    """Find the TCV column name in the DataFrame."""
+    possible_tcv_names = [
+        "Offering TCV (M)",
+        "TCV (M)",
+        "TCV $M", 
+        "Total Contract Value (M)",
+        "Total Contract Value",
+        "Contract Value (M)",
+        "Contract Value",
+        "TCV"
+    ]
+    
+    for col_name in possible_tcv_names:
+        if col_name in df.columns:
+            return col_name
+    
+    # If no exact match, look for columns containing "TCV" or "Contract Value"
+    for col in df.columns:
+        if "TCV" in str(col).upper() or "CONTRACT VALUE" in str(col).upper():
+            return col
+    
+    return None
+
+
+def safe_string_clean(value) -> str:
+    """Safely clean and return string value."""
+    if pd.isna(value) or value is None:
+        return None
+    result = str(value).strip()
+    return result if result and result.lower() not in ["nan", "none", ""] else None
+
+
+
+
 async def import_excel_background(file_path: str, task_id: str, import_tasks: Dict[str, ImportTask]):
     """Background task for Excel import with progress tracking."""
     task = import_tasks[task_id]
@@ -65,9 +112,18 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
         # Read Excel file
         df = pd.read_excel(file_path)
         
-        # Validate required columns for opportunities (using actual Excel file column names)
-        required_columns = ["Opportunity Id", "Opportunity Name", "Sales Stage", "Offering TCV (M)", "Decision Date"]
+        # Find the TCV column dynamically
+        tcv_column = find_tcv_column(df)
+        if not tcv_column:
+            available_cols = list(df.columns)
+            raise ValueError(f"No TCV column found. Available columns: {available_cols}")
+        
+        # Validate required columns for opportunities (using flexible TCV column)
+        required_columns = ["Opportunity Id", "Opportunity Name", "Sales Stage", "Decision Date"]
         validate_excel_data(df, required_columns)
+        
+        # Log which TCV column we're using
+        logger.info("Using TCV column", column_name=tcv_column)
         
         task.total_rows = len(df)
         task.message = f"Processing {task.total_rows} opportunities"
@@ -97,7 +153,7 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                         continue
                     
                     # Skip rows with missing critical data
-                    if pd.isna(row["Opportunity Name"]) or pd.isna(row["Offering TCV (M)"]):
+                    if pd.isna(row["Opportunity Name"]) or pd.isna(row[tcv_column]):
                         task.errors.append(f"Row {idx + 1}: Missing critical data (name or TCV)")
                         task.failed_rows += 1
                         continue
@@ -112,7 +168,7 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                     
                     # Parse amount with validation
                     try:
-                        tcv_value = row["Offering TCV (M)"]
+                        tcv_value = row[tcv_column]
                         if pd.isna(tcv_value):
                             task.errors.append(f"Row {idx + 1}: Missing TCV amount")
                             task.failed_rows += 1
@@ -135,8 +191,8 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                     # Clean string fields
                     name = str(row["Opportunity Name"]).strip()
                     stage = str(row["Sales Stage"]).strip() if not pd.isna(row["Sales Stage"]) else "Unknown"
-                    assigned_resource = str(row.get("Opportunity Owner", "")).strip() if not pd.isna(row.get("Opportunity Owner")) else None
-                    status = str(row.get("Forecast Category Consolidated", "")).strip() if not pd.isna(row.get("Forecast Category Consolidated")) else None
+                    assigned_resource = safe_string_clean(row.get("Opportunity Owner"))
+                    status = safe_string_clean(row.get("Forecast Category Consolidated"))
                     
                     # Skip if name is still invalid
                     if name.lower() in ["nan", "none", ""]:
@@ -144,17 +200,87 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                         task.failed_rows += 1
                         continue
                     
-                    # Create opportunity
+                    # Extract all new fields
+                    account_name = safe_string_clean(row.get("Account Name"))
+                    sfdc_url = safe_string_clean(row.get("SFDC"))
+                    opportunity_type = safe_string_clean(row.get("Opportunity Type"))
+                    margin_percentage = safe_float_convert(row.get("Opp Margin %"))
+                    first_year_revenue = safe_float_convert(row.get("First Year Revenue"), 1_000_000)
+                    second_year_revenue = safe_float_convert(row.get("2nd Year Revenue"), 1_000_000)
+                    revenue_beyond_year2 = safe_float_convert(row.get("FY Rev Beyond Yr 2"), 1_000_000)
+                    master_period = safe_string_clean(row.get("Master Period"))
+                    lead_offering = safe_string_clean(row.get("Lead Offering L1"))
+                    sales_org = safe_string_clean(row.get("Sales Org L1"))
+                    deal_size = safe_string_clean(row.get("Deal Size"))
+                    solution_type = safe_string_clean(row.get("Solution Type"))
+                    contract_model = safe_string_clean(row.get("Contract Model"))
+                    
+                    # Extract quarterly revenue fields
+                    first_year_q1_rev = safe_float_convert(row.get("First Year Q1 Rev (M)"))
+                    first_year_q2_rev = safe_float_convert(row.get("First Year Q2 Rev (M)"))
+                    first_year_q3_rev = safe_float_convert(row.get("First Year Q3 Rev (M)"))
+                    first_year_q4_rev = safe_float_convert(row.get("First Year Q4 Rev (M)"))
+                    first_year_fy_rev = safe_float_convert(row.get("First Year FY Rev (M)"))
+                    second_year_q1_rev = safe_float_convert(row.get("2nd Year Q1 Rev (M)"))
+                    second_year_q2_rev = safe_float_convert(row.get("2nd Year Q2 Rev (M)"))
+                    second_year_q3_rev = safe_float_convert(row.get("2nd Year Q3 Rev (M)"))
+                    second_year_q4_rev = safe_float_convert(row.get("2nd Year Q4 Rev (M)"))
+                    second_year_fy_rev = safe_float_convert(row.get("2nd Year FY Rev (M)"))
+                    fy_rev_beyond_yr2 = safe_float_convert(row.get("FY Rev Beyond Yr 2 (M)"))
+                    
+                    # Extract service line revenues
+                    ces_millions = safe_float_convert(row.get("CES (M)"))
+                    ins_millions = safe_float_convert(row.get("INS (M)"))
+                    bps_millions = safe_float_convert(row.get("BPS (M)"))
+                    sec_millions = safe_float_convert(row.get("SEC (M)"))
+                    itoc_millions = safe_float_convert(row.get("ITOC (M)"))
+                    mw_millions = safe_float_convert(row.get("MW (M)"))
+                    
+                    # Parse close date for decision_date field
+                    try:
+                        decision_date = pd.to_datetime(row["Decision Date"]).to_pydatetime()
+                    except:
+                        decision_date = None
+                        
+                    # Extract other fields
+                    contract_length = safe_float_convert(row.get("Contract Length"))
+                    in_forecast = safe_string_clean(row.get("In Forecast"))
+                    opportunity_owner = safe_string_clean(row.get("Opportunity Owner"))
+
+                    # Create opportunity with new schema fields
                     opp = Opportunity(
                         opportunity_id=opportunity_id,
-                        name=name,
-                        stage=stage,
-                        amount=amount,
-                        close_date=close_date,
-                        category=categorize_opportunity(amount),
-                        assigned_resource=assigned_resource if assigned_resource and assigned_resource.lower() not in ["nan", "none", ""] else None,
-                        status=status if status and status.lower() not in ["nan", "none", ""] else None,
-                        notes=None  # Not available in this Excel format
+                        sfdc_url=sfdc_url,
+                        account_name=account_name,
+                        opportunity_name=name,
+                        opportunity_type=opportunity_type,
+                        tcv_millions=amount / 1_000_000 if amount else None,  # Convert back to millions
+                        margin_percentage=margin_percentage,
+                        first_year_q1_rev=first_year_q1_rev,
+                        first_year_q2_rev=first_year_q2_rev,
+                        first_year_q3_rev=first_year_q3_rev,
+                        first_year_q4_rev=first_year_q4_rev,
+                        first_year_fy_rev=first_year_fy_rev,
+                        second_year_q1_rev=second_year_q1_rev,
+                        second_year_q2_rev=second_year_q2_rev,
+                        second_year_q3_rev=second_year_q3_rev,
+                        second_year_q4_rev=second_year_q4_rev,
+                        second_year_fy_rev=second_year_fy_rev,
+                        fy_rev_beyond_yr2=fy_rev_beyond_yr2,
+                        sales_stage=stage,
+                        decision_date=decision_date,
+                        master_period=master_period,
+                        contract_length=contract_length,
+                        in_forecast=in_forecast,
+                        opportunity_owner=opportunity_owner,
+                        lead_offering_l1=lead_offering,
+                        ces_millions=ces_millions,
+                        ins_millions=ins_millions,
+                        bps_millions=bps_millions,
+                        sec_millions=sec_millions,
+                        itoc_millions=itoc_millions,
+                        mw_millions=mw_millions,
+                        sales_org_l1=sales_org
                     )
                     
                     # Check if opportunity already exists
@@ -163,8 +289,17 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                     ).first()
                     
                     if existing:
-                        # Update existing opportunity
-                        for field in ["name", "stage", "amount", "close_date", "category"]:
+                        # Update existing opportunity with all fields
+                        update_fields = [
+                            "sfdc_url", "account_name", "opportunity_name", "opportunity_type", "tcv_millions",
+                            "margin_percentage", "first_year_q1_rev", "first_year_q2_rev", "first_year_q3_rev",
+                            "first_year_q4_rev", "first_year_fy_rev", "second_year_q1_rev", "second_year_q2_rev",
+                            "second_year_q3_rev", "second_year_q4_rev", "second_year_fy_rev", "fy_rev_beyond_yr2",
+                            "sales_stage", "decision_date", "master_period", "contract_length", "in_forecast",
+                            "opportunity_owner", "lead_offering_l1", "ces_millions", "ins_millions", "bps_millions",
+                            "sec_millions", "itoc_millions", "mw_millions", "sales_org_l1"
+                        ]
+                        for field in update_fields:
                             setattr(existing, field, getattr(opp, field))
                         logger.info("Updated existing opportunity", opportunity_id=opp.opportunity_id)
                     else:
@@ -245,9 +380,18 @@ async def import_line_items_background(file_path: str, task_id: str, import_task
         # Read Excel file
         df = pd.read_excel(file_path)
         
-        # Validate required columns for line items (using actual Excel file column names)
-        required_columns = ["Opportunity Id", "TCV $M"]
+        # Find the TCV column dynamically
+        tcv_column = find_tcv_column(df)
+        if not tcv_column:
+            available_cols = list(df.columns)
+            raise ValueError(f"No TCV column found. Available columns: {available_cols}")
+        
+        # Validate required columns for line items (using flexible TCV column)
+        required_columns = ["Opportunity Id"]
         validate_excel_data(df, required_columns)
+        
+        # Log which TCV column we're using
+        logger.info("Using TCV column for line items", column_name=tcv_column)
         
         task.total_rows = len(df)
         task.message = f"Processing {task.total_rows} line items"
@@ -274,7 +418,7 @@ async def import_line_items_background(file_path: str, task_id: str, import_task
                         continue
                     
                     # Skip rows with missing TCV data
-                    if pd.isna(row["TCV $M"]):
+                    if pd.isna(row[tcv_column]):
                         task.errors.append(f"Row {idx + 1}: Missing TCV data")
                         continue
                     
@@ -287,18 +431,65 @@ async def import_line_items_background(file_path: str, task_id: str, import_task
                         task.errors.append(f"Row {idx + 1}: Opportunity {opportunity_id} not found")
                         continue
                     
-                    # Create line item - convert from millions to actual amounts
+                    # Extract line item fields based on columns G-AC from Excel analysis
+                    offering_tcv = safe_float_convert(row.get("Offering TCV (M)"))
+                    offering_abr = safe_float_convert(row.get("Offering ABR (M)"))
+                    offering_iyr = safe_float_convert(row.get("Offering IYR (M)"))
+                    offering_iqr = safe_float_convert(row.get("Offering IQR (M)"))
+                    offering_margin = safe_float_convert(row.get("Offering Margin (M)"))
+                    offering_margin_percentage = safe_float_convert(row.get("Offering Margin %"))
+                    
+                    # Parse decision date
+                    try:
+                        decision_date = pd.to_datetime(row.get("Decision Date")).to_pydatetime()
+                    except:
+                        decision_date = None
+                        
+                    master_period = safe_string_clean(row.get("Master Period"))
+                    lead_offering_l2 = safe_string_clean(row.get("Lead Offering L2"))
+                    internal_service = safe_string_clean(row.get("Internal Service"))
+                    simplified_offering = safe_string_clean(row.get("Simplified Offering"))
+                    product_name = safe_string_clean(row.get("Product Name"))
+                    
+                    # Extract quarterly revenue fields for line items
+                    first_year_q1_rev = safe_float_convert(row.get("First Year Q1 Rev (M)"))
+                    first_year_q2_rev = safe_float_convert(row.get("First Year Q2 Rev (M)"))
+                    first_year_q3_rev = safe_float_convert(row.get("First Year Q3 Rev (M)"))
+                    first_year_q4_rev = safe_float_convert(row.get("First Year Q4 Rev (M)"))
+                    first_year_fy_rev = safe_float_convert(row.get("First Year FY Rev (M)"))
+                    second_year_q1_rev = safe_float_convert(row.get("2nd Year Q1 Rev (M)"))
+                    second_year_q2_rev = safe_float_convert(row.get("2nd Year Q2 Rev (M)"))
+                    second_year_q3_rev = safe_float_convert(row.get("2nd Year Q3 Rev (M)"))
+                    second_year_q4_rev = safe_float_convert(row.get("2nd Year Q4 Rev (M)"))
+                    second_year_fy_rev = safe_float_convert(row.get("2nd Year FY Rev (M)"))
+                    fy_rev_beyond_yr2 = safe_float_convert(row.get("FY Rev Beyond Yr 2 (M)"))
+                    
+                    # Create line item with new schema fields
                     line_item = OpportunityLineItem(
                         opportunity_id=opportunity_id,
-                        tcv=float(row["TCV $M"]) * 1_000_000,  # Convert from millions
-                        ces_revenue=float(row.get("CES (M)", 0)) * 1_000_000 if pd.notna(row.get("CES (M)")) else 0,
-                        ins_revenue=float(row.get("INS (M)", 0)) * 1_000_000 if pd.notna(row.get("INS (M)")) else 0,
-                        bps_revenue=float(row.get("BPS (M)", 0)) * 1_000_000 if pd.notna(row.get("BPS (M)")) else 0,
-                        sec_revenue=float(row.get("SEC (M)", 0)) * 1_000_000 if pd.notna(row.get("SEC (M)")) else 0,
-                        itoc_revenue=float(row.get("ITOC (M)", 0)) * 1_000_000 if pd.notna(row.get("ITOC (M)")) else 0,
-                        mw_revenue=float(row.get("MW (M)", 0)) * 1_000_000 if pd.notna(row.get("MW (M)")) else 0,
-                        contract_length=float(row.get("Contract Length")) if pd.notna(row.get("Contract Length")) else None,
-                        in_forecast=str(row.get("In Forecast", "")) or None
+                        offering_tcv=offering_tcv,
+                        offering_abr=offering_abr,
+                        offering_iyr=offering_iyr,
+                        offering_iqr=offering_iqr,
+                        offering_margin=offering_margin,
+                        offering_margin_percentage=offering_margin_percentage,
+                        decision_date=decision_date,
+                        master_period=master_period,
+                        lead_offering_l2=lead_offering_l2,
+                        internal_service=internal_service,
+                        simplified_offering=simplified_offering,
+                        product_name=product_name,
+                        first_year_q1_rev=first_year_q1_rev,
+                        first_year_q2_rev=first_year_q2_rev,
+                        first_year_q3_rev=first_year_q3_rev,
+                        first_year_q4_rev=first_year_q4_rev,
+                        first_year_fy_rev=first_year_fy_rev,
+                        second_year_q1_rev=second_year_q1_rev,
+                        second_year_q2_rev=second_year_q2_rev,
+                        second_year_q3_rev=second_year_q3_rev,
+                        second_year_q4_rev=second_year_q4_rev,
+                        second_year_fy_rev=second_year_fy_rev,
+                        fy_rev_beyond_yr2=fy_rev_beyond_yr2
                     )
                     
                     # Check if line item already exists
@@ -307,9 +498,16 @@ async def import_line_items_background(file_path: str, task_id: str, import_task
                     ).first()
                     
                     if existing_item:
-                        # Update existing line item
-                        for field in ["tcv", "ces_revenue", "ins_revenue", "bps_revenue", 
-                                     "sec_revenue", "itoc_revenue", "mw_revenue", "contract_length", "in_forecast"]:
+                        # Update existing line item with all fields
+                        update_fields = [
+                            "offering_tcv", "offering_abr", "offering_iyr", "offering_iqr",
+                            "offering_margin", "offering_margin_percentage", "decision_date", "master_period",
+                            "lead_offering_l2", "internal_service", "simplified_offering", "product_name",
+                            "first_year_q1_rev", "first_year_q2_rev", "first_year_q3_rev", "first_year_q4_rev",
+                            "first_year_fy_rev", "second_year_q1_rev", "second_year_q2_rev", "second_year_q3_rev",
+                            "second_year_q4_rev", "second_year_fy_rev", "fy_rev_beyond_yr2"
+                        ]
+                        for field in update_fields:
                             setattr(existing_item, field, getattr(line_item, field))
                         logger.info("Updated existing line item", opportunity_id=opportunity_id)
                     else:

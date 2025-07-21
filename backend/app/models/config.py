@@ -40,58 +40,67 @@ class OpportunityCategoryRead(OpportunityCategoryBase):
     id: int
 
 
-class StageEffortEstimateBase(SQLModel):
-    """Base stage effort estimate model."""
+class OpportunityCategoryUpdate(OpportunityCategoryBase):
+    """Model for updating opportunity categories."""
+    pass
+
+
+
+
+
+class ServiceLineStageEffortBase(SQLModel):
+    """Base service line stage effort model."""
+    service_line: str  # MW, ITOC
     category_id: int = Field(foreign_key="opportunitycategory.id")
     stage_name: str
-    default_effort_weeks: float
-    default_duration_weeks: int
+    duration_weeks: int
+    fte_required: float
 
-    @validator('default_effort_weeks', 'default_duration_weeks')
-    def validate_positive(cls, v):
-        if v <= 0:
-            raise ValueError('Effort and duration must be positive')
+    @validator('service_line')
+    def validate_service_line(cls, v):
+        allowed_service_lines = ['MW', 'ITOC']
+        if v not in allowed_service_lines:
+            raise ValueError(f'Service line must be one of: {allowed_service_lines}')
         return v
 
-
-class StageEffortEstimate(StageEffortEstimateBase, table=True):
-    """Stage effort estimate database model."""
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-
-class StageEffortEstimateCreate(StageEffortEstimateBase):
-    """Model for creating stage effort estimates."""
-    pass
-
-
-class StageEffortEstimateRead(StageEffortEstimateBase):
-    """Model for reading stage effort estimates."""
-    id: int
-
-
-class SMEAllocationRuleBase(SQLModel):
-    """Base SME allocation rule model."""
-    team_name: str
-    service_line: Optional[str] = None  # CES, INS, BPS, SEC, ITOC, MW
-    effort_per_million: float
-
-    @validator('effort_per_million')
-    def validate_effort_per_million(cls, v):
+    @validator('duration_weeks')
+    def validate_duration_weeks(cls, v):
         if v < 0:
-            raise ValueError('Effort per million must be non-negative')
+            raise ValueError('Duration weeks must be non-negative')
         return v
 
+    @validator('fte_required')
+    def validate_fte_required(cls, v):
+        if v < 0:
+            raise ValueError('FTE required must be non-negative')
+        return v
 
-class SMEAllocationRule(SMEAllocationRuleBase, table=True):
-    """SME allocation rule database model."""
+    @property
+    def effort_weeks(self) -> float:
+        """Calculate total effort as FTE × Duration."""
+        return self.fte_required * self.duration_weeks
+
+
+class ServiceLineStageEffort(ServiceLineStageEffortBase, table=True):
+    """Service line stage effort database model."""
     id: Optional[int] = Field(default=None, primary_key=True)
 
 
-class SMEAllocationRuleCreate(SMEAllocationRuleBase):
-    """Model for creating SME allocation rules."""
+class ServiceLineStageEffortCreate(ServiceLineStageEffortBase):
+    """Model for creating service line stage efforts."""
     pass
 
 
-class SMEAllocationRuleRead(SMEAllocationRuleBase):
-    """Model for reading SME allocation rules."""
+class ServiceLineStageEffortRead(ServiceLineStageEffortBase):
+    """Model for reading service line stage efforts."""
     id: int
+    
+    @property
+    def effort_weeks(self) -> float:
+        """Calculate total effort as FTE × Duration."""
+        return self.fte_required * self.duration_weeks
+
+
+class ServiceLineStageEffortUpdate(ServiceLineStageEffortBase):
+    """Model for updating service line stage efforts."""
+    pass

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ComposedChart, Area, AreaChart } from 'recharts';
 import { TrendingUp, Calendar, Filter, Users, DollarSign, Target, Clock, Zap } from 'lucide-react';
 import { useForecastSummary, useServiceLineForecast } from '../hooks/useForecasts';
-import { useCategories, useStageEfforts } from '../hooks/useConfig';
+import { useCategories } from '../hooks/useConfig';
 import { DXC_COLORS, SERVICE_LINES, SALES_STAGES, OPPORTUNITY_CATEGORIES } from '../types/index';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -26,9 +26,8 @@ const Forecast: React.FC = () => {
   );
   
   const { data: categories, isLoading: categoriesLoading } = useCategories();
-  const { data: stageEfforts, isLoading: stageEffortsLoading } = useStageEfforts();
 
-  const isLoading = summaryLoading || serviceLoading || categoriesLoading || stageEffortsLoading;
+  const isLoading = summaryLoading || serviceLoading || categoriesLoading;
 
   if (isLoading) {
     return <LoadingSpinner text="Loading forecast data..." />;
@@ -55,16 +54,16 @@ const Forecast: React.FC = () => {
 
   const timeSeriesData = generateTimeSeriesData();
 
-  // Resource allocation data based on stage efforts
+  // Resource allocation data (simplified without stage efforts)
   const resourceAllocationData = categories?.map((category, index) => {
-    const categoryEfforts = stageEfforts?.filter(effort => effort.category_id === category.id) || [];
-    const totalEffort = categoryEfforts.reduce((sum, effort) => sum + effort.default_effort_weeks, 0);
-    const totalDuration = categoryEfforts.reduce((sum, effort) => sum + effort.default_duration_weeks, 0);
+    // Provide stub data since stage efforts were removed
+    const totalEffort = Math.random() * 50 + 10; // Random effort for demo
+    const totalDuration = Math.random() * 20 + 5; // Random duration for demo
     
     return {
       name: category.name,
       effort: totalEffort,
-      duration: totalDuration / categoryEfforts.length || 0,
+      duration: totalDuration,
       opportunities: Math.round(Math.random() * 50 + 10), // Mock data
       fill: DXC_COLORS[index % DXC_COLORS.length]
     };

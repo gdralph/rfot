@@ -3,29 +3,68 @@
 export interface Opportunity {
   id?: number;
   opportunity_id: string;
-  name: string;
-  stage: string;
-  amount: number;
-  close_date: string; // ISO date string
-  assigned_resource?: string;
-  status?: string;
-  notes?: string;
-  category?: string;
+  sfdc_url?: string;
+  account_name?: string;
+  opportunity_name: string;
+  opportunity_type?: string;
+  tcv_millions?: number;
+  margin_percentage?: number;
+  first_year_q1_rev?: number;
+  first_year_q2_rev?: number;
+  first_year_q3_rev?: number;
+  first_year_q4_rev?: number;
+  first_year_fy_rev?: number;
+  second_year_q1_rev?: number;
+  second_year_q2_rev?: number;
+  second_year_q3_rev?: number;
+  second_year_q4_rev?: number;
+  second_year_fy_rev?: number;
+  fy_rev_beyond_yr2?: number;
+  sales_stage?: string;
+  decision_date?: string; // ISO datetime string
+  master_period?: string;
+  contract_length?: number;
+  in_forecast?: string;
+  opportunity_owner?: string;
+  lead_offering_l1?: string;
+  ces_millions?: number;
+  ins_millions?: number;
+  bps_millions?: number;
+  sec_millions?: number;
+  itoc_millions?: number;
+  mw_millions?: number;
+  sales_org_l1?: string;
 }
 
 export interface OpportunityLineItem {
   id?: number;
   opportunity_id: string;
-  ces_revenue?: number;
-  ins_revenue?: number;
-  bps_revenue?: number;
-  sec_revenue?: number;
-  itoc_revenue?: number;
-  mw_revenue?: number;
-  tcv: number;
-  contract_length?: number;
-  in_forecast?: string;
+  offering_tcv?: number;
+  offering_abr?: number;
+  offering_iyr?: number;
+  offering_iqr?: number;
+  offering_margin?: number;
+  offering_margin_percentage?: number;
+  decision_date?: string; // ISO datetime string
+  master_period?: string;
+  lead_offering_l2?: string;
+  internal_service?: string;
+  simplified_offering?: string;
+  product_name?: string;
+  first_year_q1_rev?: number;
+  first_year_q2_rev?: number;
+  first_year_q3_rev?: number;
+  first_year_q4_rev?: number;
+  first_year_fy_rev?: number;
+  second_year_q1_rev?: number;
+  second_year_q2_rev?: number;
+  second_year_q3_rev?: number;
+  second_year_q4_rev?: number;
+  second_year_fy_rev?: number;
+  fy_rev_beyond_yr2?: number;
 }
+
+// QuarterlyRevenue is now integrated into the Opportunity model
 
 export interface OpportunityCategory {
   id?: number;
@@ -34,19 +73,16 @@ export interface OpportunityCategory {
   max_tcv?: number;
 }
 
-export interface StageEffortEstimate {
+
+
+export interface ServiceLineStageEffort {
   id?: number;
+  service_line: string;
   category_id: number;
   stage_name: string;
-  default_effort_weeks: number;
-  default_duration_weeks: number;
-}
-
-export interface SMEAllocationRule {
-  id?: number;
-  team_name: string;
-  service_line?: string;
-  effort_per_million: number;
+  duration_weeks: number;
+  fte_required: number;
+  effort_weeks?: number; // Computed property
 }
 
 export interface ImportTask {
@@ -66,17 +102,21 @@ export interface ImportTask {
 
 // Request Types
 export interface OpportunityUpdate {
-  assigned_resource?: string;
-  status?: string;
-  notes?: string;
+  sfdc_url?: string;
+  account_name?: string;
+  opportunity_name?: string;
+  opportunity_type?: string;
+  tcv_millions?: number;
+  margin_percentage?: number;
+  sales_stage?: string;
+  decision_date?: string;
+  opportunity_owner?: string;
 }
 
 export interface OpportunityFilters {
   skip?: number;
   limit?: number;
   stage?: string;
-  status?: string;
-  category?: string;
   search?: string;
   service_line?: string;
 }
@@ -101,22 +141,30 @@ export interface ServiceLineForecast {
   };
 }
 
+export interface ActiveServiceLines {
+  active_count: number;
+  active_service_lines: Record<string, number>;
+  total_active_revenue: number;
+  all_service_lines: Record<string, number>;
+}
+
 // Service Line Types
 export type ServiceLine = 'CES' | 'INS' | 'BPS' | 'SEC' | 'ITOC' | 'MW';
 
 export const SERVICE_LINES: ServiceLine[] = ['CES', 'INS', 'BPS', 'SEC', 'ITOC', 'MW'];
 
 // Sales Stage Types and Ordering
-export type SalesStage = '01' | '02' | '03' | '04A' | '04B' | '05A' | '05B';
+export type SalesStage = 'SS-01' | 'SS-02' | 'SS-03' | 'SS-04a' | 'SS-04b' | 'SS-05a' | 'SS-05b' | 'SS-06';
 
 export const SALES_STAGES: Array<{code: SalesStage, label: string, description: string}> = [
-  { code: '01', label: '01 - Prospecting', description: 'Initial prospect identification and outreach' },
-  { code: '02', label: '02 - Qualification', description: 'Qualifying prospect needs and budget' },
-  { code: '03', label: '03 - Needs Analysis', description: 'Detailed needs analysis and solution design' },
-  { code: '04A', label: '04A - Proposal/Price Quote', description: 'Formal proposal and pricing submitted' },
-  { code: '04B', label: '04B - Negotiation/Review', description: 'Contract negotiation and review' },
-  { code: '05A', label: '05A - Closed Won', description: 'Opportunity closed successfully' },
-  { code: '05B', label: '05B - Closed Lost', description: 'Opportunity closed without success' },
+  { code: 'SS-01', label: 'Stage SS-01 (Understand Customer)', description: 'Understanding customer needs and requirements' },
+  { code: 'SS-02', label: 'Stage SS-02 (Validate Opportunity)', description: 'Validating the business opportunity' },
+  { code: 'SS-03', label: 'Stage SS-03 (Qualify Opportunity)', description: 'Qualifying the opportunity for pursuit' },
+  { code: 'SS-04a', label: 'Stage SS-04a (Develop Solution)', description: 'Developing the technical and commercial solution' },
+  { code: 'SS-04b', label: 'Stage SS-04b (Propose Solution)', description: 'Proposing the solution to the customer' },
+  { code: 'SS-05a', label: 'Stage SS-05a (Negotiate)', description: 'Negotiating terms and conditions' },
+  { code: 'SS-05b', label: 'Stage SS-05b (Award & Close)', description: 'Awarding and closing the deal' },
+  { code: 'SS-06', label: 'Stage SS-06 (Won, Deploy and Extend)', description: 'Post-win deployment and extension' },
 ];
 
 export const STAGE_ORDER: Record<string, number> = SALES_STAGES.reduce((acc, stage, index) => {
@@ -153,9 +201,15 @@ export interface TimeSeriesDataPoint {
 
 // Form Types
 export interface OpportunityFormData {
-  assigned_resource?: string;
-  status?: string;
-  notes?: string;
+  sfdc_url?: string;
+  account_name?: string;
+  opportunity_name?: string;
+  opportunity_type?: string;
+  tcv_millions?: number;
+  margin_percentage?: number;
+  sales_stage?: string;
+  decision_date?: string;
+  opportunity_owner?: string;
 }
 
 // DXC Color Palette for Charts

@@ -1,23 +1,20 @@
 import React, { useState } from 'react';
-import { Settings, DollarSign, Clock, Users, Plus, TrendingUp } from 'lucide-react';
-import { useCategories, useStageEfforts, useSMERules } from '../hooks/useConfig';
+import { Settings, DollarSign, Users, TrendingUp } from 'lucide-react';
+import { useCategories } from '../hooks/useConfig';
 import LoadingSpinner from '../components/LoadingSpinner';
 import CategoriesTab from '../components/config/CategoriesTab';
-import StageEffortsTab from '../components/config/StageEffortsTab';
-import SMERulesTab from '../components/config/SMERulesTab';
+import ServiceLineResourceTab from '../components/config/ServiceLineResourceTab';
 import ServiceLineAllocationTab from '../components/config/ServiceLineAllocationTab';
 
-type ConfigTab = 'categories' | 'stage-efforts' | 'sme-rules' | 'service-allocation';
+type ConfigTab = 'categories' | 'service-line-resources' | 'service-allocation';
 
 const Config: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ConfigTab>('categories');
 
   const { data: categories, isLoading: categoriesLoading, error: categoriesError } = useCategories();
-  const { data: stageEfforts, isLoading: stageEffortsLoading, error: stageEffortsError } = useStageEfforts();
-  const { data: smeRules, isLoading: smeRulesLoading, error: smeRulesError } = useSMERules();
 
-  const isLoading = categoriesLoading || stageEffortsLoading || smeRulesLoading;
-  const error = categoriesError || stageEffortsError || smeRulesError;
+  const isLoading = categoriesLoading;
+  const error = categoriesError;
 
   if (isLoading) {
     return <LoadingSpinner text="Loading configuration..." />;
@@ -43,18 +40,11 @@ const Config: React.FC = () => {
       count: categories?.length || 0
     },
     {
-      id: 'stage-efforts' as const,
-      label: 'Stage Effort Estimates',
-      icon: Clock,
-      description: 'Configure effort and duration estimates by stage and category',
-      count: stageEfforts?.length || 0
-    },
-    {
-      id: 'sme-rules' as const,
-      label: 'SME Allocation Rules',
+      id: 'service-line-resources' as const,
+      label: 'SLA Resource Planning',
       icon: Users,
-      description: 'Define subject matter expert allocation rules by service line',
-      count: smeRules?.length || 0
+      description: 'Configure duration and FTE requirements for Modern Workplace and ITOC service lines',
+      count: 2 // MW and ITOC
     },
     {
       id: 'service-allocation' as const,
@@ -69,10 +59,8 @@ const Config: React.FC = () => {
     switch (activeTab) {
       case 'categories':
         return <CategoriesTab categories={categories || []} />;
-      case 'stage-efforts':
-        return <StageEffortsTab stageEfforts={stageEfforts || []} categories={categories || []} />;
-      case 'sme-rules':
-        return <SMERulesTab smeRules={smeRules || []} />;
+      case 'service-line-resources':
+        return <ServiceLineResourceTab categories={categories || []} />;
       case 'service-allocation':
         return <ServiceLineAllocationTab />;
       default:

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Plus, Edit2, DollarSign } from 'lucide-react';
-import { useCreateCategory } from '../../hooks/useConfig';
+import { Plus, Edit2, DollarSign, Trash2, Check, X } from 'lucide-react';
+import { useCreateCategory, useUpdateCategory, useDeleteCategory } from '../../hooks/useConfig';
 import type { OpportunityCategory } from '../../types/index';
 
 interface CategoriesTabProps {
@@ -9,13 +9,22 @@ interface CategoriesTabProps {
 
 const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [formData, setFormData] = useState({
+    name: '',
+    min_tcv: '',
+    max_tcv: ''
+  });
+  const [editData, setEditData] = useState({
     name: '',
     min_tcv: '',
     max_tcv: ''
   });
 
   const createCategoryMutation = useCreateCategory();
+  const updateCategoryMutation = useUpdateCategory();
+  const deleteCategoryMutation = useDeleteCategory();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +44,45 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
     } catch (error) {
       console.error('Failed to create category:', error);
     }
+  };
+
+  const handleEdit = (category: OpportunityCategory) => {
+    if (!category.id) return;
+    setEditingId(category.id);
+    setEditData({
+      name: category.name,
+      min_tcv: category.min_tcv.toString(),
+      max_tcv: category.max_tcv?.toString() || ''
+    });
+  };
+
+  const handleUpdateSubmit = async (categoryId: number) => {
+    try {
+      const categoryData: Omit<OpportunityCategory, 'id'> = {
+        name: editData.name,
+        min_tcv: parseFloat(editData.min_tcv),
+        max_tcv: editData.max_tcv ? parseFloat(editData.max_tcv) : undefined
+      };
+
+      await updateCategoryMutation.mutateAsync({ id: categoryId, data: categoryData });
+      setEditingId(null);
+    } catch (error) {
+      console.error('Failed to update category:', error);
+    }
+  };
+
+  const handleDelete = async (categoryId: number) => {
+    try {
+      await deleteCategoryMutation.mutateAsync(categoryId);
+      setShowDeleteConfirm(null);
+    } catch (error) {
+      console.error('Failed to delete category:', error);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditData({ name: '', min_tcv: '', max_tcv: '' });
   };
 
   const formatCurrency = (value: number) => {
@@ -150,29 +198,143 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
               key={category.id}
               className="bg-white border border-dxc-light-gray rounded-dxc p-4 hover:shadow-sm transition-shadow"
             >
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
+              {editingId === category.id ? (
+                // Edit Mode
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 mb-4">
                     <h4 className="font-semibold text-dxc-dark-gray">
-                      {category.name}
+                      Editing Category
                     </h4>
                     <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-dxc-bright-purple text-white">
                       #{category.id}
                     </span>
                   </div>
-                  <div className="mt-2 text-sm text-dxc-medium-gray">
-                    <span className="font-medium">Range:</span> {formatCurrency(category.min_tcv)}
-                    {category.max_tcv ? ` - ${formatCurrency(category.max_tcv)}` : ' and above'}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                        Category Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editData.name}
+                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                        className="input w-full"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                        Minimum TCV
+                      </label>
+                      <input
+                        type="number"
+                        value={editData.min_tcv}
+                        onChange={(e) => setEditData({ ...editData, min_tcv: e.target.value })}
+                        min="0"
+                        step="0.01"
+                        className="input w-full"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                        Maximum TCV
+                      </label>
+                      <input
+                        type="number"
+                        value={editData.max_tcv}
+                        onChange={(e) => setEditData({ ...editData, max_tcv: e.target.value })}
+                        min="0"
+                        step="0.01"
+                        className="input w-full"
+                        placeholder="Leave empty for no limit"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => category.id && handleUpdateSubmit(category.id)}
+                      disabled={updateCategoryMutation.isPending}
+                      className="btn-primary flex items-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      {updateCategoryMutation.isPending ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="btn-secondary flex items-center gap-2"
+                    >
+                      <X className="w-4 h-4" />
+                      Cancel
+                    </button>
                   </div>
                 </div>
-                <button className="text-dxc-medium-gray hover:text-dxc-bright-purple p-2">
-                  <Edit2 className="w-4 h-4" />
-                </button>
-              </div>
+              ) : (
+                // View Mode
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <h4 className="font-semibold text-dxc-dark-gray">
+                        {category.name}
+                      </h4>
+                      <span className="text-sm text-dxc-medium-gray">
+                        {formatCurrency(category.min_tcv)}
+                        {category.max_tcv ? ` - ${formatCurrency(category.max_tcv)}` : ' and above'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleEdit(category)}
+                      className="text-dxc-medium-gray hover:text-dxc-bright-purple p-2"
+                      title="Edit category"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => category.id && setShowDeleteConfirm(category.id)}
+                      className="text-dxc-medium-gray hover:text-red-600 p-2"
+                      title="Delete category"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-dxc p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">
+              Delete Category
+            </h3>
+            <p className="text-dxc-medium-gray mb-6">
+              Are you sure you want to delete this category? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(showDeleteConfirm)}
+                disabled={deleteCategoryMutation.isPending}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium transition-colors flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                {deleteCategoryMutation.isPending ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Information Panel */}
       <div className="bg-blue-50 border border-blue-200 rounded-dxc p-4">
