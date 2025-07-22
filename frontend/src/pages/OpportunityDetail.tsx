@@ -7,7 +7,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import type { OpportunityFormData, ChartDataPoint, Opportunity, OpportunityCategory, OpportunityEffortPrediction, StageTimelineData } from '../types/index';
 import { DXC_COLORS, SERVICE_LINES } from '../types/index';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, AreaChart, Area, CartesianGrid, Legend } from 'recharts';
-import { TrendingUp, BarChart3, Layers } from 'lucide-react';
+import { TrendingUp, BarChart3, Layers, Calendar, Users, FileText, DollarSign } from 'lucide-react';
 
 // Helper function to calculate opportunity category based on TCV using database categories
 const getOpportunityCategory = (tcvMillions: number | undefined, categories: OpportunityCategory[]): string => {
@@ -60,7 +60,8 @@ const OpportunityDetail: React.FC = () => {
   const calculateTimelineMutation = useCalculateResourceTimeline();
   const deleteTimelineMutation = useDeleteResourceTimeline();
 
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditingCustomFields, setIsEditingCustomFields] = useState(false);
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [formData, setFormData] = useState<OpportunityFormData>({
     assigned_resource: '',
     status: '',
@@ -76,14 +77,15 @@ const OpportunityDetail: React.FC = () => {
 
   // Collapsible sections state
   const [expandedSections, setExpandedSections] = useState({
-    quarterlyRevenue: false,
-    lineItems: false,
-    serviceLines: true // Keep service lines expanded by default
+    quarterlyRevenue: false
   });
 
   // Resource Timeline chart controls
   const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('bar');
   const [timePeriod, setTimePeriod] = useState<'week' | 'month' | 'quarter' | 'stage'>('week');
+
+  // Tab state for Resource Analysis section
+  const [activeResourceTab, setActiveResourceTab] = useState<'timeline' | 'profile' | 'line-items' | 'revenue'>('timeline');
 
   // Initialize form data when opportunity and categories load
   React.useEffect(() => {
@@ -104,40 +106,76 @@ const OpportunityDetail: React.FC = () => {
     }
   }, [opportunity, categories]);
 
-  const handleEdit = () => {
-    setIsEditing(true);
+  const handleEditCustomFields = () => {
+    setIsEditingCustomFields(true);
   };
 
-  const handleCancel = () => {
-    setIsEditing(false);
-    // Reset form data to original values
+  const handleCancelCustomFields = () => {
+    setIsEditingCustomFields(false);
+    // Reset custom fields form data to original values
     if (opportunity && categories) {
       const mappedOpp = mapOpportunityForDisplay(opportunity, categories);
-      setFormData({
+      setFormData(prev => ({
+        ...prev,
         assigned_resource: mappedOpp.assigned_resource || '',
         status: mappedOpp.status || '',
-        notes: mappedOpp.notes || '',
         security_clearance: opportunity.security_clearance || '',
         custom_priority: opportunity.custom_priority || '',
         internal_stage_assessment: opportunity.internal_stage_assessment || '',
         custom_tracking_field_1: opportunity.custom_tracking_field_1 || '',
         custom_tracking_field_2: opportunity.custom_tracking_field_2 || '',
         custom_tracking_field_3: opportunity.custom_tracking_field_3 || '',
-        internal_notes: opportunity.internal_notes || '',
-      });
+      }));
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveCustomFields = async () => {
     try {
       await updateMutation.mutateAsync({
         id: opportunityId,
-        data: formData,
+        data: {
+          assigned_resource: formData.assigned_resource,
+          status: formData.status,
+          security_clearance: formData.security_clearance,
+          custom_priority: formData.custom_priority,
+          internal_stage_assessment: formData.internal_stage_assessment,
+          custom_tracking_field_1: formData.custom_tracking_field_1,
+          custom_tracking_field_2: formData.custom_tracking_field_2,
+          custom_tracking_field_3: formData.custom_tracking_field_3,
+        },
       });
-      setIsEditing(false);
+      setIsEditingCustomFields(false);
     } catch (error) {
-      console.error('Failed to update opportunity:', error);
-      // Error handling could be improved with toast notifications
+      console.error('Failed to update custom fields:', error);
+    }
+  };
+
+  const handleEditNotes = () => {
+    setIsEditingNotes(true);
+  };
+
+  const handleCancelNotes = () => {
+    setIsEditingNotes(false);
+    // Reset notes form data to original values
+    if (opportunity) {
+      setFormData(prev => ({
+        ...prev,
+        internal_notes: opportunity.internal_notes || '',
+      }));
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    try {
+      await updateMutation.mutateAsync({
+        id: opportunityId,
+        data: {
+          internal_notes: formData.internal_notes,
+        },
+      });
+      setIsEditingNotes(false);
+    } catch (error) {
+      console.error('Failed to update notes:', error);
     }
   };
 
@@ -379,35 +417,6 @@ const OpportunityDetail: React.FC = () => {
   }, [resourceTimeline, timePeriod]);
 
 
-  // Prepare service line chart data using opportunity-level aggregated fields
-  const getServiceLineChartData = (): ChartDataPoint[] => {
-    if (!opportunity) return [];
-
-    const serviceLineData: ChartDataPoint[] = [];
-    let colorIndex = 0;
-
-    const serviceLineRevenues = [
-      { name: 'CES', value: opportunity.ces_millions || 0 },
-      { name: 'INS', value: opportunity.ins_millions || 0 },
-      { name: 'BPS', value: opportunity.bps_millions || 0 },
-      { name: 'SEC', value: opportunity.sec_millions || 0 },
-      { name: 'ITOC', value: opportunity.itoc_millions || 0 },
-      { name: 'MW', value: opportunity.mw_millions || 0 }
-    ];
-
-    serviceLineRevenues.forEach(serviceLine => {
-      if (serviceLine.value > 0) {
-        serviceLineData.push({
-          name: serviceLine.name,
-          value: serviceLine.value,
-          color: DXC_COLORS[colorIndex % DXC_COLORS.length]
-        });
-        colorIndex++;
-      }
-    });
-
-    return serviceLineData;
-  };
 
   // Prepare quarterly revenue chart data
   const getQuarterlyRevenueData = () => {
@@ -487,7 +496,6 @@ const OpportunityDetail: React.FC = () => {
     );
   }
 
-  const serviceLineChartData = getServiceLineChartData();
   const quarterlyRevenueData = getQuarterlyRevenueData();
 
   return (
@@ -501,26 +509,6 @@ const OpportunityDetail: React.FC = () => {
           >
             ← Back to Opportunities
           </button>
-          <div className="flex gap-2">
-            {!isEditing ? (
-              <button onClick={handleEdit} className="btn-primary">
-                Edit
-              </button>
-            ) : (
-              <>
-                <button onClick={handleCancel} className="btn-secondary">
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={updateMutation.isPending}
-                  className="btn-primary disabled:opacity-50"
-                >
-                  {updateMutation.isPending ? 'Saving...' : 'Save'}
-                </button>
-              </>
-            )}
-          </div>
         </div>
         
         {/* Prominent Account and Opportunity ID */}
@@ -679,9 +667,31 @@ const OpportunityDetail: React.FC = () => {
 
         {/* User-Managed Fields */}
         <div className="card">
-          <h2 className="text-dxc-subtitle font-semibold mb-4">Custom Fields</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-dxc-subtitle font-semibold">Custom Fields</h2>
+            <div className="flex gap-2">
+              {!isEditingCustomFields ? (
+                <button onClick={handleEditCustomFields} className="btn-primary text-sm px-3 py-1">
+                  Edit
+                </button>
+              ) : (
+                <>
+                  <button onClick={handleCancelCustomFields} className="btn-secondary text-sm px-3 py-1">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveCustomFields}
+                    disabled={updateMutation.isPending}
+                    className="btn-primary text-sm px-3 py-1 disabled:opacity-50"
+                  >
+                    {updateMutation.isPending ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
           <div className="space-y-3">
-            {isEditing ? (
+            {isEditingCustomFields ? (
               <>
                 <div>
                   <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">
@@ -783,9 +793,31 @@ const OpportunityDetail: React.FC = () => {
 
       {/* Notes Section */}
       <div className="card mb-8">
-        <h2 className="text-dxc-subtitle font-semibold mb-4">Internal Notes</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-dxc-subtitle font-semibold">Internal Notes</h2>
+          <div className="flex gap-2">
+            {!isEditingNotes ? (
+              <button onClick={handleEditNotes} className="btn-primary text-sm px-3 py-1">
+                Edit
+              </button>
+            ) : (
+              <>
+                <button onClick={handleCancelNotes} className="btn-secondary text-sm px-3 py-1">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveNotes}
+                  disabled={updateMutation.isPending}
+                  className="btn-primary text-sm px-3 py-1 disabled:opacity-50"
+                >
+                  {updateMutation.isPending ? 'Saving...' : 'Save'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
         <div>
-          {isEditing ? (
+          {isEditingNotes ? (
             <textarea
               value={formData.internal_notes || ''}
               onChange={(e) => handleInputChange('internal_notes', e.target.value)}
@@ -889,406 +921,622 @@ const OpportunityDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Line Items Detail Table */}
-      {lineItems && lineItems.length > 0 && (
-        <div className="card mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-dxc-subtitle font-semibold">Line Items Detail</h2>
-            <button
-              onClick={() => toggleSection('lineItems')}
-              className="text-dxc-purple hover:text-dxc-purple/80 font-medium"
-            >
-              {expandedSections.lineItems ? '▲ Collapse' : '▼ Expand'}
-            </button>
-          </div>
-          {expandedSections.lineItems && (
-            <div>
-              <div className="overflow-x-auto">
-                <table className="table w-full">
-                  <thead>
-                    <tr>
-                      <th>Offering</th>
-                      <th>Product</th>
-                      <th>TCV</th>
-                      <th>ABR</th>
-                      <th>IYR</th>
-                      <th>Margin %</th>
-                      <th>FY1 Revenue</th>
-                      <th>FY2 Revenue</th>
-                      <th>Beyond Y2</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lineItems.map((item, index) => (
-                      <tr key={item.id || index}>
-                        <td className="font-medium">
-                          <div>
-                            <div>{item.lead_offering_l2 || item.simplified_offering || 'N/A'}</div>
-                            {item.internal_service && (
-                              <div className="text-sm text-gray-500">{item.internal_service}</div>
-                            )}
-                          </div>
-                        </td>
-                        <td>{item.product_name || 'N/A'}</td>
-                        <td className="font-medium text-dxc-purple">
-                          {formatCurrency(item.offering_tcv || 0)}
-                        </td>
-                        <td>{formatCurrency(item.offering_abr || 0)}</td>
-                        <td>{formatCurrency(item.offering_iyr || 0)}</td>
-                        <td className={`font-medium ${
-                          item.offering_margin_percentage && item.offering_margin_percentage >= 20 ? 'text-green-600' :
-                          item.offering_margin_percentage && item.offering_margin_percentage >= 10 ? 'text-yellow-600' :
-                          'text-red-600'
-                        }`}>
-                          {item.offering_margin_percentage ? `${item.offering_margin_percentage.toFixed(1)}%` : 'N/A'}
-                        </td>
-                        <td>{formatCurrency(item.first_year_fy_rev || 0)}</td>
-                        <td>{formatCurrency(item.second_year_fy_rev || 0)}</td>
-                        <td>{formatCurrency(item.fy_rev_beyond_yr2 || 0)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-          
-              {/* Line Items Summary */}
-              <div className="mt-6 bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-medium mb-2">Summary</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Total Line Items:</span>
-                    <span className="font-medium ml-2">{lineItems.length}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Total TCV:</span>
-                    <span className="font-medium ml-2 text-dxc-purple">
-                      {formatCurrency(lineItems.reduce((sum, item) => sum + (item.offering_tcv || 0), 0))}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Total ABR:</span>
-                    <span className="font-medium ml-2">
-                      {formatCurrency(lineItems.reduce((sum, item) => sum + (item.offering_abr || 0), 0))}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Avg Margin:</span>
-                    <span className="font-medium ml-2">
-                      {lineItems.filter(item => item.offering_margin_percentage).length > 0 
-                        ? `${(lineItems
-                            .filter(item => item.offering_margin_percentage)
-                            .reduce((sum, item) => sum + (item.offering_margin_percentage || 0), 0) / 
-                            lineItems.filter(item => item.offering_margin_percentage).length
-                          ).toFixed(1)}%`
-                        : 'N/A'
-                      }
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Resource Timeline Chart */}
-      {hasValidTimeline(resourceTimeline) && (
+      {/* Resource Analysis Section - Tabbed Interface */}
+      {(hasValidTimeline(resourceTimeline) || opportunity) && (
         <div className="card mb-8">
-          {/* Header with Controls */}
+          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-            <h2 className="text-dxc-subtitle font-semibold mb-4 sm:mb-0">Resource Timeline</h2>
+            <h2 className="text-dxc-subtitle font-semibold mb-4 sm:mb-0">Resource Analysis</h2>
             
-            {/* Controls */}
-            <div className="flex flex-wrap gap-2">
-              {/* Time Period Selector */}
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                {(['week', 'month', 'quarter', 'stage'] as const).map(period => (
+            {/* Timeline Controls - only show for timeline tab */}
+            {activeResourceTab === 'timeline' && hasValidTimeline(resourceTimeline) && (
+              <div className="flex flex-wrap gap-2">
+                {/* Time Period Selector */}
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  {(['week', 'month', 'quarter', 'stage'] as const).map(period => (
+                    <button
+                      key={period}
+                      onClick={() => setTimePeriod(period)}
+                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                        timePeriod === period
+                          ? 'bg-white text-dxc-purple shadow-sm'
+                          : 'text-gray-600 hover:text-gray-800'
+                      }`}
+                    >
+                      {period === 'week' ? 'Weekly' : 
+                       period === 'month' ? 'Monthly' :
+                       period === 'quarter' ? 'Quarterly' : 'By Stage'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Chart Type Selector */}
+                <div className="flex bg-gray-100 rounded-lg p-1">
                   <button
-                    key={period}
-                    onClick={() => setTimePeriod(period)}
-                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                      timePeriod === period
+                    onClick={() => setChartType('line')}
+                    className={`p-2 rounded transition-colors ${
+                      chartType === 'line'
                         ? 'bg-white text-dxc-purple shadow-sm'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
+                    title="Line Chart"
                   >
-                    {period === 'week' ? 'Weekly' : 
-                     period === 'month' ? 'Monthly' :
-                     period === 'quarter' ? 'Quarterly' : 'By Stage'}
+                    <TrendingUp className="w-4 h-4" />
                   </button>
-                ))}
+                  <button
+                    onClick={() => setChartType('bar')}
+                    className={`p-2 rounded transition-colors ${
+                      chartType === 'bar'
+                        ? 'bg-white text-dxc-purple shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    title="Bar Chart"
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setChartType('area')}
+                    className={`p-2 rounded transition-colors ${
+                      chartType === 'area'
+                        ? 'bg-white text-dxc-purple shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    title="Area Chart"
+                  >
+                    <Layers className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
+            )}
+          </div>
 
-              {/* Chart Type Selector */}
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setChartType('line')}
-                  className={`p-2 rounded transition-colors ${
-                    chartType === 'line'
-                      ? 'bg-white text-dxc-purple shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                  title="Line Chart"
-                >
-                  <TrendingUp className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setChartType('bar')}
-                  className={`p-2 rounded transition-colors ${
-                    chartType === 'bar'
-                      ? 'bg-white text-dxc-purple shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                  title="Bar Chart"
-                >
-                  <BarChart3 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setChartType('area')}
-                  className={`p-2 rounded transition-colors ${
-                    chartType === 'area'
-                      ? 'bg-white text-dxc-purple shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                  title="Area Chart"
-                >
-                  <Layers className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+          {/* Navigation Tabs */}
+          <div className="tabs flex mb-6">
+            {[
+              { key: 'timeline', label: 'Resource Timeline', icon: Calendar, condition: hasValidTimeline(resourceTimeline) },
+              { key: 'profile', label: 'Resource Profile', icon: Users, condition: hasValidTimeline(resourceTimeline) },
+              { key: 'line-items', label: 'Line Item Details', icon: FileText, condition: true },
+              { key: 'revenue', label: 'Service Line Revenue Breakdown', icon: DollarSign, condition: true }
+            ].filter(tab => tab.condition).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveResourceTab(key as any)}
+                className={`tab ${activeResourceTab === key ? 'tab-active' : ''} flex items-center gap-2`}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
           </div>
           
-          <div>
-            {(() => {
-              const tableData = getTimelineTableData(resourceTimeline!);
-              const serviceLineColors: Record<string, string> = {
-                'CES': DXC_COLORS[0],
-                'INS': DXC_COLORS[1], 
-                'BPS': DXC_COLORS[2],
-                'SEC': DXC_COLORS[6],
-                'ITOC': DXC_COLORS[4],
-                'MW': DXC_COLORS[5],
+          {/* Tab Content */}
+          {activeResourceTab === 'timeline' && hasValidTimeline(resourceTimeline) && (() => {
+            const tableData = getTimelineTableData(resourceTimeline!);
+            const serviceLineColors: Record<string, string> = {
+              'CES': DXC_COLORS[0],
+              'INS': DXC_COLORS[1], 
+              'BPS': DXC_COLORS[2],
+              'SEC': DXC_COLORS[6],
+              'ITOC': DXC_COLORS[4],
+              'MW': DXC_COLORS[5],
+            };
+
+            const renderChart = () => {
+              const commonProps = {
+                data: resourceTimelineChartData.chartArray,
+                margin: { top: 10, right: 30, left: 0, bottom: 0 },
               };
 
-              const renderChart = () => {
-                const commonProps = {
-                  data: resourceTimelineChartData.chartArray,
-                  margin: { top: 10, right: 30, left: 0, bottom: 0 },
-                };
-
-                const commonAxisProps = {
-                  xAxis: <XAxis dataKey="period" tick={{ fontSize: 12 }} />,
-                  yAxis: <YAxis tick={{ fontSize: 12 }} label={{ value: 'FTE', angle: -90, position: 'insideLeft' }} />,
-                  grid: <CartesianGrid strokeDasharray="3 3" stroke="#D9D9D6" />,
-                  tooltip: (
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'white',
-                        border: '1px solid #D9D9D6',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value: number, name: string) => [`${value.toFixed(1)} FTE`, name]}
-                    />
-                  ),
-                  legend: <Legend wrapperStyle={{ paddingTop: '20px' }} />,
-                };
-
-                switch (chartType) {
-                  case 'line':
-                    return (
-                      <LineChart {...commonProps}>
-                        {commonAxisProps.grid}
-                        {commonAxisProps.xAxis}
-                        {commonAxisProps.yAxis}
-                        {commonAxisProps.tooltip}
-                        {commonAxisProps.legend}
-                        {resourceTimelineChartData.serviceLines.map(serviceLine => (
-                          <Line
-                            key={serviceLine}
-                            type="monotone"
-                            dataKey={serviceLine}
-                            stroke={serviceLineColors[serviceLine] || DXC_COLORS[0]}
-                            name={serviceLine}
-                            strokeWidth={3}
-                          />
-                        ))}
-                      </LineChart>
-                    );
-
-                  case 'bar':
-                    return (
-                      <BarChart {...commonProps}>
-                        {commonAxisProps.grid}
-                        {commonAxisProps.xAxis}
-                        {commonAxisProps.yAxis}
-                        {commonAxisProps.tooltip}
-                        {commonAxisProps.legend}
-                        {resourceTimelineChartData.serviceLines.map(serviceLine => (
-                          <Bar
-                            key={serviceLine}
-                            dataKey={serviceLine}
-                            stackId="fte"
-                            fill={serviceLineColors[serviceLine] || DXC_COLORS[0]}
-                            name={serviceLine}
-                          />
-                        ))}
-                      </BarChart>
-                    );
-
-                  case 'area':
-                    return (
-                      <AreaChart {...commonProps}>
-                        {commonAxisProps.grid}
-                        {commonAxisProps.xAxis}
-                        {commonAxisProps.yAxis}
-                        {commonAxisProps.tooltip}
-                        {commonAxisProps.legend}
-                        {resourceTimelineChartData.serviceLines.map(serviceLine => (
-                          <Area
-                            key={serviceLine}
-                            type="monotone"
-                            dataKey={serviceLine}
-                            stackId="1"
-                            stroke={serviceLineColors[serviceLine] || DXC_COLORS[0]}
-                            fill={serviceLineColors[serviceLine] || DXC_COLORS[0]}
-                            fillOpacity={0.6}
-                            name={serviceLine}
-                          />
-                        ))}
-                      </AreaChart>
-                    );
-
-                  default:
-                    return null;
-                }
+              const commonAxisProps = {
+                xAxis: <XAxis dataKey="period" tick={{ fontSize: 12 }} />,
+                yAxis: <YAxis tick={{ fontSize: 12 }} label={{ value: 'FTE', angle: -90, position: 'insideLeft' }} />,
+                grid: <CartesianGrid strokeDasharray="3 3" stroke="#D9D9D6" />,
+                tooltip: (
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'white',
+                      border: '1px solid #D9D9D6',
+                      borderRadius: '8px',
+                    }}
+                    formatter={(value: number, name: string) => [`${value.toFixed(1)} FTE`, name]}
+                  />
+                ),
+                legend: <Legend wrapperStyle={{ paddingTop: '20px' }} />,
               };
-              
-              return (
-                <div>
-                  {/* Chart */}
-                  <div className="mb-6">
-                    <ResponsiveContainer width="100%" height={300}>
-                      {renderChart()}
-                    </ResponsiveContainer>
-                  </div>
-                  
-                  {/* Summary Stats */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-medium text-gray-700">Total Effort</h4>
-                      <p className="text-2xl font-bold text-dxc-purple">
-                        {tableData.reduce((sum, item) => sum + item.total_effort_weeks, 0).toFixed(1)} weeks
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-medium text-gray-700">Peak FTE</h4>
-                      <p className="text-2xl font-bold text-dxc-purple">
-                        {Math.max(...tableData.map(item => item.fte_required)).toFixed(1)}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="font-medium text-gray-700">Service Lines</h4>
-                      <p className="text-2xl font-bold text-dxc-purple">
-                        {resourceTimelineChartData.serviceLines.length}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
 
-      {/* Service Line Breakdown */}
-      {serviceLineChartData.length > 0 && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-dxc-subtitle font-semibold">Service Line Revenue Breakdown</h2>
-            <button
-              onClick={() => toggleSection('serviceLines')}
-              className="text-dxc-purple hover:text-dxc-purple/80 font-medium"
-            >
-              {expandedSections.serviceLines ? '▲ Collapse' : '▼ Expand'}
-            </button>
-          </div>
-          {expandedSections.serviceLines && (
-            <div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Pie Chart */}
-                <div>
-                  <h3 className="text-lg font-medium mb-2">Distribution</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={serviceLineChartData}
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={100}
-                        dataKey="value"
-                        label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
-                      >
-                        {serviceLineChartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+              switch (chartType) {
+                case 'line':
+                  return (
+                    <LineChart {...commonProps}>
+                      {commonAxisProps.grid}
+                      {commonAxisProps.xAxis}
+                      {commonAxisProps.yAxis}
+                      {commonAxisProps.tooltip}
+                      {commonAxisProps.legend}
+                      {resourceTimelineChartData.serviceLines.map(serviceLine => (
+                        <Line
+                          key={serviceLine}
+                          type="monotone"
+                          dataKey={serviceLine}
+                          stroke={serviceLineColors[serviceLine] || DXC_COLORS[0]}
+                          name={serviceLine}
+                          strokeWidth={3}
+                        />
+                      ))}
+                    </LineChart>
+                  );
 
-                {/* Bar Chart */}
-                <div>
-                  <h3 className="text-lg font-medium mb-2">Revenue by Service Line</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={serviceLineChartData}>
-                      <XAxis dataKey="name" />
-                      <YAxis tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`} />
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                      <Bar dataKey="value" fill="#5F249F" />
+                case 'bar':
+                  return (
+                    <BarChart {...commonProps}>
+                      {commonAxisProps.grid}
+                      {commonAxisProps.xAxis}
+                      {commonAxisProps.yAxis}
+                      {commonAxisProps.tooltip}
+                      {commonAxisProps.legend}
+                      {resourceTimelineChartData.serviceLines.map(serviceLine => (
+                        <Bar
+                          key={serviceLine}
+                          dataKey={serviceLine}
+                          stackId="fte"
+                          fill={serviceLineColors[serviceLine] || DXC_COLORS[0]}
+                          name={serviceLine}
+                        />
+                      ))}
                     </BarChart>
+                  );
+
+                case 'area':
+                  return (
+                    <AreaChart {...commonProps}>
+                      {commonAxisProps.grid}
+                      {commonAxisProps.xAxis}
+                      {commonAxisProps.yAxis}
+                      {commonAxisProps.tooltip}
+                      {commonAxisProps.legend}
+                      {resourceTimelineChartData.serviceLines.map(serviceLine => (
+                        <Area
+                          key={serviceLine}
+                          type="monotone"
+                          dataKey={serviceLine}
+                          stackId="1"
+                          stroke={serviceLineColors[serviceLine] || DXC_COLORS[0]}
+                          fill={serviceLineColors[serviceLine] || DXC_COLORS[0]}
+                          fillOpacity={0.6}
+                          name={serviceLine}
+                        />
+                      ))}
+                    </AreaChart>
+                  );
+
+                default:
+                  return null;
+              }
+            };
+            
+            return (
+              <div>
+                {/* Chart */}
+                <div className="mb-6">
+                  <ResponsiveContainer width="100%" height={300}>
+                    {renderChart() || <div>No chart data available</div>}
                   </ResponsiveContainer>
+                </div>
+                
+                {/* Summary Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-700">Total Effort</h4>
+                    <p className="text-2xl font-bold text-dxc-purple">
+                      {tableData.reduce((sum, item) => sum + item.total_effort_weeks, 0).toFixed(1)} weeks
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-700">Peak FTE</h4>
+                    <p className="text-2xl font-bold text-dxc-purple">
+                      {Math.max(...tableData.map(item => item.fte_required)).toFixed(1)}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-700">Service Lines</h4>
+                    <p className="text-2xl font-bold text-dxc-purple">
+                      {resourceTimelineChartData.serviceLines.length}
+                    </p>
+                  </div>
                 </div>
               </div>
+            );
+          })()}
 
-              {/* Summary Table */}
-              <div className="mt-6">
-                <h3 className="text-lg font-medium mb-2">Service Line Details</h3>
-                {lineItemsLoading ? (
-                  <div className="flex justify-center py-4">
-                    <LoadingSpinner />
+          {/* Resource Profile Tab */}
+          {activeResourceTab === 'profile' && hasValidTimeline(resourceTimeline) && (() => {
+            const tableData = getTimelineTableData(resourceTimeline!);
+            
+            // Debug: log the actual data structure
+            console.log('Resource Timeline Data:', resourceTimeline);
+            console.log('Table Data:', tableData);
+            
+            if (!tableData.length) {
+              return (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <Users className="w-12 h-12 mb-3" />
+                  <p className="text-center">No resource profile data available</p>
+                </div>
+              );
+            }
+
+            // Group data by service line for better organization
+            const serviceLineData = tableData.reduce((acc, item) => {
+              const serviceLine = (item as any).service_line;
+              if (!acc[serviceLine]) {
+                acc[serviceLine] = [];
+              }
+              acc[serviceLine].push(item);
+              return acc;
+            }, {} as Record<string, typeof tableData>);
+
+            const serviceLineColors: Record<string, string> = {
+              'CES': DXC_COLORS[0],
+              'INS': DXC_COLORS[1], 
+              'BPS': DXC_COLORS[2],
+              'SEC': DXC_COLORS[6],
+              'ITOC': DXC_COLORS[4],
+              'MW': DXC_COLORS[5],
+            };
+
+            return (
+              <div className="space-y-6">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-white border rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Total Stages</h4>
+                    <p className="text-2xl font-bold text-dxc-purple">{tableData.length}</p>
                   </div>
-                ) : (
+                  <div className="bg-white border rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Service Lines</h4>
+                    <p className="text-2xl font-bold text-dxc-purple">{Object.keys(serviceLineData).length}</p>
+                  </div>
+                  <div className="bg-white border rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Total Effort</h4>
+                    <p className="text-2xl font-bold text-dxc-purple">
+                      {tableData.reduce((sum, item) => sum + (item.total_effort_weeks || 0), 0).toFixed(1)} weeks
+                    </p>
+                  </div>
+                  <div className="bg-white border rounded-lg p-4">
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Peak FTE</h4>
+                    <p className="text-2xl font-bold text-dxc-purple">
+                      {tableData.length > 0 ? Math.max(...tableData.map(item => item.fte_required || 0)).toFixed(1) : '0.0'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Resource Profile Table */}
+                <div className="overflow-hidden rounded-lg border border-gray-200">
                   <div className="overflow-x-auto">
-                    <table className="table w-full">
-                      <thead>
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
                         <tr>
-                          <th>Service Line</th>
-                          <th>Revenue</th>
-                          <th>Percentage</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Service Line
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Stage
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Start Date
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            End Date
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Duration
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            FTE Required
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Total Effort
+                          </th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {serviceLineChartData.map((item) => {
-                          const totalRevenue = serviceLineChartData.reduce((sum, data) => sum + data.value, 0);
-                          const percentage = ((item.value / totalRevenue) * 100).toFixed(1);
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {Object.entries(serviceLineData).map(([serviceLine, stages]) =>
+                          stages.map((item, stageIndex) => (
+                            <tr key={`${serviceLine}-${stageIndex}`} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                                      style={{ 
+                                        backgroundColor: `${serviceLineColors[serviceLine]}20`, 
+                                        color: serviceLineColors[serviceLine] 
+                                      }}>
+                                  {serviceLine}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {item.stage_name}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {new Date(item.stage_start_date).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {new Date(item.stage_end_date).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {(item.duration_weeks || 0).toFixed(1)} weeks
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dxc-purple">
+                                {(item.fte_required || 0).toFixed(1)}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                {(item.total_effort_weeks || 0).toFixed(1)} weeks
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Service Line Breakdown */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {Object.entries(serviceLineData).map(([serviceLine, stages]) => (
+                    <div key={serviceLine} className="bg-white border rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-3 h-3 rounded-full" 
+                             style={{ backgroundColor: serviceLineColors[serviceLine] }}>
+                        </div>
+                        <h4 className="font-medium text-dxc-dark-gray">{serviceLine} Service Line</h4>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Stages:</span>
+                          <span className="font-medium">{stages.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Total Effort:</span>
+                          <span className="font-medium">
+                            {stages.reduce((sum, stage) => sum + (stage.total_effort_weeks || 0), 0).toFixed(1)} weeks
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Peak FTE:</span>
+                          <span className="font-medium">
+                            {stages.length > 0 ? Math.max(...stages.map(stage => stage.fte_required || 0)).toFixed(1) : '0.0'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Duration:</span>
+                          <span className="font-medium">
+                            {stages.reduce((sum, stage) => sum + (stage.duration_weeks || 0), 0).toFixed(1)} weeks
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Line Item Details Tab */}
+          {activeResourceTab === 'line-items' && (() => {
+            if (!lineItems || lineItems.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <FileText className="w-12 h-12 mb-3" />
+                  <p className="text-center">No line items available</p>
+                </div>
+              );
+            }
+
+            // Calculate total TCV for percentage calculations
+            const totalTCV = lineItems.reduce((sum, item) => sum + (item.offering_tcv || 0), 0);
+
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-dxc-dark-gray">Line Item Details ({lineItems.length} items)</h4>
+                  <div className="text-sm text-gray-600">
+                    Total TCV: {formatCurrency(totalTCV)}
+                  </div>
+                </div>
+                
+                <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Lead Offering
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Internal Service
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Simplified Offering
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Product Name
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Offering TCV
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            % of Total
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {lineItems.map((item, index) => {
+                          const tcv = item.offering_tcv || 0;
+                          const percentage = totalTCV > 0 ? (tcv / totalTCV * 100) : 0;
+                          
                           return (
-                            <tr key={item.name}>
-                              <td className="font-medium">{item.name}</td>
-                              <td>{formatCurrency(item.value)}</td>
-                              <td>{percentage}%</td>
+                            <tr key={item.id || index} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {item.lead_offering_l2 || 'N/A'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {item.internal_service || 'N/A'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {item.simplified_offering || 'N/A'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {item.product_name || 'N/A'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-dxc-purple">
+                                {formatCurrency(tcv)}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {percentage.toFixed(1)}%
+                              </td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
                   </div>
-                )}
+                </div>
+
+                {/* Summary */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="font-medium text-dxc-dark-gray mb-2">Summary</h5>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Total Line Items:</span>
+                      <span className="font-medium ml-2">{lineItems.length}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Total TCV:</span>
+                      <span className="font-medium ml-2 text-dxc-purple">
+                        {formatCurrency(totalTCV)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Avg TCV per Item:</span>
+                      <span className="font-medium ml-2">
+                        {lineItems.length > 0 ? formatCurrency(totalTCV / lineItems.length) : '$0M'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
+            );
+          })()}
+
+          {/* Service Line Revenue Breakdown Tab */}
+          {activeResourceTab === 'revenue' && (() => {
+            const serviceLineColors: Record<string, string> = {
+              'CES': DXC_COLORS[0],
+              'INS': DXC_COLORS[1], 
+              'BPS': DXC_COLORS[2],
+              'SEC': DXC_COLORS[6],
+              'ITOC': DXC_COLORS[4],
+              'MW': DXC_COLORS[5],
+            };
+
+            const revenueData = SERVICE_LINES.map(serviceLine => {
+              const serviceLineKey = `${serviceLine.toLowerCase()}_millions` as keyof typeof opportunity;
+              const revenue = (opportunity[serviceLineKey] as number) || 0;
+              
+              return {
+                serviceLine,
+                revenue,
+                fill: serviceLineColors[serviceLine]
+              };
+            }).filter(item => item.revenue > 0);
+
+            if (!revenueData.length) {
+              return (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <DollarSign className="w-12 h-12 mb-3" />
+                  <p className="text-center">No revenue data available</p>
+                </div>
+              );
+            }
+
+            const totalRevenue = revenueData.reduce((sum, item) => sum + item.revenue, 0);
+
+            return (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Revenue Chart */}
+                  <div className="chart-container">
+                    <div className="chart-header">
+                      <h4 className="chart-title">Service Line Revenue Distribution</h4>
+                    </div>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={revenueData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#D9D9D6" />
+                        <XAxis dataKey="serviceLine" tick={{ fontSize: 12 }} />
+                        <YAxis tick={{ fontSize: 12 }} label={{ value: 'Revenue ($M)', angle: -90, position: 'insideLeft' }} />
+                        <Tooltip 
+                          formatter={(value: number) => [`$${value.toFixed(1)}M`, 'Revenue']}
+                          contentStyle={{
+                            backgroundColor: 'white',
+                            border: '1px solid #D9D9D6',
+                            borderRadius: '8px',
+                          }}
+                        />
+                        <Bar dataKey="revenue" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Revenue Summary */}
+                  <div className="space-y-4">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-medium text-dxc-dark-gray mb-3">Total Revenue: ${totalRevenue.toFixed(1)}M</h4>
+                      <div className="space-y-3">
+                        {revenueData
+                          .sort((a, b) => b.revenue - a.revenue)
+                          .map(item => {
+                            const percentage = totalRevenue > 0 ? (item.revenue / totalRevenue * 100) : 0;
+                            return (
+                              <div key={item.serviceLine} className="flex items-center justify-between py-2 border-b border-gray-200 last:border-0">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.fill }}></div>
+                                  <span className="font-medium text-sm">{item.serviceLine}</span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm font-medium">${item.revenue.toFixed(1)}M</div>
+                                  <div className="text-xs text-dxc-gray">{percentage.toFixed(1)}%</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Show message if no content available */}
+          {!hasValidTimeline(resourceTimeline) && activeResourceTab === 'timeline' && (
+            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+              <Calendar className="w-12 h-12 mb-3" />
+              <p className="text-center">No resource timeline available</p>
+              <p className="text-sm text-gray-400 mt-1">
+                Resource timelines are only available for MW and ITOC service lines
+              </p>
             </div>
           )}
         </div>
       )}
+
 
       {/* Error display for update mutation */}
       {updateMutation.error && (
