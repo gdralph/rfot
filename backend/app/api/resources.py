@@ -166,10 +166,42 @@ def get_opportunity_timeline(
     )
 
 
+@router.delete("/opportunity/{opportunity_id}/timeline")
+def delete_opportunity_timeline(
+    opportunity_id: int,
+    session: Session = Depends(get_session)
+):
+    """
+    Delete stored timeline for an opportunity.
+    """
+    # Get opportunity first to get the string opportunity_id
+    opportunity = session.get(Opportunity, opportunity_id)
+    if not opportunity:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    
+    # Delete timeline records using string opportunity_id
+    result = session.exec(
+        delete(OpportunityResourceTimeline).where(
+            OpportunityResourceTimeline.opportunity_id == opportunity.opportunity_id
+        )
+    )
+    
+    session.commit()
+    
+    # Check if any records were actually deleted
+    deleted_count = result.rowcount
+    
+    if deleted_count == 0:
+        raise HTTPException(status_code=404, detail="No timeline found for opportunity")
+    
+    return {"message": f"Successfully deleted {deleted_count} timeline records for opportunity {opportunity.opportunity_id}"}
+
+
 @router.get("/portfolio/resource-forecast", response_model=PortfolioEffortPrediction)
 def get_portfolio_resource_forecast(
     start_date: Optional[datetime] = Query(None, description="Start date for forecast period"),
     end_date: Optional[datetime] = Query(None, description="End date for forecast period"),
+    time_period: str = Query("month", description="Time period aggregation: week, month, quarter"),
     service_line: Optional[str] = Query(None, description="Filter by service line"),
     category: Optional[str] = Query(None, description="Filter by category"),
     stage: Optional[str] = Query(None, description="Filter by stage"),
@@ -185,11 +217,15 @@ def get_portfolio_resource_forecast(
     # Build query for timeline records
     query = select(OpportunityResourceTimeline)
     
-    # Apply filters
+    # Apply filters (ensure timezone handling)
     if start_date:
-        query = query.where(OpportunityResourceTimeline.stage_end_date >= start_date)
+        # Remove timezone info for SQLite comparison
+        start_date_naive = start_date.replace(tzinfo=None) if start_date.tzinfo else start_date
+        query = query.where(OpportunityResourceTimeline.stage_end_date >= start_date_naive)
     if end_date:
-        query = query.where(OpportunityResourceTimeline.stage_start_date <= end_date)
+        # Remove timezone info for SQLite comparison
+        end_date_naive = end_date.replace(tzinfo=None) if end_date.tzinfo else end_date
+        query = query.where(OpportunityResourceTimeline.stage_start_date <= end_date_naive)
     if service_line:
         query = query.where(OpportunityResourceTimeline.service_line == service_line)
     if category:
@@ -208,10 +244,14 @@ def get_portfolio_resource_forecast(
     
     for record in timeline_records:
         # Apply date filtering at record level for more precise control
-        if start_date and record.stage_end_date < start_date:
-            continue
-        if end_date and record.stage_start_date > end_date:
-            continue
+        if start_date:
+            start_date_naive = start_date.replace(tzinfo=None) if start_date.tzinfo else start_date
+            if record.stage_end_date < start_date_naive:
+                continue
+        if end_date:
+            end_date_naive = end_date.replace(tzinfo=None) if end_date.tzinfo else end_date
+            if record.stage_start_date > end_date_naive:
+                continue
             
         effort = record.total_effort_weeks
         total_effort_weeks += effort
@@ -225,11 +265,14 @@ def get_portfolio_resource_forecast(
         
         opportunity_ids.add(record.opportunity_id)
     
-    # Generate monthly forecast if date range provided
-    monthly_forecast = None
+    # Generate time period forecast if date range provided
+    time_period_forecast = None
     if start_date and end_date:
-        monthly_forecast = _generate_monthly_forecast(
-            timeline_records, start_date, end_date
+        # Ensure dates are timezone-naive for consistency
+        start_date_naive = start_date.replace(tzinfo=None) if start_date.tzinfo else start_date
+        end_date_naive = end_date.replace(tzinfo=None) if end_date.tzinfo else end_date
+        time_period_forecast = _generate_time_period_forecast(
+            timeline_records, start_date_naive, end_date_naive, time_period
         )
     
     return PortfolioEffortPrediction(
@@ -239,10 +282,12 @@ def get_portfolio_resource_forecast(
         stage_breakdown=stage_totals,
         category_breakdown=category_totals,
         forecast_period={
-            "start_date": start_date,
-            "end_date": end_date
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "timeline_opportunities": len(opportunity_ids),
+            "missing_timelines": 0  # TODO: Calculate missing timelines
         },
-        monthly_forecast=monthly_forecast,
+        monthly_forecast=time_period_forecast,
         processed_opportunities=[]  # Can be populated if needed
     )
 
@@ -297,58 +342,125 @@ def get_stage_effort_breakdown(
     )
 
 
-def _generate_monthly_forecast(
+def _generate_time_period_forecast(
     timeline_records: List[OpportunityResourceTimeline],
     start_date: datetime,
-    end_date: datetime
+    end_date: datetime,
+    time_period: str = "month"
 ) -> List[dict]:
     """
-    Generate monthly resource forecast from timeline records.
+    Generate resource forecast from timeline records for specified time period.
+    Shows FTE as rate (people working) during active periods.
+    
+    Args:
+        timeline_records: Timeline records to aggregate
+        start_date: Start date for forecast
+        end_date: End date for forecast
+        time_period: "week", "month", or "quarter"
     """
-    monthly_totals = {}
+    period_totals = {}
     
-    # Generate month keys
-    current_date = start_date.replace(day=1)  # First day of start month
-    while current_date <= end_date:
-        month_key = current_date.strftime("%Y-%m")
-        monthly_totals[month_key] = {
-            "month": month_key,
-            "total_effort_weeks": 0,
-            "opportunities_count": set(),
-            "service_line_breakdown": {sl: 0 for sl in SUPPORTED_SERVICE_LINES}
-        }
-        
-        # Move to next month
-        if current_date.month == 12:
-            current_date = current_date.replace(year=current_date.year + 1, month=1)
-        else:
-            current_date = current_date.replace(month=current_date.month + 1)
-    
-    # Aggregate records by month
-    for record in timeline_records:
-        # Determine which months this stage overlaps
-        stage_start = record.stage_start_date.replace(day=1)
-        stage_end = record.stage_end_date.replace(day=1)
-        
-        current_month = stage_start
-        while current_month <= stage_end:
-            month_key = current_month.strftime("%Y-%m")
-            if month_key in monthly_totals:
-                monthly_totals[month_key]["total_effort_weeks"] += record.total_effort_weeks
-                monthly_totals[month_key]["opportunities_count"].add(record.opportunity_id)
-                monthly_totals[month_key]["service_line_breakdown"][record.service_line] += record.total_effort_weeks
+    # Generate period keys based on time_period
+    if time_period == "week":
+        # Start from Monday of start_date's week
+        current_date = start_date - timedelta(days=start_date.weekday())
+        while current_date <= end_date:
+            week_key = current_date.strftime("%Y-W%U")  # Year-Week format
+            period_totals[week_key] = {
+                "period": current_date.strftime("%m/%d"),  # MM/DD format for display
+                "period_start": current_date,
+                "total_fte": 0,
+                "opportunities_count": set(),
+                "service_line_breakdown": {sl: 0 for sl in SUPPORTED_SERVICE_LINES}
+            }
+            current_date += timedelta(weeks=1)
             
-            # Move to next month
-            if current_month.month == 12:
-                current_month = current_month.replace(year=current_month.year + 1, month=1)
+    elif time_period == "quarter":
+        # Start from first month of start_date's quarter
+        quarter_month = ((start_date.month - 1) // 3) * 3 + 1
+        current_date = start_date.replace(month=quarter_month, day=1)
+        while current_date <= end_date:
+            quarter_num = ((current_date.month - 1) // 3) + 1
+            quarter_key = f"{current_date.year}-Q{quarter_num}"
+            period_totals[quarter_key] = {
+                "period": quarter_key,
+                "period_start": current_date,
+                "total_fte": 0,
+                "opportunities_count": set(),
+                "service_line_breakdown": {sl: 0 for sl in SUPPORTED_SERVICE_LINES}
+            }
+            # Move to next quarter
+            next_quarter_month = current_date.month + 3
+            if next_quarter_month > 12:
+                current_date = current_date.replace(year=current_date.year + 1, month=next_quarter_month - 12)
             else:
-                current_month = current_month.replace(month=current_month.month + 1)
+                current_date = current_date.replace(month=next_quarter_month)
+                
+    else:  # Default to month
+        current_date = start_date.replace(day=1)  # First day of start month
+        while current_date <= end_date:
+            month_key = current_date.strftime("%Y-%m")
+            period_totals[month_key] = {
+                "period": current_date.strftime("%b %y"),  # Short month year format
+                "period_start": current_date,
+                "total_fte": 0,
+                "opportunities_count": set(),
+                "service_line_breakdown": {sl: 0 for sl in SUPPORTED_SERVICE_LINES}
+            }
+            # Move to next month
+            if current_date.month == 12:
+                current_date = current_date.replace(year=current_date.year + 1, month=1)
+            else:
+                current_date = current_date.replace(month=current_date.month + 1)
     
-    # Convert to list format
-    monthly_forecast = []
-    for month_key in sorted(monthly_totals.keys()):
-        month_data = monthly_totals[month_key].copy()
-        month_data["opportunities_count"] = len(month_data["opportunities_count"])
-        monthly_forecast.append(month_data)
+    # Aggregate records by period - track FTE rates during active periods
+    for record in timeline_records:
+        stage_start = record.stage_start_date
+        stage_end = record.stage_end_date
+        
+        for period_key, period_data in period_totals.items():
+            period_start = period_data["period_start"]
+            
+            # Calculate period end based on time_period
+            if time_period == "week":
+                period_end = period_start + timedelta(days=6)
+            elif time_period == "quarter":
+                # End of quarter (last day of 3rd month)
+                month_offset = 2  # 3 months - 1
+                end_month = period_start.month + month_offset
+                if end_month > 12:
+                    period_end = period_start.replace(year=period_start.year + 1, month=end_month - 12)
+                else:
+                    period_end = period_start.replace(month=end_month)
+                # Last day of the month
+                import calendar
+                _, last_day = calendar.monthrange(period_end.year, period_end.month)
+                period_end = period_end.replace(day=last_day)
+            else:  # month
+                # Last day of month
+                import calendar
+                _, last_day = calendar.monthrange(period_start.year, period_start.month)
+                period_end = period_start.replace(day=last_day)
+            
+            # Check if stage overlaps with this period
+            if stage_end >= period_start and stage_start <= period_end:
+                # Add FTE rate (not total effort weeks) for this active stage
+                period_totals[period_key]["total_fte"] += record.fte_required
+                period_totals[period_key]["opportunities_count"].add(record.opportunity_id)
+                period_totals[period_key]["service_line_breakdown"][record.service_line] += record.fte_required
     
-    return monthly_forecast
+    # Convert to list format with correct structure
+    time_period_forecast = []
+    for period_key in sorted(period_totals.keys()):
+        period_data = period_totals[period_key]
+        
+        time_period_forecast.append({
+            "month": period_data["period"],  # Keep "month" key for frontend compatibility
+            "total_fte": round(period_data["total_fte"], 2),
+            "service_lines": {
+                sl: round(fte, 2) 
+                for sl, fte in period_data["service_line_breakdown"].items()
+            }
+        })
+    
+    return time_period_forecast

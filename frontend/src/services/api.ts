@@ -9,7 +9,9 @@ import type {
   ServiceLineForecast,
   ActiveServiceLines,
   ImportTask,
-  APIError
+  APIError,
+  OpportunityResourceTimeline,
+  OpportunityEffortPrediction
 } from '../types/index.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -45,6 +47,12 @@ class ApiClient {
           detail: `HTTP ${response.status}: ${response.statusText}`,
           status: response.status,
         }));
+        
+        // Special handling for timeline endpoints - 404s are expected when no timeline exists
+        if (response.status === 404 && endpoint.includes('/timeline')) {
+          // For timeline endpoints, don't throw on 404 - this is expected behavior
+          throw new Error('No timeline found for opportunity');
+        }
         
         // Retry on 5xx errors (server errors)
         if (response.status >= 500 && retryCount < this.maxRetries) {
@@ -252,6 +260,75 @@ class ApiClient {
 
   async getImportStatus(taskId: string): Promise<ImportTask> {
     return this.request(`/api/import/status/${taskId}`);
+  }
+
+  // Resource Timeline API
+  async calculateResourceTimeline(opportunityId: number): Promise<OpportunityEffortPrediction> {
+    return this.request(`/api/resources/calculate-timeline/${opportunityId}`, {
+      method: 'POST',
+    });
+  }
+
+  async getResourceTimeline(opportunityId: number): Promise<OpportunityEffortPrediction | null> {
+    const endpoint = `/api/resources/opportunity/${opportunityId}/timeline`;
+    const url = `${this.baseUrl}${endpoint}`;
+    
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // For timeline endpoints, 404 is perfectly acceptable (no timeline exists)
+      if (response.status === 404) {
+        return null;
+      }
+
+      // Handle other non-ok responses as errors
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({
+          detail: `HTTP ${response.status}: ${response.statusText}`,
+          status: response.status,
+        }));
+        throw new Error(errorData.detail || 'An error occurred');
+      }
+
+      return await response.json();
+    } catch (error) {
+      // If it's a network error or other fetch error, re-throw
+      if (error instanceof Error && !error.message.includes('HTTP')) {
+        throw error;
+      }
+      throw error;
+    }
+  }
+
+  async deleteResourceTimeline(opportunityId: number): Promise<void> {
+    return this.request(`/api/resources/opportunity/${opportunityId}/timeline`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getPortfolioResourceForecast(options: {
+    startDate?: Date;
+    endDate?: Date;
+    timePeriod?: string;
+    serviceLines?: string[];
+    category?: string;
+    stage?: string;
+  } = {}): Promise<any> {
+    const params = new URLSearchParams();
+    
+    if (options.startDate) params.append('start_date', options.startDate.toISOString());
+    if (options.endDate) params.append('end_date', options.endDate.toISOString());
+    if (options.timePeriod) params.append('time_period', options.timePeriod);
+    if (options.serviceLines?.length) params.append('service_line', options.serviceLines.join(','));
+    if (options.category) params.append('category', options.category);
+    if (options.stage) params.append('stage', options.stage);
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/api/resources/portfolio/resource-forecast${query}`);
   }
 }
 

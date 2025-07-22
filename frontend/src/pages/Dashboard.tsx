@@ -6,10 +6,10 @@ import { useCategories } from '../hooks/useConfig';
 import { DXC_COLORS, SERVICE_LINES, SALES_STAGES, OPPORTUNITY_CATEGORIES, type ServiceLine } from '../types/index.js';
 import LoadingSpinner from '../components/LoadingSpinner';
 import InteractiveForecastChart from '../components/charts/InteractiveForecastChart';
-import ResourceHeatmap from '../components/charts/ResourceHeatmap';
 import ServiceLineDistribution from '../components/charts/ServiceLineDistribution';
 import LeadOfferingDistribution from '../components/charts/LeadOfferingDistribution';
 import TimelineView from '../components/charts/TimelineView';
+import ResourceTimelineCard from '../components/ResourceTimelineCard';
 
 const Dashboard: React.FC = () => {
   const [activeView, setActiveView] = useState<'overview' | 'forecast' | 'resources' | 'timeline'>('overview');
@@ -115,19 +115,6 @@ const Dashboard: React.FC = () => {
     }));
   };
 
-  const generateResourceData = () => {
-    return SERVICE_LINES.flatMap((serviceLine) => 
-      Array.from({ length: 12 }, (_, week) => ({
-        serviceLine,
-        week: week + 1,
-        utilization: 60 + Math.random() * 40,
-        capacity: 40 + Math.random() * 20,
-        demand: 35 + Math.random() * 30,
-        efficiency: 0.7 + Math.random() * 0.3,
-        category: 'Normal'
-      }))
-    );
-  };
 
   const generateServiceLineData = () => {
     return SERVICE_LINES.map((serviceLine) => ({
@@ -179,7 +166,6 @@ const Dashboard: React.FC = () => {
   };
 
   const forecastData = generateForecastData();
-  const resourceData = generateResourceData();
   const serviceLineData = generateServiceLineData();
   const leadOfferingData = generateLeadOfferingData();
   const timelineData = generateTimelineData();
@@ -361,11 +347,7 @@ const Dashboard: React.FC = () => {
       case 'resources':
         return (
           <div className="space-y-8">
-            <ResourceHeatmap
-              data={resourceData}
-              weeks={12}
-              showLegend={true}
-            />
+            <ResourceTimelineCard />
           </div>
         );
 

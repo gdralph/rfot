@@ -218,6 +218,53 @@ export interface OpportunityFormData {
   sales_stage?: string;
   decision_date?: string;
   opportunity_owner?: string;
+  assigned_resource?: string;
+  status?: string;
+  notes?: string;
+}
+
+// Resource Timeline Types
+export interface OpportunityResourceTimeline {
+  id?: number;
+  opportunity_id: string;
+  service_line: string;
+  stage_name: string;
+  stage_start_date: string;
+  stage_end_date: string;
+  duration_weeks: number;
+  fte_required: number;
+  total_effort_weeks: number;
+  opportunity_name?: string;
+  category: string;
+  tcv_millions?: number;
+  decision_date: string;
+  calculated_date: string;
+}
+
+export interface OpportunityEffortPrediction {
+  opportunity_id: string;
+  opportunity_name?: string;
+  current_stage: string;
+  category: string;
+  tcv_millions?: number;
+  decision_date: string;
+  service_line_timelines: Record<string, any[]>;
+  total_remaining_effort_weeks: number;
+  earliest_stage_start?: string;
+  supported_service_lines: string[];
+}
+
+export interface StageTimelineData {
+  stage_name: string;
+  stage_start_date: string;
+  stage_end_date: string;
+  duration_weeks: number;
+  fte_required: number;
+  total_effort_weeks: number;
+}
+
+export interface ServiceLineTimelines {
+  [serviceLine: string]: StageTimelineData[];
 }
 
 // DXC Color Palette for Charts

@@ -13,7 +13,7 @@ if (import.meta.env.DEV) {
       (args[0].includes('message channel closed before a response was received') ||
        args[0].includes('A listener indicated an asynchronous response'))
     ) {
-      // Suppress these browser extension errors
+      // Suppress these browser extension errors only
       return;
     }
     originalError.apply(console, args);
