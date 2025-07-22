@@ -5,7 +5,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import { Calendar, TrendingUp, BarChart3, Layers, AlertCircle } from 'lucide-react';
-import { usePortfolioResourceForecast } from '../hooks/usePortfolioResourceForecast';
+import { usePortfolioResourceForecast, useTimelineDataBounds } from '../hooks/usePortfolioResourceForecast';
 import { DXC_COLORS, SERVICE_LINES, type ServiceLine } from '../types/index.js';
 import LoadingSpinner from './LoadingSpinner';
 
@@ -14,40 +14,80 @@ type TimePeriod = 'week' | 'month' | 'quarter';
 
 interface ResourceTimelineCardProps {
   className?: string;
+  filters?: {
+    stage?: string;
+    category?: string;
+    service_line?: string;
+    lead_offering?: string;
+  };
+  timeRange?: 'week' | 'month' | 'quarter' | 'year';
 }
 
-const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className = '' }) => {
+const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className = '', filters, timeRange: dashboardTimeRange }) => {
   const [chartType, setChartType] = useState<ChartType>('line');
-  const [dateRange, setDateRange] = useState<'3m' | '6m' | '12m' | 'all'>('6m');
+  const [dateRange, setDateRange] = useState<'3m' | '6m' | '12m' | 'all'>('all');
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('month');
 
-  // Calculate date range
+  // Get actual timeline data bounds
+  const { data: dataBounds } = useTimelineDataBounds();
+
+  // Always use local timePeriod - let users control their own view
+  const effectiveTimePeriod = timePeriod;
+
+  // Calculate date range - use actual data bounds when available, otherwise reasonable defaults
   const { startDate, endDate } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
+    // Use hardcoded ranges for optimal data coverage
+    let start: Date, end: Date;
     
     switch (dateRange) {
       case '3m':
-        start.setMonth(start.getMonth() - 3);
+        // Jul-Sep 2025 (peak resource activity period)
+        start = new Date(Date.UTC(2025, 6, 1));  // July 1, 2025 (month 6 = July)
+        end = new Date(Date.UTC(2025, 8, 30));   // September 30, 2025 (month 8 = September)
         break;
       case '6m':
-        start.setMonth(start.getMonth() - 6);
+        // Apr-Sep 2025 (ramp-up through peak period)
+        start = new Date(Date.UTC(2025, 3, 1));  // April 1, 2025 (month 3 = April)
+        end = new Date(Date.UTC(2025, 8, 30));   // September 30, 2025 (month 8 = September)
         break;
       case '12m':
-        start.setFullYear(start.getFullYear() - 1);
+        // Dec 2024-Nov 2025 (full year of activity)
+        start = new Date(Date.UTC(2024, 11, 1)); // December 1, 2024 (month 11 = December)
+        end = new Date(Date.UTC(2025, 10, 30));  // November 30, 2025 (month 10 = November)
         break;
       case 'all':
-        start.setFullYear(start.getFullYear() - 2);
+        // Use full data range if available, otherwise broad range
+        if (dataBounds?.earliest_date && dataBounds?.latest_date) {
+          start = new Date(dataBounds.earliest_date);
+          end = new Date(dataBounds.latest_date);
+        } else {
+          start = new Date(Date.UTC(2024, 10, 15)); // November 15, 2024
+          end = new Date(Date.UTC(2027, 2, 31));    // March 31, 2027
+        }
         break;
     }
     
     return { startDate: start, endDate: end };
-  }, [dateRange]);
+  }, [dateRange, dataBounds]);
 
   const { data, isLoading, error } = usePortfolioResourceForecast({
     startDate,
     endDate,
-    timePeriod,
+    timePeriod: effectiveTimePeriod,
+    filters,
+  });
+
+  // Debug logging for date range issues
+  console.log('ResourceTimeline Debug:', {
+    dateRange,
+    dataBounds,
+    startDate: startDate?.toISOString(),
+    endDate: endDate?.toISOString(),
+    hasData: !!data?.monthly_forecast,
+    dataLength: data?.monthly_forecast?.length,
+    nonZeroCount: data?.monthly_forecast?.filter(p => p.total_fte > 0).length,
+    isLoading,
+    error: !!error
   });
 
   // Service line colors mapping
@@ -64,21 +104,52 @@ const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className =
   const chartData = useMemo(() => {
     if (!data?.monthly_forecast) return [];
     
-    return data.monthly_forecast.map(period => {
+    const result = data.monthly_forecast.map(period => {
       let displayLabel = period.month;
       
       // Format display label based on time period
-      if (timePeriod === 'week' && period.month.includes('/')) {
-        // Week data comes as MM/DD format
-        displayLabel = period.month;
-      } else if (timePeriod === 'quarter' && period.month.includes('Q')) {
-        // Quarter data comes as YYYY-QN format
-        displayLabel = period.month;
-      } else if (timePeriod === 'month') {
-        // Month data - try to parse and format
+      if (effectiveTimePeriod === 'week') {
+        if (period.month.includes('/')) {
+          // Week data comes as MM/DD format from backend - convert to week number
+          try {
+            const [month, day] = period.month.split('/').map(Number);
+            const currentYear = new Date().getFullYear();
+            const date = new Date(currentYear, month - 1, day);
+            
+            // Calculate week number of the year (ISO week)
+            const startOfYear = new Date(currentYear, 0, 1);
+            const dayOfYear = Math.floor((date - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
+            const weekOfYear = Math.ceil((dayOfYear - date.getDay() + 10) / 7);
+            
+            displayLabel = `W${weekOfYear}`;
+          } catch {
+            displayLabel = period.month; // Fallback to MM/DD format
+          }
+        } else {
+          // Keep existing format if already processed
+          displayLabel = period.month;
+        }
+      } else if (effectiveTimePeriod === 'quarter') {
+        // Quarter data comes as YYYY-QN format from backend
+        displayLabel = period.month; // Keep as-is (e.g., "2024-Q1")
+      } else if (effectiveTimePeriod === 'month') {
+        // Month data comes as "Jan 24" format from backend - expand to full year
         try {
-          const date = new Date(period.month + '-01'); // Add day to parse
-          displayLabel = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+          if (period.month.includes(' ')) {
+            // Format like "Jan 24" - expand to "Jan 2024"
+            const parts = period.month.split(' ');
+            if (parts.length === 2) {
+              const monthName = parts[0];
+              const shortYear = parts[1];
+              const fullYear = shortYear.length === 2 ? `20${shortYear}` : shortYear;
+              displayLabel = `${monthName} ${fullYear}`;
+            } else {
+              displayLabel = period.month;
+            }
+          } else {
+            // Keep as-is for other formats
+            displayLabel = period.month;
+          }
         } catch {
           displayLabel = period.month; // Fallback to original
         }
@@ -90,7 +161,9 @@ const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className =
         ...period.service_lines,
       };
     });
-  }, [data, timePeriod]);
+    
+    return result;
+  }, [data, effectiveTimePeriod]);
 
   const renderChart = () => {
     if (!chartData.length) {
@@ -121,7 +194,10 @@ const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className =
             border: '1px solid #D9D9D6',
             borderRadius: '8px',
           }}
-          formatter={(value: number) => [value.toFixed(1), 'FTE']}
+          formatter={(value: number, name: string) => [
+            value.toFixed(1), 
+            name === 'total' ? 'Total FTE' : name
+          ]}
         />
       ),
       legend: <Legend wrapperStyle={{ paddingTop: '20px' }} />,
@@ -142,6 +218,7 @@ const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className =
               stroke={DXC_COLORS[0]} 
               name="Total FTE"
               strokeWidth={3}
+              strokeDasharray="5 5"
             />
             {SERVICE_LINES.map(serviceLine => (
               <Line
@@ -238,7 +315,7 @@ const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className =
                 key={period}
                 onClick={() => setTimePeriod(period)}
                 className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                  timePeriod === period
+                  effectiveTimePeriod === period
                     ? 'bg-white text-dxc-bright-purple shadow-sm'
                     : 'text-dxc-gray hover:text-dxc-dark-gray'
                 }`}

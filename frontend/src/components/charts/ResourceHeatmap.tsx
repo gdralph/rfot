@@ -17,13 +17,20 @@ interface ResourceHeatmapProps {
   weeks?: number;
   showLegend?: boolean;
   onCellClick?: (allocation: ResourceAllocation) => void;
+  filters?: {
+    stage?: string;
+    category?: string;
+    service_line?: string;
+    lead_offering?: string;
+  };
 }
 
 const ResourceHeatmap: React.FC<ResourceHeatmapProps> = ({
   data,
   weeks = 12,
   showLegend = true,
-  onCellClick
+  onCellClick,
+  filters
 }) => {
   const [selectedMetric, setSelectedMetric] = useState<'utilization' | 'demand' | 'efficiency'>('utilization');
   const [hoveredCell, setHoveredCell] = useState<ResourceAllocation | null>(null);
@@ -32,11 +39,23 @@ const ResourceHeatmap: React.FC<ResourceHeatmapProps> = ({
   const generateHeatmapData = () => {
     const heatmapData: ResourceAllocation[][] = [];
     
-    SERVICE_LINES.forEach((serviceLine) => {
+    // Filter service lines based on filters
+    const filteredServiceLines = filters?.service_line 
+      ? SERVICE_LINES.filter(sl => sl === filters.service_line)
+      : SERVICE_LINES;
+    
+    filteredServiceLines.forEach((serviceLine) => {
       const serviceData: ResourceAllocation[] = [];
       
       for (let week = 1; week <= weeks; week++) {
-        const existingData = data.find(d => d.serviceLine === serviceLine && d.week === week);
+        let existingData = data.find(d => d.serviceLine === serviceLine && d.week === week);
+        
+        // Apply additional filters if data exists
+        if (existingData && filters) {
+          if (filters.category && existingData.category !== filters.category) {
+            existingData = undefined;
+          }
+        }
         
         if (existingData) {
           serviceData.push(existingData);
@@ -49,7 +68,7 @@ const ResourceHeatmap: React.FC<ResourceHeatmapProps> = ({
             capacity: 40 + Math.random() * 20, // 40-60 person weeks
             demand: 35 + Math.random() * 30,   // 35-65 person weeks
             efficiency: 0.7 + Math.random() * 0.3, // 70-100%
-            category: 'Normal'
+            category: filters?.category || 'Normal'
           });
         }
       }
@@ -61,6 +80,11 @@ const ResourceHeatmap: React.FC<ResourceHeatmapProps> = ({
   };
 
   const heatmapData = generateHeatmapData();
+  
+  // Get filtered service lines for row rendering
+  const filteredServiceLines = filters?.service_line 
+    ? SERVICE_LINES.filter(sl => sl === filters.service_line)
+    : SERVICE_LINES;
 
   const getIntensityColor = (value: number, metric: string) => {
     let normalizedValue: number;
@@ -142,7 +166,7 @@ const ResourceHeatmap: React.FC<ResourceHeatmapProps> = ({
           {['utilization', 'demand', 'efficiency'].map((metric) => (
             <button
               key={metric}
-              onClick={() => setSelectedMetric(metric as any)}
+              onClick={() => setSelectedMetric(metric as 'utilization' | 'demand' | 'efficiency')}
               className={`px-3 py-1 rounded-dxc text-sm font-medium transition-colors ${
                 selectedMetric === metric
                   ? 'bg-dxc-bright-purple text-white'
@@ -158,9 +182,13 @@ const ResourceHeatmap: React.FC<ResourceHeatmapProps> = ({
       {/* Heatmap Grid */}
       <div className="bg-white rounded-dxc-lg shadow-lg border border-dxc-light-gray overflow-hidden">
         <div className="p-4">
-          <div className="grid grid-cols-1 gap-4">
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-1 gap-4" style={{ minWidth: `${200 + weeks * 70}px` }}>
             {/* Week headers */}
-            <div className="grid grid-cols-13 gap-1">
+            <div 
+              className="grid gap-1"
+              style={{ gridTemplateColumns: `200px repeat(${weeks}, minmax(60px, 1fr))` }}
+            >
               <div className="text-xs font-semibold text-dxc-dark-gray p-2">Service Line</div>
               {Array.from({ length: weeks }, (_, i) => (
                 <div key={i} className="text-xs font-semibold text-dxc-dark-gray p-2 text-center">
@@ -171,10 +199,14 @@ const ResourceHeatmap: React.FC<ResourceHeatmapProps> = ({
 
             {/* Heatmap rows */}
             {heatmapData.map((serviceData, serviceIndex) => (
-              <div key={SERVICE_LINES[serviceIndex]} className="grid grid-cols-13 gap-1">
+              <div 
+                key={filteredServiceLines[serviceIndex]} 
+                className="grid gap-1"
+                style={{ gridTemplateColumns: `200px repeat(${weeks}, minmax(60px, 1fr))` }}
+              >
                 {/* Service line label */}
                 <div className="flex items-center p-2 font-semibold text-dxc-dark-gray bg-gray-50 rounded-dxc">
-                  {SERVICE_LINES[serviceIndex]}
+                  {filteredServiceLines[serviceIndex]}
                 </div>
                 
                 {/* Week cells */}
@@ -211,6 +243,7 @@ const ResourceHeatmap: React.FC<ResourceHeatmapProps> = ({
                 ))}
               </div>
             ))}
+            </div>
           </div>
         </div>
       </div>

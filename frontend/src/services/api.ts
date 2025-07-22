@@ -324,6 +324,12 @@ class ApiClient {
     serviceLines?: string[];
     category?: string;
     stage?: string;
+    filters?: {
+      stage?: string;
+      category?: string;
+      service_line?: string;
+      lead_offering?: string;
+    };
   } = {}): Promise<any> {
     const params = new URLSearchParams();
     
@@ -333,9 +339,37 @@ class ApiClient {
     if (options.serviceLines?.length) params.append('service_line', options.serviceLines.join(','));
     if (options.category) params.append('category', options.category);
     if (options.stage) params.append('stage', options.stage);
+    
+    // Add filters from the filters object
+    if (options.filters) {
+      if (options.filters.stage) params.append('stage', options.filters.stage);
+      if (options.filters.category) params.append('category', options.filters.category);
+      if (options.filters.service_line) params.append('service_line', options.filters.service_line);
+      if (options.filters.lead_offering) params.append('lead_offering', options.filters.lead_offering);
+    }
 
     const query = params.toString() ? `?${params.toString()}` : '';
     return this.request(`/api/resources/portfolio/resource-forecast${query}`);
+  }
+
+  // Timeline Generation APIs
+  async getTimelineGenerationStats() {
+    return this.request('/api/resources/timeline-generation/stats');
+  }
+
+  // Get date bounds of actual timeline data
+  async getTimelineDataBounds(): Promise<{earliest_date: string | null, latest_date: string | null}> {
+    return this.request('/api/resources/timeline-data-bounds');
+  }
+
+  async generateBulkTimelines(options: { regenerateAll?: boolean } = {}) {
+    return this.request('/api/resources/timeline-generation/bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(options),
+    });
   }
 }
 

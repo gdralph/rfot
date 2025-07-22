@@ -72,16 +72,7 @@ const Dashboard: React.FC = () => {
         value: forecastSummary.category_breakdown[category],
         fill: DXC_COLORS[index % DXC_COLORS.length]
       }))
-      .concat(
-        // Add any categories not in the predefined list
-        Object.entries(forecastSummary.category_breakdown)
-          .filter(([category]) => !OPPORTUNITY_CATEGORIES.includes(category as any))
-          .map(([category, value], index) => ({
-            name: category,
-            value: value,
-            fill: DXC_COLORS[(OPPORTUNITY_CATEGORIES.length + index) % DXC_COLORS.length]
-          }))
-      ) : [];
+      : [];
 
 
   const formatCurrency = (value: number) => {
@@ -134,7 +125,7 @@ const Dashboard: React.FC = () => {
       return [];
     }
 
-    return Object.entries(leadOfferingForecast.lead_offering_data).map(([leadOffering, data]: [string, any]) => ({
+    return Object.entries(leadOfferingForecast.lead_offering_data as Record<string, any>).map(([leadOffering, data]) => ({
       leadOffering: leadOffering as ServiceLine,
       revenue: data.revenue || 0,
       percentage: data.percentage || 0,
@@ -165,10 +156,12 @@ const Dashboard: React.FC = () => {
     }));
   };
 
+
   const forecastData = generateForecastData();
   const serviceLineData = generateServiceLineData();
   const leadOfferingData = generateLeadOfferingData();
   const timelineData = generateTimelineData();
+
 
   const renderActiveView = () => {
     switch (activeView) {
@@ -347,7 +340,7 @@ const Dashboard: React.FC = () => {
       case 'resources':
         return (
           <div className="space-y-8">
-            <ResourceTimelineCard />
+            <ResourceTimelineCard filters={filters} />
           </div>
         );
 
@@ -493,7 +486,7 @@ const Dashboard: React.FC = () => {
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            onClick={() => setActiveView(key as any)}
+            onClick={() => setActiveView(key as 'overview' | 'forecast' | 'resources' | 'timeline')}
             className={`tab ${activeView === key ? 'tab-active' : ''} flex items-center gap-2`}
           >
             <Icon className="w-4 h-4" />

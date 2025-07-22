@@ -33,19 +33,26 @@ interface UsePortfolioResourceForecastOptions {
   endDate?: Date;
   timePeriod?: 'week' | 'month' | 'quarter';
   enabled?: boolean;
+  filters?: {
+    stage?: string;
+    category?: string;
+    service_line?: string;
+    lead_offering?: string;
+  };
 }
 
 export function usePortfolioResourceForecast(options: UsePortfolioResourceForecastOptions = {}) {
-  const { startDate, endDate, timePeriod = 'month', enabled = true } = options;
+  const { startDate, endDate, timePeriod = 'month', enabled = true, filters } = options;
 
   return useQuery<PortfolioResourceForecast, Error>({
-    queryKey: ['portfolio-resource-forecast', startDate?.toISOString(), endDate?.toISOString(), timePeriod],
+    queryKey: ['portfolio-resource-forecast', startDate?.toISOString(), endDate?.toISOString(), timePeriod, filters],
     queryFn: async () => {
       try {
         const response = await api.getPortfolioResourceForecast({
           startDate,
           endDate,
           timePeriod,
+          filters,
         });
         return response;
       } catch (error) {
@@ -56,6 +63,24 @@ export function usePortfolioResourceForecast(options: UsePortfolioResourceForeca
     enabled,
     staleTime: 300000, // 5 minutes
     gcTime: 600000, // 10 minutes
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useTimelineDataBounds() {
+  return useQuery<{earliest_date: string | null, latest_date: string | null}, Error>({
+    queryKey: ['timeline-data-bounds'],
+    queryFn: async () => {
+      try {
+        const response = await api.getTimelineDataBounds();
+        return response;
+      } catch (error) {
+        console.error('Timeline data bounds error:', error);
+        throw error;
+      }
+    },
+    staleTime: 600000, // 10 minutes - this doesn't change often
+    gcTime: 1200000, // 20 minutes
     refetchOnWindowFocus: false,
   });
 }

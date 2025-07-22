@@ -195,32 +195,34 @@ def calculate_opportunity_resource_timeline(
     # Current stage (default to 01 if not set)
     current_stage = opportunity.sales_stage or "01"
     
-    # Calculate timeline for each service line that has revenue
+    # Calculate timeline for each service line that has revenue or fallback to lead offering
     service_line_timelines = {}
+    service_lines_to_process = []
     
     # Check MW service line
     if opportunity.mw_millions and opportunity.mw_millions > 0:
-        timeline = calculate_stage_timeline(
-            opportunity.decision_date,
-            current_stage,
-            "MW",
-            category,
-            session
-        )
-        if timeline:
-            service_line_timelines["MW"] = timeline
+        service_lines_to_process.append("MW")
     
     # Check ITOC service line
     if opportunity.itoc_millions and opportunity.itoc_millions > 0:
+        service_lines_to_process.append("ITOC")
+    
+    # Fallback to lead offering if no service line revenue
+    if not service_lines_to_process and opportunity.lead_offering_l1:
+        if opportunity.lead_offering_l1 in SUPPORTED_SERVICE_LINES:
+            service_lines_to_process.append(opportunity.lead_offering_l1)
+    
+    # Generate timelines for determined service lines
+    for service_line in service_lines_to_process:
         timeline = calculate_stage_timeline(
             opportunity.decision_date,
             current_stage,
-            "ITOC",
+            service_line,
             category,
             session
         )
         if timeline:
-            service_line_timelines["ITOC"] = timeline
+            service_line_timelines[service_line] = timeline
     
     return {
         "opportunity_id": opportunity.opportunity_id,  # Return the string ID

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Settings, DollarSign, Users, TrendingUp } from 'lucide-react';
+import { Settings, DollarSign, Users, TrendingUp, Clock } from 'lucide-react';
 import { useCategories } from '../hooks/useConfig';
 import LoadingSpinner from '../components/LoadingSpinner';
 import CategoriesTab from '../components/config/CategoriesTab';
 import ServiceLineResourceTab from '../components/config/ServiceLineResourceTab';
 import ServiceLineAllocationTab from '../components/config/ServiceLineAllocationTab';
+import TimelineGenerationTab from '../components/config/TimelineGenerationTab';
 
-type ConfigTab = 'categories' | 'service-line-resources' | 'service-allocation';
+type ConfigTab = 'categories' | 'service-line-resources' | 'service-allocation' | 'timeline-generation';
 
 const Config: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ConfigTab>('categories');
@@ -52,6 +53,13 @@ const Config: React.FC = () => {
       icon: TrendingUp,
       description: 'Analyze resource allocation and capacity planning across service lines',
       count: 6 // Number of service lines
+    },
+    {
+      id: 'timeline-generation' as const,
+      label: 'Timeline Generation',
+      icon: Clock,
+      description: 'Generate and regenerate resource timelines for opportunities',
+      count: 0 // Will be populated by the component
     }
   ];
 
@@ -63,6 +71,8 @@ const Config: React.FC = () => {
         return <ServiceLineResourceTab categories={categories || []} />;
       case 'service-allocation':
         return <ServiceLineAllocationTab />;
+      case 'timeline-generation':
+        return <TimelineGenerationTab />;
       default:
         return null;
     }
