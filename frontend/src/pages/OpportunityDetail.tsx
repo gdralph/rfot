@@ -682,70 +682,71 @@ const OpportunityDetail: React.FC = () => {
                   </span>
                 </div>
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{opportunity.opportunity_name}</h1>
+              <h1 className="text-lg md:text-xl font-bold text-gray-900">{opportunity.opportunity_name}</h1>
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-5">
         {/* Opportunity Details */}
-        <div className="card">
-          <h2 className="text-dxc-subtitle font-semibold mb-4">Opportunity Details</h2>
-          <div className="space-y-2">
+        <div className="card p-3">
+          <h2 className="text-base font-semibold mb-1.5">Opportunity Details</h2>
+          <div className="space-y-0.5">
             <div className="flex justify-between items-center">
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Stage</dt>
-              <dd className="text-dxc-body font-medium">{opportunity.sales_stage}</dd>
+              <dt className="text-xs font-bold text-gray-600">Stage</dt>
+              <dd className="text-xs font-medium">{opportunity.sales_stage}</dd>
             </div>
             <div className="flex justify-between items-center">
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Total Contract Value</dt>
-              <dd className="text-dxc-body font-medium text-dxc-purple">
-                {formatCurrency(opportunity.tcv_millions || 0)}
-              </dd>
+              <dt className="text-xs font-bold text-gray-600">Close Date</dt>
+              <dd className="text-xs">{formatDate(opportunity.decision_date)}</dd>
             </div>
             <div className="flex justify-between items-center">
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Close Date</dt>
-              <dd className="text-dxc-body">{formatDate(opportunity.decision_date)}</dd>
-            </div>
-            <div className="flex justify-between items-center">
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Category</dt>
-              <dd className="text-dxc-body">{getOpportunityCategory(opportunity.tcv_millions, categories)}</dd>
+              <dt className="text-xs font-bold text-gray-600">Category</dt>
+              <dd className="text-xs">{getOpportunityCategory(opportunity.tcv_millions, categories)}</dd>
             </div>
             {opportunity.opportunity_type && (
               <div className="flex justify-between items-center">
-                <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Type</dt>
-                <dd className="text-dxc-body">{opportunity.opportunity_type}</dd>
+                <dt className="text-xs font-bold text-gray-600">Type</dt>
+                <dd className="text-xs">{opportunity.opportunity_type}</dd>
               </div>
             )}
             {opportunity.lead_offering_l1 && (
               <div className="flex justify-between items-center">
-                <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Lead Offering</dt>
-                <dd className="text-dxc-body">{opportunity.lead_offering_l1}</dd>
+                <dt className="text-xs font-bold text-gray-600">Lead Offering</dt>
+                <dd className="text-xs">{opportunity.lead_offering_l1}</dd>
               </div>
             )}
             {opportunity.contract_length && (
               <div className="flex justify-between items-center">
-                <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Contract Length</dt>
-                <dd className="text-dxc-body">{opportunity.contract_length} years</dd>
+                <dt className="text-xs font-bold text-gray-600">Contract Length</dt>
+                <dd className="text-xs">{opportunity.contract_length} years</dd>
               </div>
             )}
             {opportunity.sales_org_l1 && (
               <div className="flex justify-between items-center">
-                <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Sales Org</dt>
-                <dd className="text-dxc-body">{opportunity.sales_org_l1}</dd>
+                <dt className="text-xs font-bold text-gray-600">Sales Org</dt>
+                <dd className="text-xs">{opportunity.sales_org_l1}</dd>
               </div>
             )}
-            {opportunity.master_period && (
-              <div className="flex justify-between items-center">
-                <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Master Period</dt>
-                <dd className="text-dxc-body">{opportunity.master_period}</dd>
-              </div>
-            )}
+          </div>
+        </div>
+
+        {/* Financial Details */}
+        <div className="card p-3">
+          <h2 className="text-base font-semibold mb-1.5">Financial Summary</h2>
+          <div className="space-y-0.5">
             <div className="flex justify-between items-center">
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">In Forecast</dt>
-              <dd className="text-dxc-body">
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              <dt className="text-xs font-bold text-gray-600">Total Contract Value</dt>
+              <dd className="text-xs font-medium text-dxc-purple">
+                {formatCurrency(opportunity.tcv_millions || 0)}
+              </dd>
+            </div>
+            <div className="flex justify-between items-center">
+              <dt className="text-xs font-bold text-gray-600">In Forecast</dt>
+              <dd className="text-xs">
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
                   opportunity.in_forecast === 'Y' ? 'bg-green-100 text-green-800' :
                   opportunity.in_forecast === 'N' ? 'bg-red-100 text-red-800' :
                   'bg-gray-100 text-gray-800'
@@ -754,17 +755,16 @@ const OpportunityDetail: React.FC = () => {
                 </span>
               </dd>
             </div>
-          </div>
-        </div>
-
-        {/* Financial Details */}
-        <div className="card">
-          <h2 className="text-dxc-subtitle font-semibold mb-4">Financial Summary</h2>
-          <div className="space-y-2">
+            {opportunity.master_period && (
+              <div className="flex justify-between items-center">
+                <dt className="text-xs font-bold text-gray-600">Master Period</dt>
+                <dd className="text-xs">{opportunity.master_period}</dd>
+              </div>
+            )}
             {opportunity.margin_percentage && (
               <div className="flex justify-between items-center">
-                <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Margin %</dt>
-                <dd className={`text-dxc-body font-medium ${
+                <dt className="text-xs font-bold text-gray-600">Margin %</dt>
+                <dd className={`text-xs font-medium ${
                   opportunity.margin_percentage >= 20 ? 'text-green-600' :
                   opportunity.margin_percentage >= 10 ? 'text-yellow-600' :
                   'text-red-600'
@@ -774,21 +774,21 @@ const OpportunityDetail: React.FC = () => {
               </div>
             )}
             <div className="flex justify-between items-center">
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">First Year Revenue</dt>
-              <dd className="text-dxc-body font-medium text-dxc-purple">
+              <dt className="text-xs font-bold text-gray-600">First Year Revenue</dt>
+              <dd className="text-xs font-medium text-dxc-purple">
                 {formatCurrency(opportunity.first_year_fy_rev || 0)}
               </dd>
             </div>
             <div className="flex justify-between items-center">
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Second Year Revenue</dt>
-              <dd className="text-dxc-body font-medium">
+              <dt className="text-xs font-bold text-gray-600">Second Year Revenue</dt>
+              <dd className="text-xs font-medium">
                 {formatCurrency(opportunity.second_year_fy_rev || 0)}
               </dd>
             </div>
             {opportunity.fy_rev_beyond_yr2 && (
               <div className="flex justify-between items-center">
-                <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Beyond Year 2</dt>
-                <dd className="text-dxc-body font-medium">
+                <dt className="text-xs font-bold text-gray-600">Beyond Year 2</dt>
+                <dd className="text-xs font-medium">
                   {formatCurrency(opportunity.fy_rev_beyond_yr2)}
                 </dd>
               </div>
@@ -797,23 +797,23 @@ const OpportunityDetail: React.FC = () => {
         </div>
 
         {/* User-Managed Fields */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-dxc-subtitle font-semibold">Custom Fields</h2>
-            <div className="flex gap-2">
+        <div className="card p-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <h2 className="text-base font-semibold">Custom Fields</h2>
+            <div className="flex gap-1.5">
               {!isEditingCustomFields ? (
-                <button onClick={handleEditCustomFields} className="btn-primary text-sm px-3 py-1">
+                <button onClick={handleEditCustomFields} className="btn-primary text-xs px-2 py-0.5">
                   Edit
                 </button>
               ) : (
                 <>
-                  <button onClick={handleCancelCustomFields} className="btn-secondary text-sm px-3 py-1">
+                  <button onClick={handleCancelCustomFields} className="btn-secondary text-xs px-2 py-0.5">
                     Cancel
                   </button>
                   <button
                     onClick={handleSaveCustomFields}
                     disabled={updateMutation.isPending}
-                    className="btn-primary text-sm px-3 py-1 disabled:opacity-50"
+                    className="btn-primary text-xs px-2 py-0.5 disabled:opacity-50"
                   >
                     {updateMutation.isPending ? 'Saving...' : 'Save'}
                   </button>
@@ -821,17 +821,17 @@ const OpportunityDetail: React.FC = () => {
               )}
             </div>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-1">
             {isEditingCustomFields ? (
               <>
                 <div>
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">
+                  <dt className="text-xs font-bold text-gray-600 mb-0.5">
                     Security Clearance
                   </dt>
                   <select
                     value={formData.security_clearance || ''}
                     onChange={(e) => handleInputChange('security_clearance', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-dxc-purple focus:border-transparent"
                   >
                     <option value="">No clearance required</option>
                     <option value="BPSS">BPSS</option>
@@ -840,81 +840,81 @@ const OpportunityDetail: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Custom Priority</dt>
+                  <dt className="text-xs font-bold text-gray-600 mb-0.5">Custom Priority</dt>
                   <input
                     type="text"
                     value={formData.custom_priority || ''}
                     onChange={(e) => handleInputChange('custom_priority', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-dxc-purple focus:border-transparent"
                     placeholder="e.g. High, Medium, Low"
                   />
                 </div>
                 <div>
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Internal Stage Assessment</dt>
+                  <dt className="text-xs font-bold text-gray-600 mb-0.5">Internal Stage Assessment</dt>
                   <input
                     type="text"
                     value={formData.internal_stage_assessment || ''}
                     onChange={(e) => handleInputChange('internal_stage_assessment', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-dxc-purple focus:border-transparent"
                     placeholder="Internal stage assessment"
                   />
                 </div>
                 <div>
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Custom Field 1</dt>
+                  <dt className="text-xs font-bold text-gray-600 mb-0.5">Custom Field 1</dt>
                   <input
                     type="text"
                     value={formData.custom_tracking_field_1 || ''}
                     onChange={(e) => handleInputChange('custom_tracking_field_1', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-dxc-purple focus:border-transparent"
                     placeholder="Custom tracking field 1"
                   />
                 </div>
                 <div>
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Custom Field 2</dt>
+                  <dt className="text-xs font-bold text-gray-600 mb-0.5">Custom Field 2</dt>
                   <input
                     type="text"
                     value={formData.custom_tracking_field_2 || ''}
                     onChange={(e) => handleInputChange('custom_tracking_field_2', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-dxc-purple focus:border-transparent"
                     placeholder="Custom tracking field 2"
                   />
                 </div>
                 <div>
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Custom Field 3</dt>
+                  <dt className="text-xs font-bold text-gray-600 mb-0.5">Custom Field 3</dt>
                   <input
                     type="text"
                     value={formData.custom_tracking_field_3 || ''}
                     onChange={(e) => handleInputChange('custom_tracking_field_3', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    className="w-full px-1.5 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-dxc-purple focus:border-transparent"
                     placeholder="Custom tracking field 3"
                   />
                 </div>
               </>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-0.5">
                 <div className="flex justify-between items-center">
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Security Clearance</dt>
-                  <dd className="text-dxc-body">{opportunity.security_clearance || 'None required'}</dd>
+                  <dt className="text-xs font-bold text-gray-600">Security Clearance</dt>
+                  <dd className="text-xs">{opportunity.security_clearance || 'None required'}</dd>
                 </div>
                 <div className="flex justify-between items-center">
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Custom Priority</dt>
-                  <dd className="text-dxc-body">{opportunity.custom_priority || 'Not set'}</dd>
+                  <dt className="text-xs font-bold text-gray-600">Custom Priority</dt>
+                  <dd className="text-xs">{opportunity.custom_priority || 'Not set'}</dd>
                 </div>
                 <div className="flex justify-between items-center">
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Internal Stage Assessment</dt>
-                  <dd className="text-dxc-body">{opportunity.internal_stage_assessment || 'Not set'}</dd>
+                  <dt className="text-xs font-bold text-gray-600">Internal Stage Assessment</dt>
+                  <dd className="text-xs">{opportunity.internal_stage_assessment || 'Not set'}</dd>
                 </div>
                 <div className="flex justify-between items-center">
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Custom Field 1</dt>
-                  <dd className="text-dxc-body">{opportunity.custom_tracking_field_1 || 'Not set'}</dd>
+                  <dt className="text-xs font-bold text-gray-600">Custom Field 1</dt>
+                  <dd className="text-xs">{opportunity.custom_tracking_field_1 || 'Not set'}</dd>
                 </div>
                 <div className="flex justify-between items-center">
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Custom Field 2</dt>
-                  <dd className="text-dxc-body">{opportunity.custom_tracking_field_2 || 'Not set'}</dd>
+                  <dt className="text-xs font-bold text-gray-600">Custom Field 2</dt>
+                  <dd className="text-xs">{opportunity.custom_tracking_field_2 || 'Not set'}</dd>
                 </div>
                 <div className="flex justify-between items-center">
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Custom Field 3</dt>
-                  <dd className="text-dxc-body">{opportunity.custom_tracking_field_3 || 'Not set'}</dd>
+                  <dt className="text-xs font-bold text-gray-600">Custom Field 3</dt>
+                  <dd className="text-xs">{opportunity.custom_tracking_field_3 || 'Not set'}</dd>
                 </div>
               </div>
             )}
