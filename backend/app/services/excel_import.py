@@ -347,7 +347,9 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                     ).first()
                     
                     if existing:
-                        # Update existing opportunity with all fields
+                        # Update existing opportunity with all fields EXCEPT user-managed fields
+                        # User-managed fields are preserved during imports: security_clearance, custom_priority,
+                        # internal_stage_assessment, custom_tracking_field_1/2/3, internal_notes
                         update_fields = [
                             "sfdc_url", "account_name", "opportunity_name", "opportunity_type", "tcv_millions",
                             "margin_percentage", "first_year_q1_rev", "first_year_q2_rev", "first_year_q3_rev",

@@ -41,6 +41,15 @@ class OpportunityBase(SQLModel):
     itoc_millions: Optional[float] = None
     mw_millions: Optional[float] = None
     sales_org_l1: Optional[str] = None
+    
+    # User-managed fields (not overwritten by Excel imports)
+    security_clearance: Optional[str] = Field(default=None, description="Security clearance requirement: BPSS, SC, or DV")
+    custom_priority: Optional[str] = Field(default=None, description="User-defined priority level")
+    internal_stage_assessment: Optional[str] = Field(default=None, description="Internal assessment of opportunity stage")
+    custom_tracking_field_1: Optional[str] = Field(default=None, description="Custom tracking field 1")
+    custom_tracking_field_2: Optional[str] = Field(default=None, description="Custom tracking field 2")
+    custom_tracking_field_3: Optional[str] = Field(default=None, description="Custom tracking field 3")
+    internal_notes: Optional[str] = Field(default=None, description="Internal notes and comments")
 
     # Removed revenue validation to allow negative TCV for certain business scenarios
     
@@ -48,6 +57,12 @@ class OpportunityBase(SQLModel):
     def validate_margin_percentage(cls, v):
         if v is not None and (v < -100 or v > 100):
             raise ValueError('Margin percentage must be between -100 and 100')
+        return v
+    
+    @validator('security_clearance')
+    def validate_security_clearance(cls, v):
+        if v is not None and v not in ['', 'BPSS', 'SC', 'DV']:
+            raise ValueError('Security clearance must be blank, BPSS, SC, or DV')
         return v
 
 
@@ -76,6 +91,15 @@ class OpportunityUpdate(SQLModel):
     sales_stage: Optional[str] = None
     decision_date: Optional[datetime] = None
     opportunity_owner: Optional[str] = None
+    
+    # User-managed fields
+    security_clearance: Optional[str] = None
+    custom_priority: Optional[str] = None
+    internal_stage_assessment: Optional[str] = None
+    custom_tracking_field_1: Optional[str] = None
+    custom_tracking_field_2: Optional[str] = None
+    custom_tracking_field_3: Optional[str] = None
+    internal_notes: Optional[str] = None
 
 
 class OpportunityRead(OpportunityBase):
