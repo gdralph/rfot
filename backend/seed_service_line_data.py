@@ -9,12 +9,15 @@ based on the specifications provided.
 from sqlmodel import Session, select
 import sys
 import os
+import structlog
 
 # Add the app directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
 
 from app.models.database import engine
 from app.models.config import ServiceLineStageEffort, OpportunityCategory
+
+logger = structlog.get_logger()
 
 # MW (Modern Workplace) Resource Templates - Exact values from user specification
 MW_TEMPLATES = {
@@ -133,14 +136,14 @@ def seed_service_line_stage_efforts():
             print(f"  - {cat.name} (ID: {cat.id})")
         
         # Process MW templates
-        print("\nSeeding MW (Modern Workplace) templates...")
+        logger.info("Seeding MW (Modern Workplace) templates")
         for category_name, stages in MW_TEMPLATES.items():
             category = category_by_name.get(category_name)
             if not category:
-                print(f"  WARNING: Category '{category_name}' not found, skipping...")
+                logger.warning("Category not found, skipping", category=category_name)
                 continue
                 
-            print(f"  Processing {category_name}...")
+            logger.info("Processing MW category", category=category_name)
             for stage_name, config in stages.items():
                 # Create new effort record
                 effort = ServiceLineStageEffort(
@@ -153,17 +156,17 @@ def seed_service_line_stage_efforts():
                 
                 session.add(effort)
                 total_effort = config["duration_weeks"] * config["fte_required"]
-                print(f"    {stage_name}: {config['duration_weeks']}w × {config['fte_required']} FTE = {total_effort} FTE-weeks")
+                logger.debug("MW stage added", stage=stage_name, duration_weeks=config['duration_weeks'], fte_required=config['fte_required'], total_effort=total_effort)
         
         # Process ITOC templates
-        print("\nSeeding ITOC (Infrastructure & Cloud) templates...")
+        logger.info("Seeding ITOC (Infrastructure & Cloud) templates")
         for category_name, stages in ITOC_TEMPLATES.items():
             category = category_by_name.get(category_name)
             if not category:
-                print(f"  WARNING: Category '{category_name}' not found, skipping...")
+                logger.warning("Category not found, skipping", category=category_name)
                 continue
                 
-            print(f"  Processing {category_name}...")
+            logger.info("Processing ITOC category", category=category_name)
             for stage_name, config in stages.items():
                 # Create new effort record
                 effort = ServiceLineStageEffort(
@@ -176,11 +179,11 @@ def seed_service_line_stage_efforts():
                 
                 session.add(effort)
                 total_effort = config["duration_weeks"] * config["fte_required"]
-                print(f"    {stage_name}: {config['duration_weeks']}w × {config['fte_required']} FTE = {total_effort} FTE-weeks")
+                logger.debug("MW stage added", stage=stage_name, duration_weeks=config['duration_weeks'], fte_required=config['fte_required'], total_effort=total_effort)
         
         # Commit all changes
         session.commit()
-        print("\nService Line Stage Effort data seeded successfully!")
+        logger.info("Service Line Stage Effort data seeded successfully")
         
         # Show summary
         mw_count = session.exec(
@@ -190,12 +193,9 @@ def seed_service_line_stage_efforts():
             select(ServiceLineStageEffort).where(ServiceLineStageEffort.service_line == "ITOC")
         ).all()
         
-        print(f"\nSummary:")
-        print(f"  MW entries: {len(mw_count)}")
-        print(f"  ITOC entries: {len(itoc_count)}")
-        print(f"  Total: {len(mw_count) + len(itoc_count)}")
+        logger.info("Service line stage effort seeding summary", mw_entries=len(mw_count), itoc_entries=len(itoc_count), total=len(mw_count) + len(itoc_count))
 
 
 if __name__ == "__main__":
-    print("Seeding Service Line Stage Effort data...")
+    logger.info("Starting Service Line Stage Effort data seeding")
     seed_service_line_stage_efforts()

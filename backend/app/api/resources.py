@@ -455,7 +455,7 @@ def get_portfolio_resource_forecast(
             "start_date": start_date.isoformat() if start_date else None,
             "end_date": end_date.isoformat() if end_date else None,
             "timeline_opportunities": len(opportunity_ids),
-            "missing_timelines": 0  # TODO: Calculate missing timelines
+            "missing_timelines": _calculate_missing_timelines_count(session, service_line, category)
         },
         monthly_forecast=time_period_forecast,
         processed_opportunities=[]  # Can be populated if needed
@@ -913,6 +913,71 @@ def generate_bulk_timelines(
     )
 
 
+def _calculate_missing_timelines_count(session: Session, 
+                                     service_line_filter: Optional[str] = None,
+                                     category_filter: Optional[str] = None) -> int:
+    """
+    Calculate how many opportunities are eligible for timeline generation but don't have timelines.
+    
+    Returns count of opportunities that:
+    - Are eligible for timeline generation (_is_opportunity_eligible_for_generation)
+    - Do NOT have existing OpportunityResourceTimeline records
+    - Match any provided filters
+    """
+    from app.models.config import OpportunityCategory
+    
+    # Get all opportunities
+    opportunities = session.exec(select(Opportunity)).all()
+    
+    missing_count = 0
+    for opp in opportunities:
+        # Check eligibility first
+        if not _is_opportunity_eligible_for_generation(opp, session):
+            continue
+            
+        # Check if timeline already exists
+        existing_timeline = session.exec(
+            select(OpportunityResourceTimeline).where(
+                OpportunityResourceTimeline.opportunity_id == opp.opportunity_id
+            ).limit(1)
+        ).first()
+        
+        if existing_timeline:
+            continue  # Has timeline, not missing
+            
+        # Apply filters if provided
+        if service_line_filter or category_filter:
+            # Check if this opportunity would generate timeline for filtered service line/category
+            if category_filter:
+                # Get opportunity category
+                categories = session.exec(select(OpportunityCategory)).all()
+                opp_category = None
+                for cat in categories:
+                    if cat.min_tcv <= (opp.tcv_millions or 0) <= (cat.max_tcv or float('inf')):
+                        opp_category = cat.name
+                        break
+                
+                if opp_category != category_filter:
+                    continue
+                    
+            if service_line_filter:
+                # Check which service lines this opportunity would process
+                service_lines_to_process = []
+                if opp.mw_millions and opp.mw_millions > 0:
+                    service_lines_to_process.append("MW")
+                if opp.itoc_millions and opp.itoc_millions > 0:
+                    service_lines_to_process.append("ITOC")
+                if not service_lines_to_process and opp.lead_offering_l1 in SUPPORTED_SERVICE_LINES:
+                    service_lines_to_process.append(opp.lead_offering_l1)
+                    
+                if service_line_filter not in service_lines_to_process:
+                    continue
+        
+        missing_count += 1
+    
+    return missing_count
+
+
 def _is_opportunity_eligible_for_generation(opportunity: Opportunity, session: Session) -> bool:
     """
     Check if an opportunity is eligible for timeline generation.
@@ -1019,5 +1084,5 @@ def _generate_timeline_for_opportunity(opportunity: Opportunity, session: Sessio
                 session.add(timeline_record)
                 
     except Exception as e:
-        # Re-raise the exception to be caught by the calling function
-        raise e
+        # Re-raise with more context for debugging
+        raise RuntimeError(f"Failed to generate timeline for opportunity: {str(e)}") from e

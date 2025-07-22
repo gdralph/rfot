@@ -7,9 +7,12 @@ and stage effort estimates.
 
 import asyncio
 from sqlmodel import Session, select
+import structlog
 
 from app.models.database import engine
 from app.models.config import OpportunityCategory
+
+logger = structlog.get_logger()
 
 
 def create_seed_data():
@@ -19,10 +22,10 @@ def create_seed_data():
         # Check if data already exists
         existing_categories = session.exec(select(OpportunityCategory)).first()
         if existing_categories:
-            print("Seed data already exists. Skipping...")
+            logger.info("Seed data already exists, skipping creation")
             return
             
-        print("Creating seed data...")
+        logger.info("Creating seed data for opportunity categories")
         
         # Create Opportunity Categories (based on TCV ranges)
         categories = [
@@ -45,8 +48,7 @@ def create_seed_data():
         
         
         session.commit()
-        print(f"Created {len(categories)} opportunity categories")
-        print("Seed data creation completed!")
+        logger.info("Seed data creation completed", categories_created=len(categories))
 
 
 if __name__ == "__main__":

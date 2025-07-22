@@ -188,9 +188,46 @@ Excel import uses background tasks with progress tracking:
 - Pre-commit hooks enforce code quality standards
 - Environment variables managed via `.env` files
 
+## Critical Technical Patterns & Architecture Details
+
+### Resource Timeline Calculation System
+The core business logic revolves around resource timeline calculations:
+- **`_is_opportunity_eligible_for_generation()`** function in `app/api/resources.py` determines eligibility based on TCV, decision date, category mapping, and service line configuration
+- **Service Lines**: Only MW (Modern Workplace) and ITOC (Infrastructure & Cloud) have full resource planning templates
+- **Category Mapping**: TCV amounts map to categories (Sub $5M, Cat C, Cat B, Cat A) via `OpportunityCategory` database records
+- **Timeline Generation**: Uses `ServiceLineStageEffort` templates to calculate FTE requirements across sales stages
+- **Missing Timeline Calculation**: `_calculate_missing_timelines_count()` identifies opportunities eligible for timeline generation but lacking timeline data
+
+### Database Architecture Patterns
+- **SQLModel + Pydantic**: All models use modern Pydantic v2 field validators (`@field_validator` with `@classmethod`)
+- **Configuration-Driven**: Categories and stage efforts are database-driven, not hardcoded
+- **Resource Timeline**: `OpportunityResourceTimeline` stores calculated FTE requirements by service line and stage
+- **Background Processing**: Excel imports run as background tasks with progress tracking via `ImportTask` model
+
+### Frontend Architecture Specifics
+- **TanStack Query**: All server state managed through query keys pattern (`OPPORTUNITY_KEYS`, `RESOURCE_TIMELINE_KEYS`)
+- **Type Safety**: Uses `.js` extensions in import paths for TypeScript compatibility
+- **Chart Integration**: Recharts components with DXC color schemes (`DXC_COLORS` array)
+- **Error Handling**: Uses `ErrorBoundary` component with `import.meta.env.DEV` for development detection
+- **State Management**: Custom hooks encapsulate all API interactions (`useOpportunities`, `useResourceTimeline`)
+
+### Key Business Logic Flows
+1. **Excel Import**: File upload → Background processing → Progress polling → Database upsert → UI refresh
+2. **Resource Calculation**: Opportunity data → Eligibility check → Category mapping → Service line template lookup → Timeline generation
+3. **Dashboard Updates**: TanStack Query invalidation → Automatic refetch → Real-time UI updates
+
+### Code Quality Standards
+- **Logging**: Uses `structlog` for structured logging, no `print()` statements in production code
+- **Error Handling**: Specific error messages with `raise ... from e` pattern, avoid generic `raise e`
+- **Type Safety**: Modern Pydantic validators, proper TypeScript types, `any` type used sparingly for complex chart data
+- **Database Migrations**: Alembic migrations manage schema changes, use `python3 -m alembic` prefix
+
 ## Memories
 - Always use the opportunitycategory in the database for category definitions
 - Always use the servicelinestageeffort for resource/fte calculations against opportunities
+- When working with resource timelines, check eligibility first using `_is_opportunity_eligible_for_generation()`
+- Frontend builds require resolving TypeScript unused variable/import issues - comment out unused code rather than delete
+- Backend uses modern FastAPI lifespan events, not deprecated `@app.on_event` handlers
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.

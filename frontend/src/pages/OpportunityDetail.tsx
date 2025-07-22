@@ -2,11 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOpportunity, useOpportunityLineItems, useUpdateOpportunity } from '../hooks/useOpportunities';
 import { useCategories } from '../hooks/useConfig';
-import { useResourceTimeline, useCalculateResourceTimeline, useDeleteResourceTimeline, useUpdateResourceTimelineStatus, useUpdateResourceTimelineData } from '../hooks/useResourceTimeline';
+import { useResourceTimeline, useCalculateResourceTimeline, useUpdateResourceTimelineData } from '../hooks/useResourceTimeline';
 import LoadingSpinner from '../components/LoadingSpinner';
-import type { OpportunityFormData, ChartDataPoint, Opportunity, OpportunityCategory, OpportunityEffortPrediction, StageTimelineData } from '../types/index';
+import type { OpportunityFormData, Opportunity, OpportunityCategory, OpportunityEffortPrediction, StageTimelineData } from '../types/index';
 import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES } from '../types/index';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, AreaChart, Area, CartesianGrid, Legend } from 'recharts';
+import { ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, AreaChart, Area, CartesianGrid, Legend } from 'recharts';
 import { TrendingUp, BarChart3, Layers, Calendar, Users, FileText, DollarSign } from 'lucide-react';
 
 type ResourceStatus = 'Predicted' | 'Forecast' | 'Planned';
@@ -53,15 +53,15 @@ const OpportunityDetail: React.FC = () => {
   const opportunityId = id ? parseInt(id, 10) : 0;
 
   const { data: opportunity, isLoading: opportunityLoading, error: opportunityError } = useOpportunity(opportunityId);
-  const { data: lineItems, isLoading: lineItemsLoading } = useOpportunityLineItems(opportunityId);
+  const { data: lineItems } = useOpportunityLineItems(opportunityId);
   const { data: categories = [], isLoading: categoriesLoading } = useCategories();
   const updateMutation = useUpdateOpportunity();
 
   // Resource Timeline hooks - always enabled, but with graceful error handling
-  const { data: resourceTimeline, isLoading: timelineLoading, error: timelineError } = useResourceTimeline(opportunityId);
+  const { data: resourceTimeline } = useResourceTimeline(opportunityId);
   const calculateTimelineMutation = useCalculateResourceTimeline();
-  const deleteTimelineMutation = useDeleteResourceTimeline();
-  const updateStatusMutation = useUpdateResourceTimelineStatus();
+  // const deleteTimelineMutation = useDeleteResourceTimeline();
+  // const updateStatusMutation = useUpdateResourceTimelineStatus();
   const updateTimelineDataMutation = useUpdateResourceTimelineData();
 
   const [isEditingCustomFields, setIsEditingCustomFields] = useState(false);
@@ -144,8 +144,7 @@ const OpportunityDetail: React.FC = () => {
       await updateMutation.mutateAsync({
         id: opportunityId,
         data: {
-          assigned_resource: formData.assigned_resource,
-          status: formData.status,
+          opportunity_owner: formData.assigned_resource,
           security_clearance: formData.security_clearance,
           custom_priority: formData.custom_priority,
           internal_stage_assessment: formData.internal_stage_assessment,
@@ -205,17 +204,17 @@ const OpportunityDetail: React.FC = () => {
     }
   };
 
-  const handleDeleteTimeline = async () => {
-    if (window.confirm('Are you sure you want to delete the existing resource timeline? This action cannot be undone.')) {
-      try {
-        await deleteTimelineMutation.mutateAsync(opportunityId);
-        // Success feedback could be added here if needed
-      } catch (error) {
-        console.error('Failed to delete resource timeline:', error);
-        // Error handling is shown in the UI via mutation state
-      }
-    }
-  };
+  // const handleDeleteTimeline = async () => {
+  //   if (window.confirm('Are you sure you want to delete the existing resource timeline? This action cannot be undone.')) {
+  //     try {
+  //       await deleteTimelineMutation.mutateAsync(opportunityId);
+  //       // Success feedback could be added here if needed
+  //     } catch (error) {
+  //       console.error('Failed to delete resource timeline:', error);
+  //       // Error handling is shown in the UI via mutation state
+  //     }
+  //   }
+  // };
 
   // Status modal functions
   const handleOpenStatusModal = () => {
@@ -331,28 +330,28 @@ const OpportunityDetail: React.FC = () => {
   };
 
   // Get the service lines that will be used for calculation
-  const getCalculationServiceLines = (opp: Opportunity): string[] => {
-    if (!opp) return [];
-    
-    const serviceLines: string[] = [];
-    
-    // Add service lines based on TCV
-    if (opp.mw_millions && opp.mw_millions > 0) {
-      serviceLines.push('MW');
-    }
-    if (opp.itoc_millions && opp.itoc_millions > 0) {
-      serviceLines.push('ITOC');
-    }
-    
-    // Fallback to lead offering if no TCV in MW/ITOC
-    if (serviceLines.length === 0 && opp.lead_offering_l1) {
-      if (opp.lead_offering_l1 === 'MW' || opp.lead_offering_l1 === 'ITOC') {
-        serviceLines.push(opp.lead_offering_l1);
-      }
-    }
-    
-    return serviceLines;
-  };
+  // const getCalculationServiceLines = (opp: Opportunity): string[] => {
+  //   if (!opp) return [];
+  //   
+  //   const serviceLines: string[] = [];
+  //   
+  //   // Add service lines based on TCV
+  //   if (opp.mw_millions && opp.mw_millions > 0) {
+  //     serviceLines.push('MW');
+  //   }
+  //   if (opp.itoc_millions && opp.itoc_millions > 0) {
+  //     serviceLines.push('ITOC');
+  //   }
+  //   
+  //   // Fallback to lead offering if no TCV in MW/ITOC
+  //   if (serviceLines.length === 0 && opp.lead_offering_l1) {
+  //     if (opp.lead_offering_l1 === 'MW' || opp.lead_offering_l1 === 'ITOC') {
+  //       serviceLines.push(opp.lead_offering_l1);
+  //     }
+  //   }
+  //   
+  //   return serviceLines;
+  // };
 
   // Check if resource profile has been edited (has non-Predicted statuses)
   const hasEditedResourceProfile = (): boolean => {
@@ -404,29 +403,29 @@ const OpportunityDetail: React.FC = () => {
   };
 
   // Helper function to calculate timeline summary metrics
-  const getTimelineSummary = (effortPrediction: OpportunityEffortPrediction | null) => {
-    if (!effortPrediction?.service_line_timelines) {
-      return { totalEffort: 0, peakFTE: 0, serviceLineCount: 0 };
-    }
-    
-    let totalEffort = 0;
-    let peakFTE = 0;
-    const serviceLines = new Set<string>();
-    
-    Object.entries(effortPrediction.service_line_timelines).forEach(([serviceLine, stages]) => {
-      serviceLines.add(serviceLine);
-      stages.forEach(stage => {
-        totalEffort += stage.total_effort_weeks;
-        peakFTE = Math.max(peakFTE, stage.fte_required);
-      });
-    });
-    
-    return {
-      totalEffort,
-      peakFTE,
-      serviceLineCount: serviceLines.size
-    };
-  };
+  // const getTimelineSummary = (effortPrediction: OpportunityEffortPrediction | null) => {
+  //   if (!effortPrediction?.service_line_timelines) {
+  //     return { totalEffort: 0, peakFTE: 0, serviceLineCount: 0 };
+  //   }
+  //   
+  //   let totalEffort = 0;
+  //   let peakFTE = 0;
+  //   const serviceLines = new Set<string>();
+  //   
+  //   Object.entries(effortPrediction.service_line_timelines).forEach(([serviceLine, stages]) => {
+  //     serviceLines.add(serviceLine);
+  //     stages.forEach(stage => {
+  //       totalEffort += stage.total_effort_weeks;
+  //       peakFTE = Math.max(peakFTE, stage.fte_required);
+  //     });
+  //   });
+  //   
+  //   return {
+  //     totalEffort,
+  //     peakFTE,
+  //     serviceLineCount: serviceLines.size
+  //   };
+  // };
 
   // Check if timeline data exists and is valid
   const hasValidTimeline = (effortPrediction: OpportunityEffortPrediction | undefined | null): boolean => {
@@ -525,11 +524,11 @@ const OpportunityDetail: React.FC = () => {
           }
           
           if (!timelineMap.has(dateKey)) {
-            timelineMap.set(dateKey, { date: dateKey, period: periodLabel });
+            timelineMap.set(dateKey, { date: dateKey as any, period: periodLabel as any });
           }
           
-          const entry = timelineMap.get(dateKey)!;
-          entry[serviceLine] = (entry[serviceLine] || 0) + item.fte_required;
+          const entry = timelineMap.get(dateKey)! as any;
+          entry[serviceLine] = (entry[serviceLine] || 0) + Number(item.fte_required);
           
           currentDate.setDate(currentDate.getDate() + intervalDays);
         }
@@ -537,7 +536,7 @@ const OpportunityDetail: React.FC = () => {
       
       // Convert to array and sort by date
       const chartArray = Array.from(timelineMap.values())
-        .sort((a, b) => a.date.localeCompare(b.date))
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
         .map(item => ({
           ...item,
           period: item.period
@@ -1609,7 +1608,7 @@ const OpportunityDetail: React.FC = () => {
           })()}
 
           {/* Quarterly Revenue Timeline Tab */}
-          {activeResourceTab === 'quarterly-revenue' && quarterlyRevenueData.length > 0 && (
+          {activeResourceTab === 'revenue' && quarterlyRevenueData.length > 0 && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Line Chart */}

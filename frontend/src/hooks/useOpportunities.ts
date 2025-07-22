@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import type { Opportunity, OpportunityFilters, OpportunityUpdate } from '../types/index.js';
+import type { OpportunityFilters, OpportunityUpdate } from '../types/index.js';
 
 // Query keys
 const OPPORTUNITY_KEYS = {

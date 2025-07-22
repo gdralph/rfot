@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ComposedChart, Area, AreaChart } from 'recharts';
-import { TrendingUp, Calendar, Filter, Users, DollarSign, Target, Clock, Zap } from 'lucide-react';
+import { TrendingUp, Users, DollarSign, Target, Clock, Zap } from 'lucide-react';
 import { useForecastSummary, useServiceLineForecast } from '../hooks/useForecasts';
 import { useCategories } from '../hooks/useConfig';
 import { DXC_COLORS, SERVICE_LINES, SALES_STAGES, OPPORTUNITY_CATEGORIES } from '../types/index';
@@ -21,9 +21,9 @@ const Forecast: React.FC = () => {
     category: selectedCategory || undefined
   });
   
-  const { data: serviceLineForecast, isLoading: serviceLoading } = useServiceLineForecast(
-    selectedServiceLine || undefined
-  );
+  const { data: serviceLineForecast, isLoading: serviceLoading } = useServiceLineForecast({
+    service_line: selectedServiceLine || undefined
+  });
   
   const { data: categories, isLoading: categoriesLoading } = useCategories();
 
@@ -84,8 +84,8 @@ const Forecast: React.FC = () => {
 
   const getKPICards = () => {
     const totalValue = forecastSummary?.total_value || 0;
-    const totalOpportunities = forecastSummary?.total_opportunities || 0;
-    const avgValue = forecastSummary?.average_value || 0;
+    // const totalOpportunities = forecastSummary?.total_opportunities || 0;
+    // const avgValue = forecastSummary?.average_value || 0;
     const completionRate = 0.73; // Mock data
     
     return [
@@ -157,7 +157,7 @@ const Forecast: React.FC = () => {
               <XAxis dataKey="period" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip
-                formatter={(value, name) => [formatNumber(Number(value)), 'Opportunities']}
+                formatter={(value) => [formatNumber(Number(value)), 'Opportunities']}
                 contentStyle={{
                   backgroundColor: 'white',
                   border: '1px solid #D9D9D6',
@@ -403,7 +403,7 @@ const Forecast: React.FC = () => {
                     cy="50%"
                     outerRadius={80}
                     dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }: any) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
                     labelLine={false}
                   >
                     {SERVICE_LINES.map((_, index) => (

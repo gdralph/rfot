@@ -245,10 +245,10 @@ const ServiceLineDistribution: React.FC<ServiceLineDistributionProps> = ({
               <Bar 
                 dataKey="revenue" 
                 radius={[4, 4, 0, 0]}
-                onClick={(data) => onServiceLineClick?.(data.serviceLine)}
+                onClick={(data: any) => onServiceLineClick?.(data.serviceLine)}
                 className="cursor-pointer"
               >
-                {sortedData.map((entry, index) => (
+                {sortedData.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={DXC_COLORS[index % DXC_COLORS.length]} />
                 ))}
               </Bar>
@@ -279,7 +279,7 @@ const ServiceLineDistribution: React.FC<ServiceLineDistributionProps> = ({
             <Treemap
               data={testTreemapData}
               dataKey="size"
-              ratio={4/3}
+              aspectRatio={4/3}
               stroke="#fff"
               content={<TreemapContent />}
             />

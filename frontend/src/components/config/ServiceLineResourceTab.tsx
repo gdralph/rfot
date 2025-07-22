@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Plus, Save, Loader2, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings, Save, Loader2, Users } from 'lucide-react';
 import {
   useServiceLineStageEfforts,
   useUpdateServiceLineStageEffort,
@@ -14,10 +14,10 @@ interface ServiceLineResourceTabProps {
 
 const ServiceLineResourceTab: React.FC<ServiceLineResourceTabProps> = ({ categories }) => {
   const [activeServiceLine, setActiveServiceLine] = useState<'MW' | 'ITOC'>('MW');
-  const [editingCell, setEditingCell] = useState<string | null>(null);
+  // const [editingCell, setEditingCell] = useState<string | null>(null);
   const [pendingChanges, setPendingChanges] = useState<Map<string, Partial<ServiceLineStageEffort>>>(new Map());
   
-  const { data: stageEfforts = [], isLoading, error, refetch } = useServiceLineStageEfforts(activeServiceLine);
+  const { data: stageEfforts = [], isLoading, refetch } = useServiceLineStageEfforts(activeServiceLine);
   const updateEffortMutation = useUpdateServiceLineStageEffort();
   const bulkCreateMutation = useBulkCreateServiceLineStageEfforts();
 
@@ -140,15 +140,15 @@ const ServiceLineResourceTab: React.FC<ServiceLineResourceTabProps> = ({ categor
     return existing?.[field] || 0;
   };
 
-  const getCategoryName = (categoryId: number) => {
-    const category = categories.find(c => c.id === categoryId);
-    return category?.name || `Category #${categoryId}`;
-  };
+  // const getCategoryName = (categoryId: number) => {
+  //   const category = categories.find(c => c.id === categoryId);
+  //   return category?.name || `Category #${categoryId}`;
+  // };
 
-  const getStageLabel = (stageCode: string) => {
-    const stage = SALES_STAGES.find(s => s.code === stageCode);
-    return stage?.label || stageCode;
-  };
+  // const getStageLabel = (stageCode: string) => {
+  //   const stage = SALES_STAGES.find(s => s.code === stageCode);
+  //   return stage?.label || stageCode;
+  // };
 
   const hasPendingChanges = pendingChanges.size > 0;
   const isSaving = updateEffortMutation.isPending || bulkCreateMutation.isPending;

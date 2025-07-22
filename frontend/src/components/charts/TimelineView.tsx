@@ -45,7 +45,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
   height = 400
 }) => {
   const [viewType, setViewType] = useState<'revenue' | 'opportunities' | 'conversion'>('revenue');
-  const [selectedPeriod] = useState<string>('');
+  // const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonPeriod] = useState<string>('');
 

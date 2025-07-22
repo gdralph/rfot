@@ -232,7 +232,7 @@ const Dashboard: React.FC = () => {
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
-                      formatter={(value, name, props) => {
+                      formatter={(value, _, props) => {
                         const dataPoint = props.payload;
                         const stageCode = dataPoint?.code;
                         const count = forecastSummary?.stage_counts?.[stageCode] || 0;
@@ -283,7 +283,7 @@ const Dashboard: React.FC = () => {
                       ))}
                     </Pie>
                     <Tooltip 
-                      formatter={(value, name, props) => {
+                      formatter={(value, _, props) => {
                         const dataPoint = props.payload;
                         const categoryName = dataPoint?.name;
                         const count = forecastSummary?.category_counts?.[categoryName] || 0;

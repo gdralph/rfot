@@ -4,7 +4,7 @@ import { Search, Filter, Eye } from 'lucide-react';
 import { useOpportunities } from '../hooks/useOpportunities';
 import { useCategories } from '../hooks/useConfig';
 import type { OpportunityFilters, Opportunity, OpportunityCategory } from '../types/index.js';
-import { SALES_STAGES, STAGE_ORDER, OPPORTUNITY_CATEGORIES, CATEGORY_ORDER, SERVICE_LINES } from '../types/index.js';
+import { SALES_STAGES, STAGE_ORDER, CATEGORY_ORDER, SERVICE_LINES } from '../types/index.js';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 // Helper function to calculate opportunity category based on TCV using backend categories
@@ -16,7 +16,7 @@ const getOpportunityCategory = (tcvMillions: number | undefined, categories: Opp
   // Categories should be ordered by min_tcv
   for (const category of categories.sort((a, b) => a.min_tcv - b.min_tcv)) {
     if (tcvMillions >= category.min_tcv && 
-        (category.max_tcv === null || tcvMillions < category.max_tcv)) {
+        (category.max_tcv === null || tcvMillions < (category.max_tcv || Infinity))) {
       return category.name;
     }
   }

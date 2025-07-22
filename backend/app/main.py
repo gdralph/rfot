@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -19,10 +20,20 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager."""
+    # Startup
+    logger.info("Application starting", app=settings.app_name, version=settings.app_version)
+    yield
+    # Shutdown
+    logger.info("Application shutting down")
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Resource Forecasting & Opportunity Tracker - A DXC Technology internal tool",
+    lifespan=lifespan,
 )
 
 # CORS configuration
@@ -46,15 +57,6 @@ async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "app": settings.app_name, "version": settings.app_version}
 
-@app.on_event("startup")
-async def startup_event():
-    """Application startup event."""
-    logger.info("Application starting", app=settings.app_name, version=settings.app_version)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown event."""
-    logger.info("Application shutting down")
 
 if __name__ == "__main__":
     import uvicorn

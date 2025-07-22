@@ -6,9 +6,12 @@ Add sample opportunities for testing the application.
 from sqlmodel import Session
 from datetime import date, timedelta
 import random
+import structlog
 
 from app.models.database import engine
 from app.models.opportunity import Opportunity
+
+logger = structlog.get_logger()
 
 
 def create_sample_opportunities():
@@ -98,10 +101,10 @@ def create_sample_opportunities():
         # Check if sample data already exists
         existing_opp = session.get(Opportunity, 1)
         if existing_opp:
-            print("Sample data already exists. Skipping...")
+            logger.info("Sample data already exists, skipping creation")
             return
             
-        print("Creating sample opportunities...")
+        logger.info("Creating sample opportunities", count=len(sample_opportunities))
         
         for opp_data in sample_opportunities:
             # Create opportunity
@@ -109,8 +112,7 @@ def create_sample_opportunities():
             session.add(opportunity)
         
         session.commit()
-        print(f"Created {len(sample_opportunities)} sample opportunities")
-        print("Sample data creation completed!")
+        logger.info("Sample opportunities created successfully", count=len(sample_opportunities))
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ interface ResourceTimelineCardProps {
   timeRange?: 'week' | 'month' | 'quarter' | 'year';
 }
 
-const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className = '', filters, timeRange: dashboardTimeRange }) => {
+const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className = '', filters }) => {
   const [chartType, setChartType] = useState<ChartType>('line');
   const [dateRange, setDateRange] = useState<'3m' | '6m' | '12m' | 'all'>('all');
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('month');
@@ -118,7 +118,7 @@ const ResourceTimelineCard: React.FC<ResourceTimelineCardProps> = ({ className =
             
             // Calculate week number of the year (ISO week)
             const startOfYear = new Date(currentYear, 0, 1);
-            const dayOfYear = Math.floor((date - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
+            const dayOfYear = Math.floor((date.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000)) + 1;
             const weekOfYear = Math.ceil((dayOfYear - date.getDay() + 10) / 7);
             
             displayLabel = `W${weekOfYear}`;

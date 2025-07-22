@@ -10,7 +10,7 @@ import type {
   ActiveServiceLines,
   ImportTask,
   APIError,
-  OpportunityResourceTimeline,
+  // OpportunityResourceTimeline,
   OpportunityEffortPrediction
 } from '../types/index.js';
 

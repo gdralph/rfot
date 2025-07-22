@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
-from pydantic import validator
+from pydantic import field_validator
 
 if TYPE_CHECKING:
     from app.models.resources import OpportunityResourceTimeline
@@ -53,13 +53,15 @@ class OpportunityBase(SQLModel):
 
     # Removed revenue validation to allow negative TCV for certain business scenarios
     
-    @validator('margin_percentage')
+    @field_validator('margin_percentage')
+    @classmethod
     def validate_margin_percentage(cls, v):
         if v is not None and (v < -100 or v > 100):
             raise ValueError('Margin percentage must be between -100 and 100')
         return v
     
-    @validator('security_clearance')
+    @field_validator('security_clearance')
+    @classmethod
     def validate_security_clearance(cls, v):
         if v is not None and v not in ['', 'BPSS', 'SC', 'DV']:
             raise ValueError('Security clearance must be blank, BPSS, SC, or DV')
@@ -136,7 +138,8 @@ class OpportunityLineItemBase(SQLModel):
 
     # Removed revenue validation to allow negative TCV for certain business scenarios
     
-    @validator('offering_margin_percentage')
+    @field_validator('offering_margin_percentage')
+    @classmethod
     def validate_margin_percentage(cls, v):
         if v is not None and (v < -100 or v > 100):
             raise ValueError('Margin percentage must be between -100 and 100')

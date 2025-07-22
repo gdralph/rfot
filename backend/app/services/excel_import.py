@@ -98,65 +98,6 @@ def safe_string_clean(value: any) -> Optional[str]:
     return result if result and result.lower() not in ["nan", "none", ""] else None
 
 
-def categorize_opportunity(amount: float) -> str:
-    """Categorize opportunity based on TCV amount."""
-    # Handle negative amounts
-    if amount < 0:
-        return "Uncategorized"
-    elif amount < 5_000_000:
-        return "Sub $5M"
-    elif amount < 25_000_000:
-        return "Cat C"
-    elif amount < 50_000_000:
-        return "Cat B"
-    else:
-        return "Cat A"
-
-
-def safe_float_convert(value: any, multiplier: float = 1.0) -> Optional[float]:
-    """Safely convert value to float with optional multiplier."""
-    if pd.isna(value) or value is None:
-        return None
-    try:
-        return float(value) * multiplier
-    except (ValueError, TypeError):
-        return None
-
-
-def find_tcv_column(df: pd.DataFrame) -> Optional[str]:
-    """Find the TCV column name in the DataFrame."""
-    possible_tcv_names = [
-        "Offering TCV (M)",
-        "TCV (M)",
-        "TCV $M", 
-        "Total Contract Value (M)",
-        "Total Contract Value",
-        "Contract Value (M)",
-        "Contract Value",
-        "TCV"
-    ]
-    
-    for col_name in possible_tcv_names:
-        if col_name in df.columns:
-            return col_name
-    
-    # If no exact match, look for columns containing "TCV" or "Contract Value"
-    for col in df.columns:
-        if "TCV" in str(col).upper() or "CONTRACT VALUE" in str(col).upper():
-            return col
-    
-    return None
-
-
-def safe_string_clean(value: any) -> Optional[str]:
-    """Safely clean and return string value."""
-    if pd.isna(value) or value is None:
-        return None
-    result = str(value).strip()
-    return result if result and result.lower() not in ["nan", "none", ""] else None
-
-
-
 
 async def import_excel_background(file_path: str, task_id: str, import_tasks: Dict[str, ImportTask]) -> None:
     """Background task for Excel import with progress tracking."""
@@ -386,7 +327,7 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
             except Exception as e:
                 session.rollback()
                 logger.error("Database commit failed", error=str(e))
-                raise e
+                raise RuntimeError(f"Failed to commit import data to database: {str(e)}") from e
             
             # Clean up temporary file
             try:
@@ -593,7 +534,7 @@ async def import_line_items_background(file_path: str, task_id: str, import_task
             except Exception as e:
                 session.rollback()
                 logger.error("Database commit failed", error=str(e))
-                raise e
+                raise RuntimeError(f"Failed to commit import data to database: {str(e)}") from e
             
             # Clean up temporary file
             try:

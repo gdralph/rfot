@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import type { OpportunityResourceTimeline, OpportunityEffortPrediction } from '../types/index.js';
+// import type { OpportunityEffortPrediction } from '../types/index.js';
 
 // Query keys
 const RESOURCE_TIMELINE_KEYS = {
@@ -28,7 +28,7 @@ export function useCalculateResourceTimeline() {
 
   return useMutation({
     mutationFn: (opportunityId: number) => api.calculateResourceTimeline(opportunityId),
-    onSuccess: (calculationResult, opportunityId) => {
+    onSuccess: (_, opportunityId) => {
       // Invalidate existing timeline to refetch updated data
       queryClient.invalidateQueries({
         queryKey: RESOURCE_TIMELINE_KEYS.timeline(opportunityId),

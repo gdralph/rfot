@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import type { ImportTask } from '../types/index.js';
+// import type { ImportTask } from '../types/index.js';
 
 // Query keys
 const IMPORT_KEYS = {
@@ -50,7 +50,7 @@ export function useImportStatus(taskId: string, enabled = false) {
     queryKey: IMPORT_KEYS.status(taskId),
     queryFn: () => api.getImportStatus(taskId),
     enabled: enabled && !!taskId,
-    refetchInterval: (data) => {
+    refetchInterval: (data: any) => {
       // Poll every second while processing, stop when completed or failed
       if (!data || data.status === 'processing' || data.status === 'pending') {
         return 1000;
