@@ -2,12 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOpportunity, useOpportunityLineItems, useUpdateOpportunity } from '../hooks/useOpportunities';
 import { useCategories } from '../hooks/useConfig';
-import { useResourceTimeline, useCalculateResourceTimeline, useDeleteResourceTimeline } from '../hooks/useResourceTimeline';
+import { useResourceTimeline, useCalculateResourceTimeline, useDeleteResourceTimeline, useUpdateResourceTimelineStatus, useUpdateResourceTimelineData } from '../hooks/useResourceTimeline';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { OpportunityFormData, ChartDataPoint, Opportunity, OpportunityCategory, OpportunityEffortPrediction, StageTimelineData } from '../types/index';
-import { DXC_COLORS, SERVICE_LINES } from '../types/index';
+import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES } from '../types/index';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, AreaChart, Area, CartesianGrid, Legend } from 'recharts';
 import { TrendingUp, BarChart3, Layers, Calendar, Users, FileText, DollarSign } from 'lucide-react';
+
+type ResourceStatus = 'Predicted' | 'Forecast' | 'Planned';
 
 // Helper function to calculate opportunity category based on TCV using database categories
 const getOpportunityCategory = (tcvMillions: number | undefined, categories: OpportunityCategory[]): string => {
@@ -59,6 +61,8 @@ const OpportunityDetail: React.FC = () => {
   const { data: resourceTimeline, isLoading: timelineLoading, error: timelineError } = useResourceTimeline(opportunityId);
   const calculateTimelineMutation = useCalculateResourceTimeline();
   const deleteTimelineMutation = useDeleteResourceTimeline();
+  const updateStatusMutation = useUpdateResourceTimelineStatus();
+  const updateTimelineDataMutation = useUpdateResourceTimelineData();
 
   const [isEditingCustomFields, setIsEditingCustomFields] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -75,10 +79,6 @@ const OpportunityDetail: React.FC = () => {
     internal_notes: '',
   });
 
-  // Collapsible sections state
-  const [expandedSections, setExpandedSections] = useState({
-    quarterlyRevenue: false
-  });
 
   // Resource Timeline chart controls
   const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('bar');
@@ -86,6 +86,16 @@ const OpportunityDetail: React.FC = () => {
 
   // Tab state for Resource Analysis section
   const [activeResourceTab, setActiveResourceTab] = useState<'timeline' | 'profile' | 'line-items' | 'revenue'>('timeline');
+
+  // Resource status modal state
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusUpdates, setStatusUpdates] = useState<Record<string, ResourceStatus>>({});  // key: "serviceLine|stageName"
+  const [timelineUpdates, setTimelineUpdates] = useState<Record<string, {
+    stage_start_date: string;
+    stage_end_date: string;
+    duration_weeks: number;
+    fte_required: number;
+  }>>({});  // key: "serviceLine|stageName"
 
   // Initialize form data when opportunity and categories load
   React.useEffect(() => {
@@ -183,12 +193,6 @@ const OpportunityDetail: React.FC = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
 
   // Resource timeline calculation logic
   const handleCalculateTimeline = async () => {
@@ -210,6 +214,102 @@ const OpportunityDetail: React.FC = () => {
         console.error('Failed to delete resource timeline:', error);
         // Error handling is shown in the UI via mutation state
       }
+    }
+  };
+
+  // Status modal functions
+  const handleOpenStatusModal = () => {
+    // Initialize statusUpdates and timelineUpdates with current values
+    if (resourceTimeline) {
+      const tableData = getTimelineTableData(resourceTimeline);
+      const initialStatusUpdates: Record<string, ResourceStatus> = {};
+      const initialTimelineUpdates: Record<string, {
+        stage_start_date: string;
+        stage_end_date: string;
+        duration_weeks: number;
+        fte_required: number;
+      }> = {};
+      
+      tableData.forEach(item => {
+        const serviceLine = (item as any).service_line;
+        const key = `${serviceLine}|${item.stage_name}`;
+        
+        initialStatusUpdates[key] = (item.resource_status || 'Predicted') as ResourceStatus;
+        
+        initialTimelineUpdates[key] = {
+          stage_start_date: item.stage_start_date.split('T')[0], // Convert to YYYY-MM-DD format
+          stage_end_date: item.stage_end_date.split('T')[0],
+          duration_weeks: item.duration_weeks || 0,
+          fte_required: item.fte_required || 0,
+        };
+      });
+      
+      setStatusUpdates(initialStatusUpdates);
+      setTimelineUpdates(initialTimelineUpdates);
+    }
+    setShowStatusModal(true);
+  };
+
+  const handleCloseStatusModal = () => {
+    setShowStatusModal(false);
+    setStatusUpdates({});
+    setTimelineUpdates({});
+  };
+
+  const handleStatusChange = (serviceLine: string, stageName: string, newStatus: ResourceStatus) => {
+    const key = `${serviceLine}|${stageName}`;
+    setStatusUpdates(prev => ({
+      ...prev,
+      [key]: newStatus
+    }));
+  };
+
+  const handleTimelineFieldChange = (
+    serviceLine: string, 
+    stageName: string, 
+    field: keyof typeof timelineUpdates[string], 
+    value: string | number
+  ) => {
+    const key = `${serviceLine}|${stageName}`;
+    setTimelineUpdates(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleBulkStatusUpdate = (newStatus: ResourceStatus) => {
+    const updatedStatuses: Record<string, ResourceStatus> = {};
+    Object.keys(statusUpdates).forEach(key => {
+      updatedStatuses[key] = newStatus;
+    });
+    setStatusUpdates(updatedStatuses);
+  };
+
+  const handleSaveBulkStatus = async () => {
+    try {
+      // Update timeline data (dates, duration, FTE) and status for each record
+      const updatePromises = Object.entries(timelineUpdates).map(([key, timelineData]) => {
+        const [serviceLine, stageName] = key.split('|');
+        const status = statusUpdates[key] || 'Predicted';
+        
+        return updateTimelineDataMutation.mutateAsync({
+          opportunityId,
+          serviceLine,
+          stageName,
+          data: {
+            ...timelineData,
+            resource_status: status,
+          },
+        });
+      });
+
+      await Promise.all(updatePromises);
+      handleCloseStatusModal();
+    } catch (error) {
+      console.error('Failed to update resource timeline data:', error);
     }
   };
 
@@ -252,6 +352,37 @@ const OpportunityDetail: React.FC = () => {
     }
     
     return serviceLines;
+  };
+
+  // Check if resource profile has been edited (has non-Predicted statuses)
+  const hasEditedResourceProfile = (): boolean => {
+    if (!resourceTimeline?.service_line_timelines) return false;
+    
+    for (const serviceLineData of Object.values(resourceTimeline.service_line_timelines)) {
+      if (serviceLineData && typeof serviceLineData === 'object' && 'stages' in serviceLineData) {
+        const stages = serviceLineData.stages as Record<string, any>;
+        for (const stageData of Object.values(stages || {})) {
+          if (stageData && typeof stageData === 'object' && 'resource_status' in stageData) {
+            if (stageData.resource_status && stageData.resource_status !== 'Predicted') {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  // Handle Generate Resource Profile with warning for existing edited profiles
+  const handleGenerateResourceProfile = async () => {
+    if (hasEditedResourceProfile()) {
+      const proceed = window.confirm(
+        'This opportunity already has an edited Resource Profile. Generating a new profile will overwrite all current resource status changes. Do you want to proceed?'
+      );
+      if (!proceed) return;
+    }
+    
+    await handleCalculateTimeline();
   };
 
   // Helper function to flatten timeline data for table display
@@ -833,93 +964,6 @@ const OpportunityDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Quarterly Revenue Timeline */}
-      {quarterlyRevenueData.length > 0 && (
-        <div className="card mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-dxc-subtitle font-semibold">Quarterly Revenue Timeline</h2>
-            <button
-              onClick={() => toggleSection('quarterlyRevenue')}
-              className="text-dxc-purple hover:text-dxc-purple/80 font-medium"
-            >
-              {expandedSections.quarterlyRevenue ? '▲ Collapse' : '▼ Expand'}
-            </button>
-          </div>
-          {expandedSections.quarterlyRevenue && (
-            <div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Line Chart */}
-                <div>
-                  <h3 className="text-lg font-medium mb-2">Revenue Over Time</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={quarterlyRevenueData}>
-                      <XAxis dataKey="quarter" />
-                      <YAxis tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`} />
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                      <Line 
-                        type="monotone" 
-                        dataKey="revenue" 
-                        stroke="#5F249F" 
-                        strokeWidth={3}
-                        dot={{ fill: '#5F249F', strokeWidth: 2, r: 6 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* Bar Chart */}
-                <div>
-                  <h3 className="text-lg font-medium mb-2">Quarterly Breakdown</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={quarterlyRevenueData}>
-                      <XAxis dataKey="quarter" />
-                      <YAxis tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`} />
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                      <Bar dataKey="revenue" fill="#5F249F" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Summary Table */}
-              <div className="mt-6">
-                <h3 className="text-lg font-medium mb-2">Quarterly Summary</h3>
-                <div className="overflow-x-auto">
-                  <table className="table w-full">
-                    <thead>
-                      <tr>
-                        <th>Quarter</th>
-                        <th>Revenue</th>
-                        <th>Percentage of Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {quarterlyRevenueData.map((item) => {
-                        const totalQuarterlyRevenue = quarterlyRevenueData.reduce((sum, data) => sum + data.revenue, 0);
-                        const percentage = ((item.revenue / totalQuarterlyRevenue) * 100).toFixed(1);
-                        return (
-                          <tr key={item.quarter}>
-                            <td className="font-medium">{item.quarter}</td>
-                            <td>{formatCurrency(item.revenue)}</td>
-                            <td>{percentage}%</td>
-                          </tr>
-                        );
-                      })}
-                      {opportunity.fy_rev_beyond_yr2 && opportunity.fy_rev_beyond_yr2 > 0 && (
-                        <tr className="border-t-2 font-medium">
-                          <td>Beyond Year 2</td>
-                          <td>{formatCurrency(opportunity.fy_rev_beyond_yr2)}</td>
-                          <td>—</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
 
       {/* Resource Analysis Section - Tabbed Interface */}
@@ -996,8 +1040,9 @@ const OpportunityDetail: React.FC = () => {
             {[
               { key: 'timeline', label: 'Resource Timeline', icon: Calendar, condition: hasValidTimeline(resourceTimeline) },
               { key: 'profile', label: 'Resource Profile', icon: Users, condition: hasValidTimeline(resourceTimeline) },
-              { key: 'line-items', label: 'Line Item Details', icon: FileText, condition: true },
-              { key: 'revenue', label: 'Service Line Revenue Breakdown', icon: DollarSign, condition: true }
+              { key: 'line-items', label: 'Products', icon: FileText, condition: true },
+              { key: 'revenue', label: 'Service Line', icon: DollarSign, condition: true },
+              { key: 'quarterly-revenue', label: 'Quarterly Revenue', icon: TrendingUp, condition: quarterlyRevenueData.length > 0 }
             ].filter(tab => tab.condition).map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -1238,6 +1283,9 @@ const OpportunityDetail: React.FC = () => {
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Total Effort
                           </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -1278,6 +1326,18 @@ const OpportunityDetail: React.FC = () => {
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                 {(item.total_effort_weeks || 0).toFixed(1)} weeks
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                <span 
+                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                    item.resource_status === 'Predicted' ? 'bg-blue-100 text-blue-800' :
+                                    item.resource_status === 'Forecast' ? 'bg-yellow-100 text-yellow-800' :
+                                    item.resource_status === 'Planned' ? 'bg-green-100 text-green-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}
+                                >
+                                  {item.resource_status || 'Predicted'}
+                                </span>
                               </td>
                             </tr>
                           ))
@@ -1323,6 +1383,30 @@ const OpportunityDetail: React.FC = () => {
                       </div>
                     </div>
                   ))}
+                </div>
+                
+                {/* Action Buttons - Bottom Right */}
+                <div className="flex justify-end gap-3 mt-6">
+                  {/* Generate Resource Profile Button */}
+                  {canCalculateTimeline(opportunity) && (
+                    <button
+                      onClick={handleGenerateResourceProfile}
+                      disabled={calculateTimelineMutation.isPending}
+                      className="btn-secondary flex items-center gap-2"
+                    >
+                      <TrendingUp className="w-4 h-4" />
+                      {calculateTimelineMutation.isPending ? 'Generating...' : 'Generate Resource Profile'}
+                    </button>
+                  )}
+                  
+                  {/* Edit Resource Profile Button */}
+                  <button
+                    onClick={handleOpenStatusModal}
+                    className="btn-primary flex items-center gap-2"
+                  >
+                    <Users className="w-4 h-4" />
+                    Edit Resource Profile
+                  </button>
                 </div>
               </div>
             );
@@ -1524,6 +1608,81 @@ const OpportunityDetail: React.FC = () => {
             );
           })()}
 
+          {/* Quarterly Revenue Timeline Tab */}
+          {activeResourceTab === 'quarterly-revenue' && quarterlyRevenueData.length > 0 && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Line Chart */}
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Revenue Over Time</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={quarterlyRevenueData}>
+                      <XAxis dataKey="quarter" />
+                      <YAxis tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`} />
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                      <Line 
+                        type="monotone" 
+                        dataKey="revenue" 
+                        stroke="#5F249F" 
+                        strokeWidth={3}
+                        dot={{ fill: '#5F249F', strokeWidth: 2, r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Bar Chart */}
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Quarterly Breakdown</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={quarterlyRevenueData}>
+                      <XAxis dataKey="quarter" />
+                      <YAxis tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`} />
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                      <Bar dataKey="revenue" fill="#5F249F" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Summary Table */}
+              <div className="mt-6">
+                <h3 className="text-lg font-medium mb-2">Quarterly Summary</h3>
+                <div className="overflow-x-auto">
+                  <table className="table w-full">
+                    <thead>
+                      <tr>
+                        <th>Quarter</th>
+                        <th>Revenue</th>
+                        <th>Percentage of Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quarterlyRevenueData.map((item) => {
+                        const totalQuarterlyRevenue = quarterlyRevenueData.reduce((sum, data) => sum + data.revenue, 0);
+                        const percentage = ((item.revenue / totalQuarterlyRevenue) * 100).toFixed(1);
+                        return (
+                          <tr key={item.quarter}>
+                            <td className="font-medium">{item.quarter}</td>
+                            <td>{formatCurrency(item.revenue)}</td>
+                            <td>{percentage}%</td>
+                          </tr>
+                        );
+                      })}
+                      {opportunity.fy_rev_beyond_yr2 && opportunity.fy_rev_beyond_yr2 > 0 && (
+                        <tr className="border-t-2 font-medium">
+                          <td>Beyond Year 2</td>
+                          <td>{formatCurrency(opportunity.fy_rev_beyond_yr2)}</td>
+                          <td>—</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Show message if no content available */}
           {!hasValidTimeline(resourceTimeline) && activeResourceTab === 'timeline' && (
             <div className="flex flex-col items-center justify-center h-64 text-gray-500">
@@ -1532,6 +1691,16 @@ const OpportunityDetail: React.FC = () => {
               <p className="text-sm text-gray-400 mt-1">
                 Resource timelines are only available for MW and ITOC service lines
               </p>
+              {opportunity && canCalculateTimeline(opportunity) && (
+                <button
+                  onClick={handleCalculateTimeline}
+                  disabled={calculateTimelineMutation.isPending}
+                  className="btn-primary mt-4 flex items-center gap-2"
+                >
+                  <TrendingUp className="w-4 h-4" />
+                  {calculateTimelineMutation.isPending ? 'Generating...' : 'Generate Timeline'}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1546,6 +1715,187 @@ const OpportunityDetail: React.FC = () => {
           </p>
         </div>
       )}
+
+      {/* Bulk Status Edit Modal */}
+      {showStatusModal && resourceTimeline && (() => {
+        const tableData = getTimelineTableData(resourceTimeline);
+        const serviceLineData = tableData.reduce((acc, item) => {
+          const serviceLine = (item as any).service_line;
+          if (!acc[serviceLine]) {
+            acc[serviceLine] = [];
+          }
+          acc[serviceLine].push(item);
+          return acc;
+        }, {} as Record<string, typeof tableData>);
+
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">Edit Resource Timeline</h2>
+                    <p className="text-sm text-gray-600 mt-1">Update dates, duration, FTE requirements, and status for resource timeline entries</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleBulkStatusUpdate('Forecast')}
+                      className="text-xs px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full hover:bg-yellow-200 transition-colors"
+                    >
+                      Set All to Forecast
+                    </button>
+                    <button
+                      onClick={() => handleBulkStatusUpdate('Planned')}
+                      className="text-xs px-3 py-1 bg-green-100 text-green-800 rounded-full hover:bg-green-200 transition-colors"
+                    >
+                      Set All to Planned
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-6">
+                <div className="space-y-6">
+                  {Object.entries(serviceLineData).map(([serviceLine, stages]) => (
+                    <div key={serviceLine} className="border rounded-lg p-4">
+                      <h3 className="font-medium text-dxc-purple mb-3 flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-dxc-purple"></div>
+                        {serviceLine} Service Line
+                      </h3>
+                      
+                      {/* Column Headers */}
+                      <div className="grid grid-cols-12 gap-3 items-center mb-2 px-3">
+                        <div className="col-span-2 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Stage
+                        </div>
+                        <div className="col-span-2 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Start Date
+                        </div>
+                        <div className="col-span-2 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          End Date
+                        </div>
+                        <div className="col-span-1 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Duration
+                        </div>
+                        <div className="col-span-1 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          FTE
+                        </div>
+                        <div className="col-span-2 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Status
+                        </div>
+                        <div className="col-span-2 text-xs font-medium text-gray-600 uppercase tracking-wide text-right">
+                          Total Effort
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {stages.map((stage) => {
+                          const key = `${serviceLine}|${stage.stage_name}`;
+                          const currentStatus = statusUpdates[key] || 'Predicted';
+                          const currentTimeline = timelineUpdates[key] || {
+                            stage_start_date: stage.stage_start_date.split('T')[0],
+                            stage_end_date: stage.stage_end_date.split('T')[0],
+                            duration_weeks: stage.duration_weeks || 0,
+                            fte_required: stage.fte_required || 0,
+                          };
+                          
+                          return (
+                            <div key={key} className="bg-gray-50 rounded-lg p-3 grid grid-cols-12 gap-3 items-center">
+                              <div className="col-span-2">
+                                <div className="text-sm font-medium text-gray-700">
+                                  Stage {stage.stage_name}
+                                </div>
+                              </div>
+                              
+                              <div className="col-span-2">
+                                <input
+                                  type="date"
+                                  value={currentTimeline.stage_start_date}
+                                  onChange={(e) => handleTimelineFieldChange(serviceLine, stage.stage_name, 'stage_start_date', e.target.value)}
+                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-dxc-purple"
+                                  title="Start Date"
+                                />
+                              </div>
+                              
+                              <div className="col-span-2">
+                                <input
+                                  type="date"
+                                  value={currentTimeline.stage_end_date}
+                                  onChange={(e) => handleTimelineFieldChange(serviceLine, stage.stage_name, 'stage_end_date', e.target.value)}
+                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-dxc-purple"
+                                  title="End Date"
+                                />
+                              </div>
+                              
+                              <div className="col-span-1">
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  value={currentTimeline.duration_weeks}
+                                  onChange={(e) => handleTimelineFieldChange(serviceLine, stage.stage_name, 'duration_weeks', parseFloat(e.target.value) || 0)}
+                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-dxc-purple"
+                                  placeholder="Weeks"
+                                  title="Duration (weeks)"
+                                />
+                              </div>
+                              
+                              <div className="col-span-1">
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  value={currentTimeline.fte_required}
+                                  onChange={(e) => handleTimelineFieldChange(serviceLine, stage.stage_name, 'fte_required', parseFloat(e.target.value) || 0)}
+                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-dxc-purple"
+                                  placeholder="FTE"
+                                  title="FTE Required"
+                                />
+                              </div>
+                              
+                              <div className="col-span-2">
+                                <select
+                                  value={currentStatus}
+                                  onChange={(e) => handleStatusChange(serviceLine, stage.stage_name, e.target.value as ResourceStatus)}
+                                  className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-dxc-purple"
+                                >
+                                  {RESOURCE_STATUSES.map(status => (
+                                    <option key={status} value={status}>{status}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              
+                              <div className="col-span-2 text-xs text-gray-500 text-right">
+                                {(currentTimeline.duration_weeks * currentTimeline.fte_required).toFixed(1)} weeks total
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  onClick={handleCloseStatusModal}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveBulkStatus}
+                  disabled={updateTimelineDataMutation.isPending}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {updateTimelineDataMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

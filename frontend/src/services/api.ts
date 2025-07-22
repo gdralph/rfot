@@ -269,44 +269,51 @@ class ApiClient {
     });
   }
 
-  async getResourceTimeline(opportunityId: number): Promise<OpportunityEffortPrediction | null> {
-    const endpoint = `/api/resources/opportunity/${opportunityId}/timeline`;
-    const url = `${this.baseUrl}${endpoint}`;
-    
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      // For timeline endpoints, 404 is perfectly acceptable (no timeline exists)
-      if (response.status === 404) {
-        return null;
-      }
-
-      // Handle other non-ok responses as errors
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          detail: `HTTP ${response.status}: ${response.statusText}`,
-          status: response.status,
-        }));
-        throw new Error(errorData.detail || 'An error occurred');
-      }
-
-      return await response.json();
-    } catch (error) {
-      // If it's a network error or other fetch error, re-throw
-      if (error instanceof Error && !error.message.includes('HTTP')) {
-        throw error;
-      }
-      throw error;
-    }
+  async getResourceTimeline(opportunityId: number): Promise<OpportunityEffortPrediction> {
+    return this.request(`/api/resources/opportunity/${opportunityId}/timeline`);
   }
 
   async deleteResourceTimeline(opportunityId: number): Promise<void> {
     return this.request(`/api/resources/opportunity/${opportunityId}/timeline`, {
       method: 'DELETE',
+    });
+  }
+
+  async updateResourceTimelineStatus(
+    opportunityId: number, 
+    resourceStatus: string, 
+    options?: { serviceLine?: string; stageName?: string }
+  ): Promise<{ message: string; opportunity_id: string; status: string }> {
+    const params = new URLSearchParams();
+    if (options?.serviceLine) params.append('service_line', options.serviceLine);
+    if (options?.stageName) params.append('stage_name', options.stageName);
+    
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/api/resources/opportunity/${opportunityId}/timeline/status${query}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ resource_status: resourceStatus }),
+    });
+  }
+
+  async updateResourceTimelineData(
+    opportunityId: number,
+    serviceLine: string,
+    stageName: string,
+    data: {
+      stage_start_date: string;
+      stage_end_date: string;
+      duration_weeks: number;
+      fte_required: number;
+      resource_status: string;
+    }
+  ): Promise<{ message: string; opportunity_id: string }> {
+    const params = new URLSearchParams();
+    params.append('service_line', serviceLine);
+    params.append('stage_name', stageName);
+    
+    return this.request(`/api/resources/opportunity/${opportunityId}/timeline/data?${params.toString()}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     });
   }
 

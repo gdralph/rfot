@@ -29,6 +29,10 @@ class OpportunityResourceTimeline(SQLModel, table=True):
     fte_required: float
     total_effort_weeks: float  # duration_weeks * fte_required
     
+    # Resource status tracking
+    resource_status: str = Field(default="Predicted", max_length=20, index=True)  # Predicted, Forecast, Planned
+    last_updated: datetime = Field(default_factory=datetime.utcnow, index=True)
+    
     # Opportunity context (denormalized for efficient querying)
     opportunity_name: Optional[str] = Field(max_length=200)
     category: str = Field(max_length=20, index=True)

@@ -59,6 +59,62 @@ export function useDeleteResourceTimeline() {
   });
 }
 
+// Update resource timeline status
+export function useUpdateResourceTimelineStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ 
+      opportunityId, 
+      resourceStatus, 
+      options 
+    }: { 
+      opportunityId: number; 
+      resourceStatus: string; 
+      options?: { serviceLine?: string; stageName?: string } 
+    }) => 
+      api.updateResourceTimelineStatus(opportunityId, resourceStatus, options),
+    onSuccess: (_, { opportunityId }) => {
+      // Invalidate existing timeline to refetch updated data
+      queryClient.invalidateQueries({
+        queryKey: RESOURCE_TIMELINE_KEYS.timeline(opportunityId),
+      });
+    },
+  });
+}
+
+// Update resource timeline data
+export function useUpdateResourceTimelineData() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ 
+      opportunityId,
+      serviceLine,
+      stageName,
+      data
+    }: { 
+      opportunityId: number;
+      serviceLine: string;
+      stageName: string;
+      data: {
+        stage_start_date: string;
+        stage_end_date: string;
+        duration_weeks: number;
+        fte_required: number;
+        resource_status: string;
+      }
+    }) => 
+      api.updateResourceTimelineData(opportunityId, serviceLine, stageName, data),
+    onSuccess: (_, { opportunityId }) => {
+      // Invalidate existing timeline to refetch updated data
+      queryClient.invalidateQueries({
+        queryKey: RESOURCE_TIMELINE_KEYS.timeline(opportunityId),
+      });
+    },
+  });
+}
+
 // Prefetch resource timeline
 export function usePrefetchResourceTimeline() {
   const queryClient = useQueryClient();

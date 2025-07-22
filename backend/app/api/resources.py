@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, delete
+from pydantic import BaseModel
 
 from app.models.database import engine
 from app.models.resources import (
@@ -22,6 +23,20 @@ from app.services.resource_calculation import (
 )
 
 router = APIRouter(prefix="/resources", tags=["resources"])
+
+
+class ResourceStatusUpdate(BaseModel):
+    """Request model for updating resource status."""
+    resource_status: str  # Predicted, Forecast, or Planned
+
+
+class ResourceTimelineUpdate(BaseModel):
+    """Request model for updating resource timeline data."""
+    stage_start_date: datetime
+    stage_end_date: datetime
+    duration_weeks: float
+    fte_required: float
+    resource_status: str = "Predicted"
 
 
 def get_session():
@@ -125,7 +140,19 @@ def get_opportunity_timeline(
     ).all()
     
     if not timeline_records:
-        raise HTTPException(status_code=404, detail="No timeline found for opportunity")
+        # Return empty timeline object instead of 404
+        return OpportunityEffortPrediction(
+            opportunity_id=opportunity.opportunity_id,
+            opportunity_name=opportunity.opportunity_name,
+            current_stage=opportunity.sales_stage or "01",
+            category="",  # Will be set by frontend based on TCV
+            tcv_millions=opportunity.tcv_millions,
+            decision_date=opportunity.decision_date or datetime.now(),
+            service_line_timelines={},
+            total_remaining_effort_weeks=0.0,
+            earliest_stage_start=None,
+            supported_service_lines=[]
+        )
     
     # Group by service line
     service_line_timelines = {}
@@ -145,7 +172,9 @@ def get_opportunity_timeline(
             "stage_end_date": record.stage_end_date,
             "duration_weeks": record.duration_weeks,
             "fte_required": record.fte_required,
-            "total_effort_weeks": record.total_effort_weeks
+            "total_effort_weeks": record.total_effort_weeks,
+            "resource_status": record.resource_status,
+            "last_updated": record.last_updated
         })
         
         total_effort_weeks += record.total_effort_weeks
@@ -195,6 +224,124 @@ def delete_opportunity_timeline(
         raise HTTPException(status_code=404, detail="No timeline found for opportunity")
     
     return {"message": f"Successfully deleted {deleted_count} timeline records for opportunity {opportunity.opportunity_id}"}
+
+
+@router.patch("/opportunity/{opportunity_id}/timeline/status")
+def update_resource_timeline_status(
+    opportunity_id: int,
+    status_update: ResourceStatusUpdate,
+    service_line: Optional[str] = Query(None, description="Update status for specific service line only"),
+    stage_name: Optional[str] = Query(None, description="Update status for specific stage only"),
+    session: Session = Depends(get_session)
+):
+    """
+    Update resource status for opportunity timeline records.
+    
+    Can update all records for an opportunity, or filter by service line and/or stage.
+    """
+    # Validate status value
+    valid_statuses = ["Predicted", "Forecast", "Planned"]
+    if status_update.resource_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        )
+    
+    # Get opportunity first to get the string opportunity_id
+    opportunity = session.get(Opportunity, opportunity_id)
+    if not opportunity:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    
+    # Build query for timeline records to update
+    query = select(OpportunityResourceTimeline).where(
+        OpportunityResourceTimeline.opportunity_id == opportunity.opportunity_id
+    )
+    
+    if service_line:
+        query = query.where(OpportunityResourceTimeline.service_line == service_line)
+    if stage_name:
+        query = query.where(OpportunityResourceTimeline.stage_name == stage_name)
+    
+    timeline_records = session.exec(query).all()
+    
+    if not timeline_records:
+        raise HTTPException(status_code=404, detail="No matching timeline records found")
+    
+    # Update status and last_updated timestamp
+    updated_count = 0
+    for record in timeline_records:
+        record.resource_status = status_update.resource_status
+        record.last_updated = datetime.utcnow()
+        session.add(record)
+        updated_count += 1
+    
+    session.commit()
+    
+    return {
+        "message": f"Successfully updated {updated_count} timeline records",
+        "opportunity_id": opportunity.opportunity_id,
+        "status": status_update.resource_status,
+        "filters": {
+            "service_line": service_line,
+            "stage_name": stage_name
+        }
+    }
+
+
+@router.patch("/opportunity/{opportunity_id}/timeline/data")
+def update_resource_timeline_data(
+    opportunity_id: int,
+    timeline_update: ResourceTimelineUpdate,
+    service_line: str = Query(..., description="Service line to update"),
+    stage_name: str = Query(..., description="Stage name to update"),
+    session: Session = Depends(get_session)
+):
+    """
+    Update resource timeline data (dates, duration, FTE, status) for a specific stage.
+    """
+    # Get opportunity first to get the string opportunity_id
+    opportunity = session.get(Opportunity, opportunity_id)
+    if not opportunity:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    
+    # Find the specific timeline record
+    timeline_record = session.exec(
+        select(OpportunityResourceTimeline).where(
+            OpportunityResourceTimeline.opportunity_id == opportunity.opportunity_id,
+            OpportunityResourceTimeline.service_line == service_line,
+            OpportunityResourceTimeline.stage_name == stage_name
+        )
+    ).first()
+    
+    if not timeline_record:
+        raise HTTPException(status_code=404, detail="Timeline record not found")
+    
+    # Update the record
+    timeline_record.stage_start_date = timeline_update.stage_start_date
+    timeline_record.stage_end_date = timeline_update.stage_end_date
+    timeline_record.duration_weeks = timeline_update.duration_weeks
+    timeline_record.fte_required = timeline_update.fte_required
+    timeline_record.total_effort_weeks = timeline_update.duration_weeks * timeline_update.fte_required
+    timeline_record.resource_status = timeline_update.resource_status
+    timeline_record.last_updated = datetime.utcnow()
+    
+    session.add(timeline_record)
+    session.commit()
+    
+    return {
+        "message": "Timeline record updated successfully",
+        "opportunity_id": opportunity.opportunity_id,
+        "service_line": service_line,
+        "stage_name": stage_name,
+        "updated_fields": {
+            "stage_start_date": timeline_update.stage_start_date,
+            "stage_end_date": timeline_update.stage_end_date,
+            "duration_weeks": timeline_update.duration_weeks,
+            "fte_required": timeline_update.fte_required,
+            "total_effort_weeks": timeline_record.total_effort_weeks,
+            "resource_status": timeline_update.resource_status
+        }
+    }
 
 
 @router.get("/portfolio/resource-forecast", response_model=PortfolioEffortPrediction)

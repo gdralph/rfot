@@ -261,6 +261,8 @@ export interface OpportunityResourceTimeline {
   duration_weeks: number;
   fte_required: number;
   total_effort_weeks: number;
+  resource_status: string;
+  last_updated: string;
   opportunity_name?: string;
   category: string;
   tcv_millions?: number;
@@ -288,11 +290,21 @@ export interface StageTimelineData {
   duration_weeks: number;
   fte_required: number;
   total_effort_weeks: number;
+  resource_status: string;
+  last_updated: string;
 }
 
 export interface ServiceLineTimelines {
   [serviceLine: string]: StageTimelineData[];
 }
+
+export interface ResourceStatusUpdate {
+  resource_status: string;
+}
+
+// Valid resource statuses
+export const RESOURCE_STATUSES = ['Predicted', 'Forecast', 'Planned'] as const;
+export type ResourceStatus = typeof RESOURCE_STATUSES[number];
 
 // DXC Color Palette for Charts
 export const DXC_COLORS = [
