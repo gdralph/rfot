@@ -34,6 +34,15 @@ export interface Opportunity {
   itoc_millions?: number;
   mw_millions?: number;
   sales_org_l1?: string;
+  
+  // User-managed fields (not overwritten by Excel imports)
+  security_clearance?: string;
+  custom_priority?: string;
+  internal_stage_assessment?: string;
+  custom_tracking_field_1?: string;
+  custom_tracking_field_2?: string;
+  custom_tracking_field_3?: string;
+  internal_notes?: string;
 }
 
 export interface OpportunityLineItem {
@@ -111,6 +120,15 @@ export interface OpportunityUpdate {
   sales_stage?: string;
   decision_date?: string;
   opportunity_owner?: string;
+  
+  // User-managed fields
+  security_clearance?: string;
+  custom_priority?: string;
+  internal_stage_assessment?: string;
+  custom_tracking_field_1?: string;
+  custom_tracking_field_2?: string;
+  custom_tracking_field_3?: string;
+  internal_notes?: string;
 }
 
 export interface OpportunityFilters {
@@ -221,6 +239,15 @@ export interface OpportunityFormData {
   assigned_resource?: string;
   status?: string;
   notes?: string;
+  
+  // User-managed fields
+  security_clearance?: string;
+  custom_priority?: string;
+  internal_stage_assessment?: string;
+  custom_tracking_field_1?: string;
+  custom_tracking_field_2?: string;
+  custom_tracking_field_3?: string;
+  internal_notes?: string;
 }
 
 // Resource Timeline Types

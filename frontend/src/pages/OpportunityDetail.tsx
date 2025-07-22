@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOpportunity, useOpportunityLineItems, useUpdateOpportunity } from '../hooks/useOpportunities';
 import { useCategories } from '../hooks/useConfig';
 import { useResourceTimeline, useCalculateResourceTimeline, useDeleteResourceTimeline } from '../hooks/useResourceTimeline';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { OpportunityFormData, ChartDataPoint, Opportunity, OpportunityCategory, OpportunityEffortPrediction, StageTimelineData } from '../types/index';
-import { DXC_COLORS } from '../types/index';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line } from 'recharts';
+import { DXC_COLORS, SERVICE_LINES } from '../types/index';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, AreaChart, Area, CartesianGrid, Legend } from 'recharts';
+import { TrendingUp, BarChart3, Layers } from 'lucide-react';
 
 // Helper function to calculate opportunity category based on TCV using database categories
 const getOpportunityCategory = (tcvMillions: number | undefined, categories: OpportunityCategory[]): string => {
@@ -64,15 +65,25 @@ const OpportunityDetail: React.FC = () => {
     assigned_resource: '',
     status: '',
     notes: '',
+    security_clearance: '',
+    custom_priority: '',
+    internal_stage_assessment: '',
+    custom_tracking_field_1: '',
+    custom_tracking_field_2: '',
+    custom_tracking_field_3: '',
+    internal_notes: '',
   });
 
   // Collapsible sections state
   const [expandedSections, setExpandedSections] = useState({
     quarterlyRevenue: false,
     lineItems: false,
-    resourceTimeline: false,
     serviceLines: true // Keep service lines expanded by default
   });
+
+  // Resource Timeline chart controls
+  const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('bar');
+  const [timePeriod, setTimePeriod] = useState<'week' | 'month' | 'quarter' | 'stage'>('week');
 
   // Initialize form data when opportunity and categories load
   React.useEffect(() => {
@@ -82,6 +93,13 @@ const OpportunityDetail: React.FC = () => {
         assigned_resource: mappedOpp.assigned_resource || '',
         status: mappedOpp.status || '',
         notes: mappedOpp.notes || '',
+        security_clearance: opportunity.security_clearance || '',
+        custom_priority: opportunity.custom_priority || '',
+        internal_stage_assessment: opportunity.internal_stage_assessment || '',
+        custom_tracking_field_1: opportunity.custom_tracking_field_1 || '',
+        custom_tracking_field_2: opportunity.custom_tracking_field_2 || '',
+        custom_tracking_field_3: opportunity.custom_tracking_field_3 || '',
+        internal_notes: opportunity.internal_notes || '',
       });
     }
   }, [opportunity, categories]);
@@ -99,6 +117,13 @@ const OpportunityDetail: React.FC = () => {
         assigned_resource: mappedOpp.assigned_resource || '',
         status: mappedOpp.status || '',
         notes: mappedOpp.notes || '',
+        security_clearance: opportunity.security_clearance || '',
+        custom_priority: opportunity.custom_priority || '',
+        internal_stage_assessment: opportunity.internal_stage_assessment || '',
+        custom_tracking_field_1: opportunity.custom_tracking_field_1 || '',
+        custom_tracking_field_2: opportunity.custom_tracking_field_2 || '',
+        custom_tracking_field_3: opportunity.custom_tracking_field_3 || '',
+        internal_notes: opportunity.internal_notes || '',
       });
     }
   };
@@ -239,6 +264,119 @@ const OpportunityDetail: React.FC = () => {
     return !!(effortPrediction?.service_line_timelines && 
               Object.keys(effortPrediction.service_line_timelines).length > 0);
   };
+
+  // Prepare chart data for Resource Timeline (moved outside conditional rendering to fix hooks order)
+  const resourceTimelineChartData = useMemo(() => {
+    if (!hasValidTimeline(resourceTimeline)) return { chartArray: [], serviceLines: [] };
+    
+    const tableData = getTimelineTableData(resourceTimeline!);
+    if (!tableData.length) return { chartArray: [], serviceLines: [] };
+    
+    const serviceLines = new Set<string>();
+    tableData.forEach(item => {
+      const serviceLine = (item as any).service_line;
+      serviceLines.add(serviceLine);
+    });
+    
+    if (timePeriod === 'stage') {
+      // Stage-based view: show each stage as a separate point
+      const chartArray = tableData.map(item => {
+        const result: Record<string, any> = {
+          stage: item.stage_name,
+          period: item.stage_name
+        };
+        
+        const serviceLine = (item as any).service_line;
+        result[serviceLine] = item.fte_required;
+        
+        // Set other service lines to 0 for this stage
+        Array.from(serviceLines).forEach(sl => {
+          if (sl !== serviceLine && !result[sl]) {
+            result[sl] = 0;
+          }
+        });
+        
+        return result;
+      });
+      
+      return { chartArray, serviceLines: Array.from(serviceLines) };
+    } else {
+      // Time-based view: create intervals based on selected period
+      const timelineMap = new Map<string, Record<string, number>>();
+      
+      // Determine interval and date formatting based on time period
+      let intervalDays: number;
+      let formatOptions: Intl.DateTimeFormatOptions;
+      
+      switch (timePeriod) {
+        case 'week':
+          intervalDays = 7;
+          formatOptions = { month: 'short', day: 'numeric' };
+          break;
+        case 'month':
+          intervalDays = 30;
+          formatOptions = { month: 'short', year: '2-digit' };
+          break;
+        case 'quarter':
+          intervalDays = 90;
+          formatOptions = { year: 'numeric' };
+          break;
+        default:
+          intervalDays = 7;
+          formatOptions = { month: 'short', day: 'numeric' };
+      }
+      
+      tableData.forEach(item => {
+        const serviceLine = (item as any).service_line;
+        const startDate = new Date(item.stage_start_date);
+        const endDate = new Date(item.stage_end_date);
+        
+        // Create time interval points between start and end date
+        const currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+          let dateKey: string;
+          let periodLabel: string;
+          
+          if (timePeriod === 'quarter') {
+            // For quarterly, group by quarter
+            const year = currentDate.getFullYear();
+            const quarter = Math.floor(currentDate.getMonth() / 3) + 1;
+            dateKey = `${year}-Q${quarter}`;
+            periodLabel = `Q${quarter} ${year}`;
+          } else if (timePeriod === 'month') {
+            // For monthly, group by month
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            dateKey = `${year}-${month.toString().padStart(2, '0')}`;
+            periodLabel = currentDate.toLocaleDateString('en-US', formatOptions);
+          } else {
+            // For weekly, use individual dates
+            dateKey = currentDate.toISOString().split('T')[0];
+            periodLabel = currentDate.toLocaleDateString('en-US', formatOptions);
+          }
+          
+          if (!timelineMap.has(dateKey)) {
+            timelineMap.set(dateKey, { date: dateKey, period: periodLabel });
+          }
+          
+          const entry = timelineMap.get(dateKey)!;
+          entry[serviceLine] = (entry[serviceLine] || 0) + item.fte_required;
+          
+          currentDate.setDate(currentDate.getDate() + intervalDays);
+        }
+      });
+      
+      // Convert to array and sort by date
+      const chartArray = Array.from(timelineMap.values())
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(item => ({
+          ...item,
+          period: item.period
+        }));
+      
+      return { chartArray, serviceLines: Array.from(serviceLines) };
+    }
+  }, [resourceTimeline, timePeriod]);
 
 
   // Prepare service line chart data using opportunity-level aggregated fields
@@ -389,7 +527,7 @@ const OpportunityDetail: React.FC = () => {
         <div className="bg-dxc-purple/5 border-l-4 border-dxc-purple p-6 rounded-lg mb-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="w-full">
-              <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-4 mb-4">
+              <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-6 mb-4">
                 <div>
                   <span className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Account</span>
                   <h2 className="text-xl font-bold text-dxc-purple">{opportunity.account_name || 'No Account'}</h2>
@@ -409,6 +547,20 @@ const OpportunityDetail: React.FC = () => {
                   ) : (
                     <h2 className="text-xl font-bold text-dxc-purple">{opportunity.opportunity_id}</h2>
                   )}
+                </div>
+                <div>
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Assigned Resource</span>
+                  <h2 className="text-xl font-bold text-gray-900">{opportunity.opportunity_owner || 'Not assigned'}</h2>
+                </div>
+                <div>
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Status</span>
+                  <span className={`text-xl font-bold px-3 py-1 rounded-full ${
+                    opportunity.in_forecast === 'Y' ? 'bg-green-100 text-green-800' :
+                    opportunity.in_forecast === 'N' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {opportunity.in_forecast === 'Y' ? 'Active' : opportunity.in_forecast === 'N' ? 'Inactive' : 'Unknown'}
+                  </span>
                 </div>
               </div>
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{opportunity.opportunity_name}</h1>
@@ -525,48 +677,103 @@ const OpportunityDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Editable Fields */}
+        {/* User-Managed Fields */}
         <div className="card">
-          <h2 className="text-dxc-subtitle font-semibold mb-4">Resource Assignment</h2>
+          <h2 className="text-dxc-subtitle font-semibold mb-4">Custom Fields</h2>
           <div className="space-y-3">
             {isEditing ? (
               <>
                 <div>
                   <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">
-                    Assigned Resource
+                    Security Clearance
                   </dt>
+                  <select
+                    value={formData.security_clearance || ''}
+                    onChange={(e) => handleInputChange('security_clearance', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                  >
+                    <option value="">No clearance required</option>
+                    <option value="BPSS">BPSS</option>
+                    <option value="SC">SC</option>
+                    <option value="DV">DV</option>
+                  </select>
+                </div>
+                <div>
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Custom Priority</dt>
                   <input
                     type="text"
-                    value={formData.assigned_resource}
-                    onChange={(e) => handleInputChange('assigned_resource', e.target.value)}
+                    value={formData.custom_priority || ''}
+                    onChange={(e) => handleInputChange('custom_priority', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
-                    placeholder="Enter resource name"
+                    placeholder="e.g. High, Medium, Low"
                   />
                 </div>
                 <div>
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Status</dt>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => handleInputChange('status', e.target.value)}
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Internal Stage Assessment</dt>
+                  <input
+                    type="text"
+                    value={formData.internal_stage_assessment || ''}
+                    onChange={(e) => handleInputChange('internal_stage_assessment', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
-                  >
-                    <option value="">Select status</option>
-                    <option value="Active">Active</option>
-                    <option value="On Hold">On Hold</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
+                    placeholder="Internal stage assessment"
+                  />
+                </div>
+                <div>
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Custom Field 1</dt>
+                  <input
+                    type="text"
+                    value={formData.custom_tracking_field_1 || ''}
+                    onChange={(e) => handleInputChange('custom_tracking_field_1', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    placeholder="Custom tracking field 1"
+                  />
+                </div>
+                <div>
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Custom Field 2</dt>
+                  <input
+                    type="text"
+                    value={formData.custom_tracking_field_2 || ''}
+                    onChange={(e) => handleInputChange('custom_tracking_field_2', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    placeholder="Custom tracking field 2"
+                  />
+                </div>
+                <div>
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Custom Field 3</dt>
+                  <input
+                    type="text"
+                    value={formData.custom_tracking_field_3 || ''}
+                    onChange={(e) => handleInputChange('custom_tracking_field_3', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+                    placeholder="Custom tracking field 3"
+                  />
                 </div>
               </>
             ) : (
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Assigned Resource</dt>
-                  <dd className="text-dxc-body">{opportunity.opportunity_owner || 'Not assigned'}</dd>
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Security Clearance</dt>
+                  <dd className="text-dxc-body">{opportunity.security_clearance || 'None required'}</dd>
                 </div>
                 <div className="flex justify-between items-center">
-                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Status</dt>
-                  <dd className="text-dxc-body">{opportunity.in_forecast === 'Y' ? 'Active' : opportunity.in_forecast === 'N' ? 'Inactive' : 'Unknown'}</dd>
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Custom Priority</dt>
+                  <dd className="text-dxc-body">{opportunity.custom_priority || 'Not set'}</dd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Internal Stage Assessment</dt>
+                  <dd className="text-dxc-body">{opportunity.internal_stage_assessment || 'Not set'}</dd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Custom Field 1</dt>
+                  <dd className="text-dxc-body">{opportunity.custom_tracking_field_1 || 'Not set'}</dd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Custom Field 2</dt>
+                  <dd className="text-dxc-body">{opportunity.custom_tracking_field_2 || 'Not set'}</dd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Custom Field 3</dt>
+                  <dd className="text-dxc-body">{opportunity.custom_tracking_field_3 || 'Not set'}</dd>
                 </div>
               </div>
             )}
@@ -576,25 +783,19 @@ const OpportunityDetail: React.FC = () => {
 
       {/* Notes Section */}
       <div className="card mb-8">
-        <h2 className="text-dxc-subtitle font-semibold mb-4">Notes</h2>
+        <h2 className="text-dxc-subtitle font-semibold mb-4">Internal Notes</h2>
         <div>
           {isEditing ? (
-            <>
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide mb-1">Additional Notes</dt>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => handleInputChange('notes', e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
-                placeholder="Add notes about this opportunity..."
-              />
-            </>
+            <textarea
+              value={formData.internal_notes || ''}
+              onChange={(e) => handleInputChange('internal_notes', e.target.value)}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-dxc-purple focus:border-transparent"
+              placeholder="Add internal notes about this opportunity..."
+            />
           ) : (
-            <div className="flex justify-between items-start">
-              <dt className="text-sm font-bold text-dxc-purple uppercase tracking-wide">Additional Notes</dt>
-              <dd className="text-dxc-body whitespace-pre-wrap text-right flex-1 ml-4">
-                {'No notes available in current schema'}
-              </dd>
+            <div className="text-dxc-body whitespace-pre-wrap">
+              {opportunity.internal_notes || 'No notes added'}
             </div>
           )}
         </div>
@@ -790,213 +991,214 @@ const OpportunityDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Resource Timeline Section */}
-      <div className="card mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-dxc-subtitle font-semibold">Resource Timeline</h2>
-          <div className="flex items-center gap-2">
-            {hasValidTimeline(resourceTimeline) && (
-              <button
-                onClick={handleDeleteTimeline}
-                disabled={deleteTimelineMutation.isPending}
-                className="text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
-              >
-                {deleteTimelineMutation.isPending ? 'Deleting...' : 'Delete Timeline'}
-              </button>
-            )}
-            <button
-              onClick={() => toggleSection('resourceTimeline')}
-              className="text-dxc-purple hover:text-dxc-purple/80 font-medium"
-            >
-              {expandedSections.resourceTimeline ? '▲ Collapse' : '▼ Expand'}
-            </button>
+      {/* Resource Timeline Chart */}
+      {hasValidTimeline(resourceTimeline) && (
+        <div className="card mb-8">
+          {/* Header with Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+            <h2 className="text-dxc-subtitle font-semibold mb-4 sm:mb-0">Resource Timeline</h2>
+            
+            {/* Controls */}
+            <div className="flex flex-wrap gap-2">
+              {/* Time Period Selector */}
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                {(['week', 'month', 'quarter', 'stage'] as const).map(period => (
+                  <button
+                    key={period}
+                    onClick={() => setTimePeriod(period)}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      timePeriod === period
+                        ? 'bg-white text-dxc-purple shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    {period === 'week' ? 'Weekly' : 
+                     period === 'month' ? 'Monthly' :
+                     period === 'quarter' ? 'Quarterly' : 'By Stage'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Chart Type Selector */}
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setChartType('line')}
+                  className={`p-2 rounded transition-colors ${
+                    chartType === 'line'
+                      ? 'bg-white text-dxc-purple shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                  title="Line Chart"
+                >
+                  <TrendingUp className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setChartType('bar')}
+                  className={`p-2 rounded transition-colors ${
+                    chartType === 'bar'
+                      ? 'bg-white text-dxc-purple shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                  title="Bar Chart"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setChartType('area')}
+                  className={`p-2 rounded transition-colors ${
+                    chartType === 'area'
+                      ? 'bg-white text-dxc-purple shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                  title="Area Chart"
+                >
+                  <Layers className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            {(() => {
+              const tableData = getTimelineTableData(resourceTimeline!);
+              const serviceLineColors: Record<string, string> = {
+                'CES': DXC_COLORS[0],
+                'INS': DXC_COLORS[1], 
+                'BPS': DXC_COLORS[2],
+                'SEC': DXC_COLORS[6],
+                'ITOC': DXC_COLORS[4],
+                'MW': DXC_COLORS[5],
+              };
+
+              const renderChart = () => {
+                const commonProps = {
+                  data: resourceTimelineChartData.chartArray,
+                  margin: { top: 10, right: 30, left: 0, bottom: 0 },
+                };
+
+                const commonAxisProps = {
+                  xAxis: <XAxis dataKey="period" tick={{ fontSize: 12 }} />,
+                  yAxis: <YAxis tick={{ fontSize: 12 }} label={{ value: 'FTE', angle: -90, position: 'insideLeft' }} />,
+                  grid: <CartesianGrid strokeDasharray="3 3" stroke="#D9D9D6" />,
+                  tooltip: (
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #D9D9D6',
+                        borderRadius: '8px',
+                      }}
+                      formatter={(value: number, name: string) => [`${value.toFixed(1)} FTE`, name]}
+                    />
+                  ),
+                  legend: <Legend wrapperStyle={{ paddingTop: '20px' }} />,
+                };
+
+                switch (chartType) {
+                  case 'line':
+                    return (
+                      <LineChart {...commonProps}>
+                        {commonAxisProps.grid}
+                        {commonAxisProps.xAxis}
+                        {commonAxisProps.yAxis}
+                        {commonAxisProps.tooltip}
+                        {commonAxisProps.legend}
+                        {resourceTimelineChartData.serviceLines.map(serviceLine => (
+                          <Line
+                            key={serviceLine}
+                            type="monotone"
+                            dataKey={serviceLine}
+                            stroke={serviceLineColors[serviceLine] || DXC_COLORS[0]}
+                            name={serviceLine}
+                            strokeWidth={3}
+                          />
+                        ))}
+                      </LineChart>
+                    );
+
+                  case 'bar':
+                    return (
+                      <BarChart {...commonProps}>
+                        {commonAxisProps.grid}
+                        {commonAxisProps.xAxis}
+                        {commonAxisProps.yAxis}
+                        {commonAxisProps.tooltip}
+                        {commonAxisProps.legend}
+                        {resourceTimelineChartData.serviceLines.map(serviceLine => (
+                          <Bar
+                            key={serviceLine}
+                            dataKey={serviceLine}
+                            stackId="fte"
+                            fill={serviceLineColors[serviceLine] || DXC_COLORS[0]}
+                            name={serviceLine}
+                          />
+                        ))}
+                      </BarChart>
+                    );
+
+                  case 'area':
+                    return (
+                      <AreaChart {...commonProps}>
+                        {commonAxisProps.grid}
+                        {commonAxisProps.xAxis}
+                        {commonAxisProps.yAxis}
+                        {commonAxisProps.tooltip}
+                        {commonAxisProps.legend}
+                        {resourceTimelineChartData.serviceLines.map(serviceLine => (
+                          <Area
+                            key={serviceLine}
+                            type="monotone"
+                            dataKey={serviceLine}
+                            stackId="1"
+                            stroke={serviceLineColors[serviceLine] || DXC_COLORS[0]}
+                            fill={serviceLineColors[serviceLine] || DXC_COLORS[0]}
+                            fillOpacity={0.6}
+                            name={serviceLine}
+                          />
+                        ))}
+                      </AreaChart>
+                    );
+
+                  default:
+                    return null;
+                }
+              };
+              
+              return (
+                <div>
+                  {/* Chart */}
+                  <div className="mb-6">
+                    <ResponsiveContainer width="100%" height={300}>
+                      {renderChart()}
+                    </ResponsiveContainer>
+                  </div>
+                  
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h4 className="font-medium text-gray-700">Total Effort</h4>
+                      <p className="text-2xl font-bold text-dxc-purple">
+                        {tableData.reduce((sum, item) => sum + item.total_effort_weeks, 0).toFixed(1)} weeks
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h4 className="font-medium text-gray-700">Peak FTE</h4>
+                      <p className="text-2xl font-bold text-dxc-purple">
+                        {Math.max(...tableData.map(item => item.fte_required)).toFixed(1)}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h4 className="font-medium text-gray-700">Service Lines</h4>
+                      <p className="text-2xl font-bold text-dxc-purple">
+                        {resourceTimelineChartData.serviceLines.length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
-
-        {expandedSections.resourceTimeline && (
-          <div>
-            {/* Timeline Status and Actions */}
-            <div className="mb-6">
-              {timelineLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <LoadingSpinner />
-                  <span className="ml-2 text-gray-600">Loading resource timeline...</span>
-                </div>
-              ) : timelineError ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-red-800">Error Loading Timeline</h3>
-                      <p className="text-sm text-red-600 mt-1">
-                        {timelineError instanceof Error ? timelineError.message : 'Failed to load resource timeline data'}
-                      </p>
-                    </div>
-                    {canCalculateTimeline(opportunity) && (
-                      <button
-                        onClick={handleCalculateTimeline}
-                        disabled={calculateTimelineMutation.isPending}
-                        className="btn-primary disabled:opacity-50"
-                      >
-                        {calculateTimelineMutation.isPending ? 'Generating...' : 'Generate Timeline'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : hasValidTimeline(resourceTimeline) ? (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-green-800">Resource Timeline Generated</h3>
-                      <p className="text-sm text-green-600 mt-1">
-                        Service lines: {resourceTimeline?.supported_service_lines?.join(', ') || 'N/A'}
-                        {resourceTimeline?.total_remaining_effort_weeks && (
-                          <> • Total effort: {resourceTimeline.total_remaining_effort_weeks.toFixed(1)} weeks</>
-                        )}
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleCalculateTimeline}
-                      disabled={calculateTimelineMutation.isPending}
-                      className="btn-secondary disabled:opacity-50"
-                    >
-                      {calculateTimelineMutation.isPending ? 'Recalculating...' : 'Recalculate'}
-                    </button>
-                  </div>
-                </div>
-              ) : canCalculateTimeline(opportunity) ? (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-blue-800">Ready for Resource Timeline Calculation</h3>
-                      <p className="text-sm text-blue-600 mt-1">
-                        Service lines available for calculation: {getCalculationServiceLines(opportunity).join(', ')}
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleCalculateTimeline}
-                      disabled={calculateTimelineMutation.isPending}
-                      className="btn-primary disabled:opacity-50"
-                    >
-                      {calculateTimelineMutation.isPending ? 'Calculating...' : 'Generate Timeline'}
-                    </button>
-                  </div>
-                </div>
-              ) : resourceTimeline === null ? (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-medium text-gray-800">No Resource Timeline Found</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        No timeline has been generated for this opportunity yet.
-                      </p>
-                    </div>
-                    {canCalculateTimeline(opportunity) && (
-                      <button
-                        onClick={handleCalculateTimeline}
-                        disabled={calculateTimelineMutation.isPending}
-                        className="btn-primary disabled:opacity-50"
-                      >
-                        {calculateTimelineMutation.isPending ? 'Generating...' : 'Generate Timeline'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <h3 className="font-medium text-yellow-800">Resource Timeline Not Available</h3>
-                  <p className="text-sm text-yellow-600 mt-1">
-                    This opportunity doesn't have TCV in MW or ITOC service lines, and the lead offering ({opportunity?.lead_offering_l1 || 'N/A'}) doesn't have resource planning templates available.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Timeline Visualization */}
-            {hasValidTimeline(resourceTimeline) && (
-              <div>
-                {(() => {
-                  const summary = getTimelineSummary(resourceTimeline!);
-                  const tableData = getTimelineTableData(resourceTimeline!);
-                  
-                  return (
-                    <>
-                      {/* Timeline Summary */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <h4 className="font-medium text-gray-700">Total Effort</h4>
-                          <p className="text-2xl font-bold text-dxc-purple">
-                            {summary.totalEffort.toFixed(1)} weeks
-                          </p>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <h4 className="font-medium text-gray-700">Peak FTE</h4>
-                          <p className="text-2xl font-bold text-dxc-purple">
-                            {summary.peakFTE.toFixed(1)}
-                          </p>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <h4 className="font-medium text-gray-700">Service Lines</h4>
-                          <p className="text-2xl font-bold text-dxc-purple">
-                            {summary.serviceLineCount}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Timeline Table */}
-                      {tableData.length > 0 ? (
-                        <div className="overflow-x-auto">
-                          <table className="table w-full">
-                            <thead>
-                              <tr>
-                                <th>Service Line</th>
-                                <th>Stage</th>
-                                <th>Start Date</th>
-                                <th>End Date</th>
-                                <th>Duration (weeks)</th>
-                                <th>FTE Required</th>
-                                <th>Total Effort (weeks)</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tableData.map((item, index) => (
-                                <tr key={`${(item as any).service_line}-${item.stage_name}-${index}`}>
-                                  <td className="font-medium">{(item as any).service_line}</td>
-                                  <td>{item.stage_name}</td>
-                                  <td>{new Date(item.stage_start_date).toLocaleDateString()}</td>
-                                  <td>{new Date(item.stage_end_date).toLocaleDateString()}</td>
-                                  <td>{item.duration_weeks}</td>
-                                  <td>{item.fte_required}</td>
-                                  <td className="font-medium text-dxc-purple">{item.total_effort_weeks.toFixed(1)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-gray-500">
-                          No timeline data available for display
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-
-            {/* Error Display */}
-            {(calculateTimelineMutation.error || deleteTimelineMutation.error || timelineError) && (
-              <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
-                <h4 className="font-medium text-red-800">Error</h4>
-                <p className="text-red-600 mt-1">
-                  {calculateTimelineMutation.error instanceof Error ? calculateTimelineMutation.error.message :
-                   deleteTimelineMutation.error instanceof Error ? deleteTimelineMutation.error.message :
-                   timelineError instanceof Error ? timelineError.message : 'An error occurred'}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Service Line Breakdown */}
       {serviceLineChartData.length > 0 && (
