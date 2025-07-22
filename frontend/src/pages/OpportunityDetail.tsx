@@ -1,29 +1,42 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOpportunity, useOpportunityLineItems, useUpdateOpportunity } from '../hooks/useOpportunities';
+import { useCategories } from '../hooks/useConfig';
 import LoadingSpinner from '../components/LoadingSpinner';
-import type { OpportunityFormData, ServiceLine, ChartDataPoint, Opportunity } from '../types/index';
+import type { OpportunityFormData, ServiceLine, ChartDataPoint, Opportunity, OpportunityCategory } from '../types/index';
 import { SERVICE_LINES, DXC_COLORS } from '../types/index';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis } from 'recharts';
 
-// Helper function to calculate opportunity category based on TCV
-const getOpportunityCategory = (tcvMillions: number | undefined): string => {
-  if (!tcvMillions || tcvMillions < 0) return 'Negative';
-  if (tcvMillions < 5) return 'Sub $5M';
-  if (tcvMillions < 50) return 'Cat C';
-  if (tcvMillions < 250) return 'Cat B';
-  return 'Cat A';
+// Helper function to calculate opportunity category based on TCV using database categories
+const getOpportunityCategory = (tcvMillions: number | undefined, categories: OpportunityCategory[]): string => {
+  if (!tcvMillions || tcvMillions < 0) return 'Uncategorized';
+  if (!categories || categories.length === 0) return 'Uncategorized';
+  
+  // Sort categories by min_tcv in ascending order
+  const sortedCategories = [...categories].sort((a, b) => a.min_tcv - b.min_tcv);
+  
+  // Find the category with the highest min_tcv that the tcvMillions meets or exceeds
+  let bestMatch = null;
+  for (const category of sortedCategories) {
+    if (tcvMillions >= category.min_tcv) {
+      if (category.max_tcv === null || tcvMillions <= category.max_tcv) {
+        bestMatch = category;
+      }
+    }
+  }
+  
+  return bestMatch ? bestMatch.name : 'Uncategorized';
 };
 
 // Helper function to map API opportunity to display format
-const mapOpportunityForDisplay = (opp: Opportunity) => {
+const mapOpportunityForDisplay = (opp: Opportunity, categories: OpportunityCategory[]) => {
   return {
     ...opp,
     name: opp.opportunity_name,
     amount: opp.tcv_millions || 0,
     close_date: opp.decision_date,
     stage: opp.sales_stage,
-    category: getOpportunityCategory(opp.tcv_millions),
+    category: getOpportunityCategory(opp.tcv_millions, categories),
     assigned_resource: opp.opportunity_owner,
     status: opp.in_forecast === 'Y' ? 'Active' : opp.in_forecast === 'N' ? 'Inactive' : 'Unknown',
     notes: '' // This field doesn't exist in the current schema
@@ -37,6 +50,7 @@ const OpportunityDetail: React.FC = () => {
 
   const { data: opportunity, isLoading: opportunityLoading, error: opportunityError } = useOpportunity(opportunityId);
   const { data: lineItems, isLoading: lineItemsLoading } = useOpportunityLineItems(opportunityId);
+  const { data: categories = [], isLoading: categoriesLoading } = useCategories();
   const updateMutation = useUpdateOpportunity();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -46,17 +60,17 @@ const OpportunityDetail: React.FC = () => {
     notes: '',
   });
 
-  // Initialize form data when opportunity loads
+  // Initialize form data when opportunity and categories load
   React.useEffect(() => {
-    if (opportunity) {
-      const mappedOpp = mapOpportunityForDisplay(opportunity);
+    if (opportunity && categories) {
+      const mappedOpp = mapOpportunityForDisplay(opportunity, categories);
       setFormData({
         assigned_resource: mappedOpp.assigned_resource || '',
         status: mappedOpp.status || '',
         notes: mappedOpp.notes || '',
       });
     }
-  }, [opportunity]);
+  }, [opportunity, categories]);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -65,8 +79,8 @@ const OpportunityDetail: React.FC = () => {
   const handleCancel = () => {
     setIsEditing(false);
     // Reset form data to original values
-    if (opportunity) {
-      const mappedOpp = mapOpportunityForDisplay(opportunity);
+    if (opportunity && categories) {
+      const mappedOpp = mapOpportunityForDisplay(opportunity, categories);
       setFormData({
         assigned_resource: mappedOpp.assigned_resource || '',
         status: mappedOpp.status || '',
@@ -153,7 +167,7 @@ const OpportunityDetail: React.FC = () => {
     }
   };
 
-  if (opportunityLoading) {
+  if (opportunityLoading || categoriesLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <LoadingSpinner />
@@ -217,7 +231,7 @@ const OpportunityDetail: React.FC = () => {
         <h1 className="text-dxc-slide text-dxc-purple mb-2">{opportunity.opportunity_name}</h1>
         <p className="text-dxc-body text-gray-600">ID: {opportunity.opportunity_id}</p>
         {opportunity.account_name && (
-          <p className="text-dxc-body text-gray-600">Account: {opportunity.account_name}</p>
+          <p className="text-dxc-slide text-dxc-purple">Account: {opportunity.account_name}</p>
         )}
       </div>
 
@@ -246,7 +260,7 @@ const OpportunityDetail: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <p className="text-dxc-body">{getOpportunityCategory(opportunity.tcv_millions)}</p>
+                <p className="text-dxc-body">{getOpportunityCategory(opportunity.tcv_millions, categories)}</p>
               </div>
             </div>
           </div>

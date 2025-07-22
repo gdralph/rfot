@@ -79,10 +79,11 @@ async def get_opportunities(
             else:
                 # Category has only min TCV (no upper limit)
                 statement = statement.where(Opportunity.tcv_millions >= category_config.min_tcv)
-        elif category == 'Negative':
+        elif category == 'Uncategorized' or category == 'Negative':
             # Special case for negative/null TCV values
+            # Supporting both 'Uncategorized' and 'Negative' for backward compatibility
             statement = statement.where(
-                (Opportunity.tcv_millions.is_(None)) | (Opportunity.tcv_millions <= 0)
+                (Opportunity.tcv_millions.is_(None)) | (Opportunity.tcv_millions < 0)
             )
     
     if search:

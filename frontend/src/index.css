@@ -45,11 +45,19 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-dxc-bright-purple text-white px-6 py-3 rounded-dxc font-semibold hover:bg-dxc-dark-purple transition-colors duration-200;
+    @apply bg-dxc-bright-purple text-white px-4 py-2 rounded-dxc font-medium hover:bg-dxc-dark-purple transition-colors duration-200;
   }
 
   .btn-secondary {
-    @apply bg-white text-dxc-bright-purple border-2 border-dxc-bright-purple px-6 py-3 rounded-dxc font-semibold hover:bg-dxc-bright-purple hover:text-white transition-colors duration-200;
+    @apply bg-gray-200 text-gray-800 px-4 py-2 rounded-dxc font-medium hover:bg-gray-300 transition-colors duration-200;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white px-4 py-2 rounded-dxc font-medium hover:bg-red-700 transition-colors duration-200;
+  }
+
+  .btn-success {
+    @apply bg-dxc-green text-white px-4 py-2 rounded-dxc font-medium hover:bg-green-700 transition-colors duration-200;
   }
 
   .card {
@@ -259,4 +267,40 @@
   .dxc-callout {
     @apply bg-purple-50 border-l-4 border-dxc-bright-purple p-4 my-4;
   }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Focus styles for accessibility */
+*:focus {
+  outline: 2px solid #5F249F;
+  outline-offset: 2px;
+}
+
+/* Loading animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
 }

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     
     # Environment
     environment: str = "development"
-    debug: bool = True
+    debug: bool = False
     
     # Logging
     log_level: str = "INFO"

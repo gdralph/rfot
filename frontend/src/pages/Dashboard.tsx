@@ -1,32 +1,33 @@
 import React, { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, Users, Calendar, BarChart3, Eye, Search, Filter } from 'lucide-react';
-import { useForecastSummary, useServiceLineForecast, useActiveServiceLines } from '../hooks/useForecasts';
+import { TrendingUp, Users, Calendar, BarChart3, Eye, Filter } from 'lucide-react';
+import { useForecastSummary, useServiceLineForecast, useLeadOfferingForecast, useActiveServiceLines } from '../hooks/useForecasts';
 import { useCategories } from '../hooks/useConfig';
-import { DXC_COLORS, SERVICE_LINES, SALES_STAGES, STAGE_ORDER, CATEGORY_ORDER, OPPORTUNITY_CATEGORIES } from '../types/index.js';
+import { DXC_COLORS, SERVICE_LINES, SALES_STAGES, OPPORTUNITY_CATEGORIES, type ServiceLine } from '../types/index.js';
 import LoadingSpinner from '../components/LoadingSpinner';
 import InteractiveForecastChart from '../components/charts/InteractiveForecastChart';
 import ResourceHeatmap from '../components/charts/ResourceHeatmap';
 import ServiceLineDistribution from '../components/charts/ServiceLineDistribution';
+import LeadOfferingDistribution from '../components/charts/LeadOfferingDistribution';
 import TimelineView from '../components/charts/TimelineView';
 
 const Dashboard: React.FC = () => {
   const [activeView, setActiveView] = useState<'overview' | 'forecast' | 'resources' | 'timeline'>('overview');
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('quarter');
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState<{ stage?: string; category?: string; service_line?: string }>({});
-  const [serviceLineFilter, setServiceLineFilter] = useState<string>();
+  const [filters, setFilters] = useState<{ stage?: string; category?: string; service_line?: string; lead_offering?: string }>({});
   
   const { data: forecastSummary, isLoading: summaryLoading, error: summaryError } = useForecastSummary(filters);
-  const { data: serviceLineForecast, isLoading: serviceLoading, error: serviceError } = useServiceLineForecast(serviceLineFilter);
+  const { data: serviceLineForecast, isLoading: serviceLoading, error: serviceError } = useServiceLineForecast(filters);
+  const { data: leadOfferingForecast, isLoading: leadOfferingLoading, error: leadOfferingError } = useLeadOfferingForecast(filters);
   const { data: activeServiceLines, isLoading: activeServiceLoading, error: activeServiceError } = useActiveServiceLines();
   const { data: categories, isLoading: categoriesLoading } = useCategories();
 
-  if (summaryLoading || serviceLoading || activeServiceLoading || categoriesLoading) {
+  if (summaryLoading || serviceLoading || leadOfferingLoading || activeServiceLoading || categoriesLoading) {
     return <LoadingSpinner text="Loading dashboard data..." />;
   }
 
-  if (summaryError || serviceError || activeServiceError) {
+  if (summaryError || serviceError || leadOfferingError || activeServiceError) {
     return (
       <div className="p-6 text-center">
         <h2 className="text-dxc-slide mb-4">Dashboard</h2>
@@ -38,24 +39,14 @@ const Dashboard: React.FC = () => {
   }
 
   const handleFilterChange = (key: string, value: string) => {
-    if (key === 'service_line') {
-      setServiceLineFilter(value || undefined);
-      // Also update filters to include service_line for forecast summary
-      setFilters(prev => ({
-        ...prev,
-        service_line: value || undefined,
-      }));
-    } else {
-      setFilters(prev => ({
-        ...prev,
-        [key]: value || undefined,
-      }));
-    }
+    setFilters(prev => ({
+      ...prev,
+      [key]: value || undefined,
+    }));
   };
 
   const clearFilters = () => {
     setFilters({});
-    setServiceLineFilter(undefined);
   };
 
   // Prepare chart data
@@ -92,12 +83,6 @@ const Dashboard: React.FC = () => {
           }))
       ) : [];
 
-  const serviceLineChartData = serviceLineForecast?.service_line_totals ? SERVICE_LINES.map((line, index) => ({
-    name: line,
-    revenue: serviceLineForecast.service_line_totals[line] || 0,
-    percentage: serviceLineForecast.service_line_percentages[line] || 0,
-    fill: DXC_COLORS[index % DXC_COLORS.length]
-  })) : [];
 
   const formatCurrency = (value: number) => {
     if (!value || isNaN(value)) return '$0M';
@@ -131,7 +116,7 @@ const Dashboard: React.FC = () => {
   };
 
   const generateResourceData = () => {
-    return SERVICE_LINES.flatMap((serviceLine, serviceIndex) => 
+    return SERVICE_LINES.flatMap((serviceLine) => 
       Array.from({ length: 12 }, (_, week) => ({
         serviceLine,
         week: week + 1,
@@ -149,9 +134,26 @@ const Dashboard: React.FC = () => {
       serviceLine,
       revenue: serviceLineForecast?.service_line_totals[serviceLine] || 0,
       percentage: serviceLineForecast?.service_line_percentages[serviceLine] || 0,
-      opportunities: 0, // No mock data - should be calculated from real opportunities
-      avgDealSize: 0, // No mock data - should be calculated from real opportunities  
-      growth: 0, // No mock data - should be calculated from historical data
+      opportunities: serviceLineForecast?.service_line_counts[serviceLine] || 0,
+      avgDealSize: serviceLineForecast?.service_line_avg_deal_size[serviceLine] || 0,
+      growth: 0, // Historical data not available yet - would need time series data
+      stage: 'Active',
+      category: 'Enterprise'
+    }));
+  };
+
+  const generateLeadOfferingData = () => {
+    if (!leadOfferingForecast?.lead_offering_data) {
+      return [];
+    }
+
+    return Object.entries(leadOfferingForecast.lead_offering_data).map(([leadOffering, data]: [string, any]) => ({
+      leadOffering: leadOffering as ServiceLine,
+      revenue: data.revenue || 0,
+      percentage: data.percentage || 0,
+      opportunities: data.opportunities || 0,
+      avgDealSize: data.avgDealSize || 0,
+      growth: data.growth || 0,
       stage: 'Active',
       category: 'Enterprise'
     }));
@@ -179,6 +181,7 @@ const Dashboard: React.FC = () => {
   const forecastData = generateForecastData();
   const resourceData = generateResourceData();
   const serviceLineData = generateServiceLineData();
+  const leadOfferingData = generateLeadOfferingData();
   const timelineData = generateTimelineData();
 
   const renderActiveView = () => {
@@ -250,7 +253,21 @@ const Dashboard: React.FC = () => {
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
-                      formatter={(value) => [formatCurrency(Number(value)), 'Value']}
+                      formatter={(value, name, props) => {
+                        const dataPoint = props.payload;
+                        const stageCode = dataPoint?.code;
+                        const count = forecastSummary?.stage_counts?.[stageCode] || 0;
+                        const avgValue = count > 0 ? Number(value) / count : 0;
+                        
+                        return [
+                          <div key="tooltip-content" className="space-y-1">
+                            <div>Revenue: {formatCurrency(Number(value))}</div>
+                            <div>Opportunities: {formatNumber(count)}</div>
+                            <div>Avg Deal Size: {formatCurrency(avgValue)}</div>
+                          </div>,
+                          ''
+                        ];
+                      }}
                       labelFormatter={(label, payload) => {
                         const dataPoint = payload?.[0]?.payload;
                         return dataPoint?.fullName || label;
@@ -286,7 +303,30 @@ const Dashboard: React.FC = () => {
                         <Cell key={`cell-${index}`} fill={entry.fill} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => [formatCurrency(Number(value)), 'Value']} />
+                    <Tooltip 
+                      formatter={(value, name, props) => {
+                        const dataPoint = props.payload;
+                        const categoryName = dataPoint?.name;
+                        const count = forecastSummary?.category_counts?.[categoryName] || 0;
+                        const avgValue = count > 0 ? Number(value) / count : 0;
+                        const percentage = forecastSummary?.total_value ? (Number(value) / forecastSummary.total_value * 100) : 0;
+                        
+                        return [
+                          <div key="tooltip-content" className="space-y-1">
+                            <div>Revenue: {formatCurrency(Number(value))}</div>
+                            <div>Share: {percentage.toFixed(1)}%</div>
+                            <div>Opportunities: {formatNumber(count)}</div>
+                            <div>Avg Deal Size: {formatCurrency(avgValue)}</div>
+                          </div>,
+                          categoryName
+                        ];
+                      }}
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #D9D9D6',
+                        borderRadius: '8px',
+                      }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -296,6 +336,12 @@ const Dashboard: React.FC = () => {
             <ServiceLineDistribution 
               data={serviceLineData.filter(item => item.revenue > 0)} 
               title="Service Line Performance"
+            />
+
+            {/* Lead Offering Analysis */}
+            <LeadOfferingDistribution 
+              data={leadOfferingData.filter(item => item.revenue > 0)} 
+              title="Lead Offering Performance"
             />
           </div>
         );
@@ -366,7 +412,7 @@ const Dashboard: React.FC = () => {
             <Filter className="w-4 h-4" />
             Filters
           </button>
-          {(filters.stage || filters.category || serviceLineFilter) && (
+          {(filters.stage || filters.category || filters.service_line || filters.lead_offering) && (
             <button
               onClick={clearFilters}
               className="text-dxc-purple hover:text-dxc-purple/80 text-sm"
@@ -378,7 +424,7 @@ const Dashboard: React.FC = () => {
 
         {/* Filter Controls */}
         {showFilters && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-dxc-light-gray">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-dxc-light-gray">
             <div>
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
                 Stage
@@ -412,7 +458,7 @@ const Dashboard: React.FC = () => {
                     {category.name}
                   </option>
                 ))}
-                <option value="Negative">Negative</option>
+                <option value="Uncategorized">Uncategorized</option>
               </select>
             </div>
             
@@ -421,11 +467,29 @@ const Dashboard: React.FC = () => {
                 Service Line
               </label>
               <select
-                value={serviceLineFilter || ''}
+                value={filters.service_line || ''}
                 onChange={(e) => handleFilterChange('service_line', e.target.value)}
                 className="input w-full"
               >
                 <option value="">All Service Lines</option>
+                {SERVICE_LINES.map((serviceLine) => (
+                  <option key={serviceLine} value={serviceLine}>
+                    {serviceLine}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                Lead Offering
+              </label>
+              <select
+                value={filters.lead_offering || ''}
+                onChange={(e) => handleFilterChange('lead_offering', e.target.value)}
+                className="input w-full"
+              >
+                <option value="">All Lead Offerings</option>
                 {SERVICE_LINES.map((serviceLine) => (
                   <option key={serviceLine} value={serviceLine}>
                     {serviceLine}

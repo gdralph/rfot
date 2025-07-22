@@ -129,17 +129,23 @@ export interface ForecastSummary {
   total_value: number;
   average_value: number;
   stage_breakdown: Record<string, number>;
+  stage_counts: Record<string, number>;
   category_breakdown: Record<string, number>;
+  category_counts: Record<string, number>;
 }
 
 export interface ServiceLineForecast {
   service_line_totals: Record<string, number>;
   service_line_percentages: Record<string, number>;
+  service_line_counts: Record<string, number>;
+  service_line_avg_deal_size: Record<string, number>;
   total_revenue: number;
   filtered_service_line?: {
     name: string;
     revenue: number;
     percentage: number;
+    opportunities: number;
+    avg_deal_size: number;
   };
 }
 
@@ -180,7 +186,7 @@ export const OPPORTUNITY_CATEGORIES = [
   'Cat B', 
   'Cat C',
   'Sub $5M',
-  'Negative'    // Negative amounts last
+  'Uncategorized'    // Uncategorized amounts last
 ] as const;
 
 export const CATEGORY_ORDER: Record<string, number> = OPPORTUNITY_CATEGORIES.reduce((acc, category, index) => {

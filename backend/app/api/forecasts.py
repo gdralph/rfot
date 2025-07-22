@@ -11,7 +11,7 @@ from app.models.config import OpportunityCategory
 def get_opportunity_category(tcv_millions: float, categories: List[OpportunityCategory]) -> str:
     """Calculate category based on TCV in millions using database category definitions."""
     if tcv_millions is None or tcv_millions < 0:
-        return 'Negative'
+        return 'Uncategorized'
     
     if not categories:
         return 'Unknown'
@@ -46,10 +46,11 @@ async def get_forecast_summary(
     session: Session = Depends(get_session),
     stage: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
-    service_line: Optional[str] = Query(None)
+    service_line: Optional[str] = Query(None),
+    lead_offering: Optional[str] = Query(None)
 ):
     """Get forecast summary metrics."""
-    logger.info("Fetching forecast summary", filters={"stage": stage, "category": category, "service_line": service_line})
+    logger.info("Fetching forecast summary", filters={"stage": stage, "category": category, "service_line": service_line, "lead_offering": lead_offering})
     
     # Fetch categories from database
     categories_statement = select(OpportunityCategory)
@@ -95,6 +96,15 @@ async def get_forecast_summary(
         
         opportunities = filtered_opportunities
     
+    # Apply lead offering filter after fetching all opportunities
+    if lead_offering:
+        filtered_opportunities = []
+        for opp in opportunities:
+            if opp.lead_offering_l1 == lead_offering:
+                filtered_opportunities.append(opp)
+        
+        opportunities = filtered_opportunities
+    
     total_opportunities = len(opportunities)
     total_value = sum(opp.tcv_millions or 0 for opp in opportunities)
     avg_value = total_value / total_opportunities if total_opportunities > 0 else 0
@@ -104,42 +114,53 @@ async def get_forecast_summary(
     # Build category order from database categories
     sorted_categories = sorted(categories, key=lambda x: x.min_tcv, reverse=True)
     CATEGORY_ORDER = [cat.name for cat in sorted_categories]
-    # Add 'Negative' as it's not in the database but we calculate it for negative TCVs
-    CATEGORY_ORDER.append('Negative')
+    # Add 'Uncategorized' as it's not in the database but we calculate it for negative TCVs
+    CATEGORY_ORDER.append('Uncategorized')
     
     # Group by stage (use database format directly)
     stage_breakdown = {}
+    stage_counts = {}
     for opp in opportunities:
         stage = opp.sales_stage
         if stage:
             stage_breakdown[stage] = stage_breakdown.get(stage, 0) + (opp.tcv_millions or 0)
+            stage_counts[stage] = stage_counts.get(stage, 0) + 1
     
     # Sort stage breakdown by proper order
     stage_breakdown = {stage: stage_breakdown.get(stage, 0) for stage in STAGE_ORDER if stage in stage_breakdown}
+    stage_counts = {stage: stage_counts.get(stage, 0) for stage in STAGE_ORDER if stage in stage_counts}
     
     # Group by category (calculate from TCV using database categories)
     category_breakdown = {}
+    category_counts = {}
     for opp in opportunities:
         cat = get_opportunity_category(opp.tcv_millions or 0, categories)
         category_breakdown[cat] = category_breakdown.get(cat, 0) + (opp.tcv_millions or 0)
+        category_counts[cat] = category_counts.get(cat, 0) + 1
     
     # Sort category breakdown by proper order  
     sorted_category_breakdown = {}
+    sorted_category_counts = {}
     for category in CATEGORY_ORDER:
         if category in category_breakdown:
             sorted_category_breakdown[category] = category_breakdown[category]
+            sorted_category_counts[category] = category_counts[category]
     # Add any remaining categories not in the predefined order
     for category, value in category_breakdown.items():
         if category not in sorted_category_breakdown:
             sorted_category_breakdown[category] = value
+            sorted_category_counts[category] = category_counts[category]
     category_breakdown = sorted_category_breakdown
+    category_counts = sorted_category_counts
     
     summary = {
         "total_opportunities": total_opportunities,
         "total_value": total_value,
         "average_value": avg_value,
         "stage_breakdown": stage_breakdown,
-        "category_breakdown": category_breakdown
+        "stage_counts": stage_counts,
+        "category_breakdown": category_breakdown,
+        "category_counts": category_counts
     }
     
     logger.info("Generated forecast summary", summary=summary)
@@ -149,13 +170,66 @@ async def get_forecast_summary(
 @router.get("/service-lines")
 async def get_service_line_forecast(
     session: Session = Depends(get_session),
-    service_line: Optional[str] = Query(None)
+    stage: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    service_line: Optional[str] = Query(None),
+    lead_offering: Optional[str] = Query(None)
 ):
     """Get service line breakdown and forecasts."""
-    logger.info("Fetching service line forecast", service_line=service_line)
+    logger.info("Fetching service line forecast", filters={"stage": stage, "category": category, "service_line": service_line, "lead_offering": lead_offering})
+    
+    # Fetch categories from database
+    categories_statement = select(OpportunityCategory)
+    categories = session.exec(categories_statement).all()
     
     statement = select(Opportunity)
+    
+    if stage:
+        statement = statement.where(Opportunity.sales_stage == stage)
+    
     opportunities = session.exec(statement).all()
+    
+    # Apply category filter after fetching opportunities (since category is calculated)
+    if category:
+        filtered_opportunities = []
+        for opp in opportunities:
+            opp_category = get_opportunity_category(opp.tcv_millions or 0, categories)
+            if opp_category == category:
+                filtered_opportunities.append(opp)
+        opportunities = filtered_opportunities
+    
+    # Apply service line filter after fetching all opportunities
+    if service_line:
+        # Filter opportunities that have revenue in the specified service line
+        filtered_opportunities = []
+        for opp in opportunities:
+            service_line_value = 0
+            if service_line == "CES":
+                service_line_value = opp.ces_millions or 0
+            elif service_line == "INS":
+                service_line_value = opp.ins_millions or 0
+            elif service_line == "BPS":
+                service_line_value = opp.bps_millions or 0
+            elif service_line == "SEC":
+                service_line_value = opp.sec_millions or 0
+            elif service_line == "ITOC":
+                service_line_value = opp.itoc_millions or 0
+            elif service_line == "MW":
+                service_line_value = opp.mw_millions or 0
+            
+            if service_line_value > 0:
+                filtered_opportunities.append(opp)
+        
+        opportunities = filtered_opportunities
+    
+    # Apply lead offering filter after fetching all opportunities
+    if lead_offering:
+        filtered_opportunities = []
+        for opp in opportunities:
+            if opp.lead_offering_l1 == lead_offering:
+                filtered_opportunities.append(opp)
+        
+        opportunities = filtered_opportunities
     
     service_line_totals = {
         "CES": sum(opp.ces_millions or 0 for opp in opportunities),
@@ -164,6 +238,22 @@ async def get_service_line_forecast(
         "SEC": sum(opp.sec_millions or 0 for opp in opportunities),
         "ITOC": sum(opp.itoc_millions or 0 for opp in opportunities),
         "MW": sum(opp.mw_millions or 0 for opp in opportunities)
+    }
+    
+    # Calculate opportunity counts per service line
+    service_line_counts = {
+        "CES": sum(1 for opp in opportunities if (opp.ces_millions or 0) > 0),
+        "INS": sum(1 for opp in opportunities if (opp.ins_millions or 0) > 0),
+        "BPS": sum(1 for opp in opportunities if (opp.bps_millions or 0) > 0),
+        "SEC": sum(1 for opp in opportunities if (opp.sec_millions or 0) > 0),
+        "ITOC": sum(1 for opp in opportunities if (opp.itoc_millions or 0) > 0),
+        "MW": sum(1 for opp in opportunities if (opp.mw_millions or 0) > 0)
+    }
+    
+    # Calculate average deal sizes per service line
+    service_line_avg_deal_size = {
+        line: (service_line_totals[line] / service_line_counts[line]) if service_line_counts[line] > 0 else 0
+        for line in service_line_totals.keys()
     }
     
     total_revenue = sum(service_line_totals.values())
@@ -177,6 +267,8 @@ async def get_service_line_forecast(
     forecast = {
         "service_line_totals": service_line_totals,
         "service_line_percentages": service_line_percentages,
+        "service_line_counts": service_line_counts,
+        "service_line_avg_deal_size": service_line_avg_deal_size,
         "total_revenue": total_revenue
     }
     
@@ -184,7 +276,9 @@ async def get_service_line_forecast(
         forecast["filtered_service_line"] = {
             "name": service_line,
             "revenue": service_line_totals.get(service_line, 0),
-            "percentage": service_line_percentages.get(service_line, 0)
+            "percentage": service_line_percentages.get(service_line, 0),
+            "opportunities": service_line_counts.get(service_line, 0),
+            "avg_deal_size": service_line_avg_deal_size.get(service_line, 0)
         }
     
     logger.info("Generated service line forecast", forecast=forecast)
@@ -230,3 +324,121 @@ async def get_active_service_lines(
                active_count=active_count, 
                active_service_lines=list(active_service_lines.keys()))
     return result
+
+
+@router.get("/lead-offerings")
+async def get_lead_offering_forecast(
+    session: Session = Depends(get_session),
+    stage: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    service_line: Optional[str] = Query(None),
+    lead_offering: Optional[str] = Query(None)
+):
+    """Get lead offering breakdown and forecasts."""
+    logger.info("Fetching lead offering forecast", filters={"stage": stage, "category": category, "service_line": service_line, "lead_offering": lead_offering})
+    
+    # Fetch categories from database
+    categories_statement = select(OpportunityCategory)
+    categories = session.exec(categories_statement).all()
+    
+    statement = select(Opportunity)
+    
+    if stage:
+        statement = statement.where(Opportunity.sales_stage == stage)
+    
+    opportunities = session.exec(statement).all()
+    
+    # Apply category filter after fetching opportunities (since category is calculated)
+    if category:
+        filtered_opportunities = []
+        for opp in opportunities:
+            opp_category = get_opportunity_category(opp.tcv_millions or 0, categories)
+            if opp_category == category:
+                filtered_opportunities.append(opp)
+        opportunities = filtered_opportunities
+    
+    # Apply service line filter after fetching all opportunities
+    if service_line:
+        # Filter opportunities that have revenue in the specified service line
+        filtered_opportunities = []
+        for opp in opportunities:
+            service_line_value = 0
+            if service_line == "CES":
+                service_line_value = opp.ces_millions or 0
+            elif service_line == "INS":
+                service_line_value = opp.ins_millions or 0
+            elif service_line == "BPS":
+                service_line_value = opp.bps_millions or 0
+            elif service_line == "SEC":
+                service_line_value = opp.sec_millions or 0
+            elif service_line == "ITOC":
+                service_line_value = opp.itoc_millions or 0
+            elif service_line == "MW":
+                service_line_value = opp.mw_millions or 0
+            
+            if service_line_value > 0:
+                filtered_opportunities.append(opp)
+        
+        opportunities = filtered_opportunities
+    
+    # Apply lead offering filter after fetching all opportunities
+    if lead_offering:
+        filtered_opportunities = []
+        for opp in opportunities:
+            if opp.lead_offering_l1 == lead_offering:
+                filtered_opportunities.append(opp)
+        
+        opportunities = filtered_opportunities
+    
+    # Group by lead offering and calculate totals
+    lead_offering_totals = {}
+    lead_offering_counts = {}
+    lead_offering_deals = {}
+    
+    for opp in opportunities:
+        lead_off = opp.lead_offering_l1
+        if lead_off:
+            tcv = opp.tcv_millions or 0
+            lead_offering_totals[lead_off] = lead_offering_totals.get(lead_off, 0) + tcv
+            lead_offering_counts[lead_off] = lead_offering_counts.get(lead_off, 0) + 1
+            if lead_off not in lead_offering_deals:
+                lead_offering_deals[lead_off] = []
+            lead_offering_deals[lead_off].append(tcv)
+    
+    total_revenue = sum(lead_offering_totals.values())
+    
+    # Calculate percentages and metrics
+    lead_offering_data = {}
+    for lead_off, revenue in lead_offering_totals.items():
+        count = lead_offering_counts.get(lead_off, 0)
+        deals = lead_offering_deals.get(lead_off, [])
+        avg_deal_size = revenue / count if count > 0 else 0
+        
+        lead_offering_data[lead_off] = {
+            "revenue": revenue,
+            "percentage": (revenue / total_revenue * 100) if total_revenue > 0 else 0,
+            "opportunities": count,
+            "avgDealSize": avg_deal_size,
+            "growth": 0  # Would need historical data to calculate actual growth
+        }
+    
+    forecast = {
+        "lead_offering_totals": lead_offering_totals,
+        "lead_offering_data": lead_offering_data,
+        "total_revenue": total_revenue
+    }
+    
+    if lead_offering:
+        forecast["filtered_lead_offering"] = {
+            "name": lead_offering,
+            "data": lead_offering_data.get(lead_offering, {
+                "revenue": 0,
+                "percentage": 0,
+                "opportunities": 0,
+                "avgDealSize": 0,
+                "growth": 0
+            })
+        }
+    
+    logger.info("Generated lead offering forecast", forecast=forecast)
+    return forecast

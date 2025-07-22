@@ -42,14 +42,7 @@ class OpportunityBase(SQLModel):
     mw_millions: Optional[float] = None
     sales_org_l1: Optional[str] = None
 
-    @validator('tcv_millions', 'first_year_q1_rev', 'first_year_q2_rev', 'first_year_q3_rev', 
-              'first_year_q4_rev', 'first_year_fy_rev', 'second_year_q1_rev', 'second_year_q2_rev',
-              'second_year_q3_rev', 'second_year_q4_rev', 'second_year_fy_rev', 'fy_rev_beyond_yr2',
-              'ces_millions', 'ins_millions', 'bps_millions', 'sec_millions', 'itoc_millions', 'mw_millions')
-    def validate_revenue(cls, v):
-        if v is not None and v < 0:
-            raise ValueError('Revenue values must be non-negative')
-        return v
+    # Removed revenue validation to allow negative TCV for certain business scenarios
     
     @validator('margin_percentage')
     def validate_margin_percentage(cls, v):
@@ -117,14 +110,7 @@ class OpportunityLineItemBase(SQLModel):
     second_year_fy_rev: Optional[float] = None
     fy_rev_beyond_yr2: Optional[float] = None
 
-    @validator('offering_tcv', 'offering_abr', 'offering_iyr', 'offering_iqr', 'offering_margin',
-              'first_year_q1_rev', 'first_year_q2_rev', 'first_year_q3_rev', 'first_year_q4_rev',
-              'first_year_fy_rev', 'second_year_q1_rev', 'second_year_q2_rev', 'second_year_q3_rev',
-              'second_year_q4_rev', 'second_year_fy_rev', 'fy_rev_beyond_yr2')
-    def validate_revenue(cls, v):
-        if v is not None and v < 0:
-            raise ValueError('Revenue values must be non-negative')
-        return v
+    # Removed revenue validation to allow negative TCV for certain business scenarios
     
     @validator('offering_margin_percentage')
     def validate_margin_percentage(cls, v):

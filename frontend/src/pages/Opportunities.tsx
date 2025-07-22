@@ -9,8 +9,8 @@ import LoadingSpinner from '../components/LoadingSpinner';
 
 // Helper function to calculate opportunity category based on TCV using backend categories
 const getOpportunityCategory = (tcvMillions: number | undefined, categories: OpportunityCategory[]): string => {
-  if (!tcvMillions || tcvMillions < 0) return 'Negative';
-  if (!categories || categories.length === 0) return 'Unknown';
+  if (!tcvMillions || tcvMillions < 0) return 'Uncategorized';
+  if (!categories || categories.length === 0) return 'Uncategorized';
   
   // Find the category where TCV falls within the min/max range
   // Categories should be ordered by min_tcv
@@ -23,7 +23,7 @@ const getOpportunityCategory = (tcvMillions: number | undefined, categories: Opp
   
   // If no category matches, return the highest category (usually Cat A)
   const highestCategory = categories.find(cat => cat.max_tcv === null);
-  return highestCategory?.name || 'Unknown';
+  return highestCategory?.name || 'Uncategorized';
 };
 
 // Helper function to map API opportunity to display format
@@ -264,7 +264,7 @@ const Opportunities: React.FC = () => {
                     {category.name}
                   </option>
                 ))}
-                <option value="Negative">Negative</option>
+                <option value="Uncategorized">Uncategorized</option>
               </select>
             </div>
             
@@ -381,7 +381,7 @@ const Opportunities: React.FC = () => {
             {sortedOpportunities?.map((opportunity) => (
               <tr key={opportunity.id}>
                 <td>
-                  <div className="text-dxc-dark-gray">
+                  <div className="font-semibold text-dxc-dark-gray">
                     {opportunity.account_name || (
                       <span className="text-dxc-medium-gray italic">No account</span>
                     )}

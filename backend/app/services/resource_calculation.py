@@ -7,10 +7,13 @@ using service line stage effort data.
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 from sqlmodel import Session, select
+import structlog
 
 from app.models.opportunity import Opportunity, OpportunityLineItem
 from app.models.config import OpportunityCategory, ServiceLineStageEffort
 from app.models.database import engine
+
+logger = structlog.get_logger()
 
 # Sales stage order for backward calculation
 SALES_STAGES_ORDER = [
@@ -39,6 +42,10 @@ def determine_opportunity_category(tcv_value: float, session: Session) -> Option
     Returns:
         Category name or None if cannot be determined
     """
+    # Handle negative TCV - return None as we don't categorize negative opportunities
+    if tcv_value < 0:
+        return None
+    
     categories = session.exec(
         select(OpportunityCategory).order_by(OpportunityCategory.min_tcv)
     ).all()
@@ -174,7 +181,16 @@ def calculate_opportunity_resource_timeline(
     tcv_millions = opportunity.tcv_millions or 0
     category = determine_opportunity_category(tcv_millions, session)
     if not category:
-        raise ValueError(f"Could not determine category for TCV {tcv_millions}M")
+        # For negative TCV or uncategorized opportunities, return empty timeline
+        return {
+            "opportunity_id": opportunity.opportunity_id,
+            "opportunity_name": opportunity.opportunity_name,
+            "decision_date": opportunity.decision_date,
+            "current_stage": opportunity.sales_stage or "01",
+            "category": None,
+            "tcv_millions": tcv_millions,
+            "service_line_timelines": {}
+        }
     
     # Current stage (default to 01 if not set)
     current_stage = opportunity.sales_stage or "01"
@@ -270,7 +286,7 @@ def aggregate_portfolio_resource_forecast(
                     
         except Exception as e:
             # Log error but continue processing other opportunities
-            print(f"Error processing opportunity {opp_id}: {e}")
+            logger.error("Error processing opportunity", opportunity_id=opp_id, error=str(e))
             continue
     
     return {

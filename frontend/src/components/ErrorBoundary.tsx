@@ -1,5 +1,6 @@
 import React from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -43,9 +44,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
             <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</h2>
             <p className="text-gray-600 mb-6">
-              An error occurred while rendering this component. Please try refreshing the page.
+              An error occurred while rendering this component. Please try refreshing the page or navigating back to the dashboard.
             </p>
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-3 justify-center mb-4">
               <button
                 onClick={this.handleReset}
                 className="btn-secondary flex items-center gap-2"
@@ -53,17 +54,24 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                 <RefreshCw className="w-4 h-4" />
                 Try Again
               </button>
-              <button
-                onClick={() => window.location.reload()}
-                className="btn-primary"
+              <Link
+                to="/"
+                className="btn-primary flex items-center gap-2"
               >
-                Refresh Page
-              </button>
+                <Home className="w-4 h-4" />
+                Go to Dashboard
+              </Link>
             </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-sm text-gray-500 hover:text-gray-700 underline"
+            >
+              Refresh Page
+            </button>
             {process.env.NODE_ENV === 'development' && this.state.error && (
               <details className="mt-6 text-left">
                 <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700">
-                  Error Details
+                  Error Details (Development)
                 </summary>
                 <pre className="mt-2 text-xs bg-gray-100 p-3 rounded overflow-auto max-h-32">
                   {this.state.error.toString()}

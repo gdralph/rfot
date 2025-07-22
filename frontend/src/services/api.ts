@@ -16,6 +16,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 
 class ApiClient {
   private baseUrl: string;
+  private maxRetries: number = 3;
+  private retryDelay: number = 1000; // 1 second
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
@@ -23,7 +25,8 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retryCount: number = 0
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const config: RequestInit = {
@@ -42,16 +45,42 @@ class ApiClient {
           detail: `HTTP ${response.status}: ${response.statusText}`,
           status: response.status,
         }));
+        
+        // Retry on 5xx errors (server errors)
+        if (response.status >= 500 && retryCount < this.maxRetries) {
+          await this.delay(this.retryDelay * Math.pow(2, retryCount)); // Exponential backoff
+          return this.request<T>(endpoint, options, retryCount + 1);
+        }
+        
         throw new Error(errorData.detail || 'An error occurred');
       }
 
       return await response.json();
     } catch (error) {
       if (error instanceof Error) {
+        // Retry on network errors
+        if (retryCount < this.maxRetries && this.isRetryableError(error)) {
+          await this.delay(this.retryDelay * Math.pow(2, retryCount));
+          return this.request<T>(endpoint, options, retryCount + 1);
+        }
         throw error;
       }
       throw new Error('Network error occurred');
     }
+  }
+
+  private isRetryableError(error: Error): boolean {
+    const retryableMessages = [
+      'Failed to fetch',
+      'NetworkError',
+      'TypeError',
+      'fetch'
+    ];
+    return retryableMessages.some(msg => error.message.includes(msg));
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   // Health check
@@ -90,7 +119,7 @@ class ApiClient {
   }
 
   // Forecast API
-  async getForecastSummary(filters?: { stage?: string; category?: string; service_line?: string }): Promise<ForecastSummary> {
+  async getForecastSummary(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }): Promise<ForecastSummary> {
     const params = new URLSearchParams();
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
@@ -104,9 +133,32 @@ class ApiClient {
     return this.request(`/api/forecast/summary${query}`);
   }
 
-  async getServiceLineForecast(serviceLinFilter?: string): Promise<ServiceLineForecast> {
-    const params = serviceLinFilter ? `?service_line=${serviceLinFilter}` : '';
-    return this.request(`/api/forecast/service-lines${params}`);
+  async getServiceLineForecast(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }): Promise<ServiceLineForecast> {
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value);
+        }
+      });
+    }
+    
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/api/forecast/service-lines${query}`);
+  }
+
+  async getLeadOfferingForecast(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }): Promise<any> {
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value);
+        }
+      });
+    }
+    
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/api/forecast/lead-offerings${query}`);
   }
 
   async getActiveServiceLines(): Promise<ActiveServiceLines> {
@@ -137,8 +189,6 @@ class ApiClient {
       method: 'DELETE',
     });
   }
-
-
 
   // Service Line Stage Efforts
   async getServiceLineStageEfforts(serviceLine?: string, categoryId?: number): Promise<ServiceLineStageEffort[]> {
