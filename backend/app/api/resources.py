@@ -2,7 +2,7 @@
 Resource forecasting API endpoints for FTE timeline calculations.
 """
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, delete
 from pydantic import BaseModel
@@ -43,6 +43,16 @@ def get_session():
     """Database session dependency."""
     with Session(engine) as session:
         yield session
+
+
+def parse_multi_param(param: Optional[Union[str, List[str]]]) -> List[str]:
+    """Parse parameter that could be a single string or list of strings."""
+    if param is None:
+        return []
+    if isinstance(param, str):
+        # Handle comma-separated values for backward compatibility
+        return [p.strip() for p in param.split(',') if p.strip()]
+    return param
 
 
 @router.post("/calculate-timeline/{opportunity_id}", response_model=OpportunityEffortPrediction)
@@ -349,9 +359,9 @@ def get_portfolio_resource_forecast(
     start_date: Optional[datetime] = Query(None, description="Start date for forecast period"),
     end_date: Optional[datetime] = Query(None, description="End date for forecast period"),
     time_period: str = Query("month", description="Time period aggregation: week, month, quarter"),
-    service_line: Optional[str] = Query(None, description="Filter by service line"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    stage: Optional[str] = Query(None, description="Filter by stage"),
+    service_line: List[str] = Query(default=[], description="Filter by service lines"),
+    category: List[str] = Query(default=[], description="Filter by categories"), 
+    stage: List[str] = Query(default=[], description="Filter by stages"),
     limit: int = Query(100, description="Maximum opportunities to process"),
     session: Session = Depends(get_session)
 ):
@@ -364,7 +374,7 @@ def get_portfolio_resource_forecast(
     # Build query for timeline records
     query = select(OpportunityResourceTimeline)
     
-    # Apply filters (ensure timezone handling)
+    # Apply date filters (ensure timezone handling)
     if start_date:
         # Remove timezone info for SQLite comparison
         start_date_naive = start_date.replace(tzinfo=None) if start_date.tzinfo else start_date
@@ -374,23 +384,22 @@ def get_portfolio_resource_forecast(
         end_date_naive = end_date.replace(tzinfo=None) if end_date.tzinfo else end_date
         query = query.where(OpportunityResourceTimeline.stage_start_date <= end_date_naive)
     
-    # For time period forecast, we need to handle filtering differently to avoid averaging issues
-    # Store filters for later use instead of applying at SQL level
-    service_line_filter = service_line
-    category_filter = category
-    stage_filter = stage
+    # Use the list parameters directly (FastAPI handles multiple query params as lists)
+    service_line_filters = service_line
+    category_filters = category
+    stage_filters = stage
     
     # Get all timeline records (don't apply business logic filters yet for time period forecast)
     timeline_records = session.exec(query.limit(limit * 10)).all()
     
-    # Apply all filters for non-time-series aggregations only
+    # Apply all filters for non-time-series aggregations
     filtered_timeline_records = timeline_records
-    if service_line_filter:
-        filtered_timeline_records = [r for r in filtered_timeline_records if r.service_line == service_line_filter]
-    if category_filter:
-        filtered_timeline_records = [r for r in filtered_timeline_records if r.category == category_filter]
-    if stage_filter:
-        filtered_timeline_records = [r for r in filtered_timeline_records if r.stage_name == stage_filter]
+    if service_line_filters:
+        filtered_timeline_records = [r for r in filtered_timeline_records if r.service_line in service_line_filters]
+    if category_filters:
+        filtered_timeline_records = [r for r in filtered_timeline_records if r.category in category_filters]
+    if stage_filters:
+        filtered_timeline_records = [r for r in filtered_timeline_records if r.stage_name in stage_filters]
     
     # Aggregate data using filtered records for summary stats
     total_effort_weeks = 0
@@ -430,7 +439,7 @@ def get_portfolio_resource_forecast(
         end_date_naive = end_date.replace(tzinfo=None) if end_date.tzinfo else end_date
         time_period_forecast = _generate_time_period_forecast(
             timeline_records, start_date_naive, end_date_naive, time_period, 
-            service_line_filter, category_filter, stage_filter
+            service_line, category, stage
         )
     else:
         # Provide default date range for time period forecast based on actual data
@@ -442,7 +451,7 @@ def get_portfolio_resource_forecast(
             
         time_period_forecast = _generate_time_period_forecast(
             timeline_records, default_start, default_end, time_period, 
-            service_line_filter, category_filter, stage_filter
+            service_line, category, stage
         )
     
     return PortfolioEffortPrediction(
@@ -549,9 +558,9 @@ def _generate_time_period_forecast(
     start_date: datetime,
     end_date: datetime,
     time_period: str = "month",
-    service_line_filter: str = None,
-    category_filter: str = None,
-    stage_filter: str = None
+    service_line_filter: List[str] = None,
+    category_filter: List[str] = None,
+    stage_filter: List[str] = None
 ) -> List[dict]:
     """
     Generate resource forecast using average daily FTE for headcount planning.
@@ -625,11 +634,11 @@ def _generate_time_period_forecast(
     # Apply filters to get the relevant records for daily FTE calculation
     filtered_records = timeline_records
     if service_line_filter:
-        filtered_records = [r for r in filtered_records if r.service_line == service_line_filter]
+        filtered_records = [r for r in filtered_records if r.service_line in service_line_filter]
     if category_filter:
-        filtered_records = [r for r in filtered_records if r.category == category_filter]
+        filtered_records = [r for r in filtered_records if r.category in category_filter]
     if stage_filter:
-        filtered_records = [r for r in filtered_records if r.stage_name == stage_filter]
+        filtered_records = [r for r in filtered_records if r.stage_name in stage_filter]
     
     for record in filtered_records:
         stage_start = record.stage_start_date

@@ -102,7 +102,12 @@ class ApiClient {
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          params.append(key, String(value));
+          if (Array.isArray(value)) {
+            // For arrays, append each value separately for multi-select support
+            value.forEach(v => params.append(key, String(v)));
+          } else {
+            params.append(key, String(value));
+          }
         }
       });
     }
@@ -127,12 +132,16 @@ class ApiClient {
   }
 
   // Forecast API
-  async getForecastSummary(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }): Promise<ForecastSummary> {
+  async getForecastSummary(filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }): Promise<ForecastSummary> {
     const params = new URLSearchParams();
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          params.append(key, value);
+          if (Array.isArray(value)) {
+            value.forEach(v => params.append(key, String(v)));
+          } else {
+            params.append(key, String(value));
+          }
         }
       });
     }
@@ -141,12 +150,16 @@ class ApiClient {
     return this.request(`/api/forecast/summary${query}`);
   }
 
-  async getServiceLineForecast(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }): Promise<ServiceLineForecast> {
+  async getServiceLineForecast(filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }): Promise<ServiceLineForecast> {
     const params = new URLSearchParams();
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          params.append(key, value);
+          if (Array.isArray(value)) {
+            value.forEach(v => params.append(key, String(v)));
+          } else {
+            params.append(key, String(value));
+          }
         }
       });
     }
@@ -155,12 +168,16 @@ class ApiClient {
     return this.request(`/api/forecast/service-lines${query}`);
   }
 
-  async getLeadOfferingForecast(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }): Promise<any> {
+  async getLeadOfferingForecast(filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }): Promise<any> {
     const params = new URLSearchParams();
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
-          params.append(key, value);
+          if (Array.isArray(value)) {
+            value.forEach(v => params.append(key, String(v)));
+          } else {
+            params.append(key, String(value));
+          }
         }
       });
     }
@@ -325,10 +342,10 @@ class ApiClient {
     category?: string;
     stage?: string;
     filters?: {
-      stage?: string;
-      category?: string;
-      service_line?: string;
-      lead_offering?: string;
+      stage?: string | string[];
+      category?: string | string[];
+      service_line?: string | string[];
+      lead_offering?: string | string[];
     };
   } = {}): Promise<any> {
     const params = new URLSearchParams();
@@ -342,10 +359,34 @@ class ApiClient {
     
     // Add filters from the filters object
     if (options.filters) {
-      if (options.filters.stage) params.append('stage', options.filters.stage);
-      if (options.filters.category) params.append('category', options.filters.category);
-      if (options.filters.service_line) params.append('service_line', options.filters.service_line);
-      if (options.filters.lead_offering) params.append('lead_offering', options.filters.lead_offering);
+      if (options.filters.stage) {
+        if (Array.isArray(options.filters.stage)) {
+          options.filters.stage.forEach(s => params.append('stage', s));
+        } else {
+          params.append('stage', options.filters.stage);
+        }
+      }
+      if (options.filters.category) {
+        if (Array.isArray(options.filters.category)) {
+          options.filters.category.forEach(c => params.append('category', c));
+        } else {
+          params.append('category', options.filters.category);
+        }
+      }
+      if (options.filters.service_line) {
+        if (Array.isArray(options.filters.service_line)) {
+          options.filters.service_line.forEach(sl => params.append('service_line', sl));
+        } else {
+          params.append('service_line', options.filters.service_line);
+        }
+      }
+      if (options.filters.lead_offering) {
+        if (Array.isArray(options.filters.lead_offering)) {
+          options.filters.lead_offering.forEach(lo => params.append('lead_offering', lo));
+        } else {
+          params.append('lead_offering', options.filters.lead_offering);
+        }
+      }
     }
 
     const query = params.toString() ? `?${params.toString()}` : '';

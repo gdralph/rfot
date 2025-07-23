@@ -15,10 +15,10 @@ type TimePeriod = 'week' | 'month' | 'quarter';
 interface ResourceTimelineCardProps {
   className?: string;
   filters?: {
-    stage?: string;
-    category?: string;
-    service_line?: string;
-    lead_offering?: string;
+    stage?: string | string[];
+    category?: string | string[];
+    service_line?: string | string[];
+    lead_offering?: string | string[];
   };
   timeRange?: 'week' | 'month' | 'quarter' | 'year';
 }

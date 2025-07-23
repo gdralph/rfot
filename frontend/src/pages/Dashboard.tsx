@@ -10,12 +10,13 @@ import ServiceLineDistribution from '../components/charts/ServiceLineDistributio
 import LeadOfferingDistribution from '../components/charts/LeadOfferingDistribution';
 import TimelineView from '../components/charts/TimelineView';
 import ResourceTimelineCard from '../components/ResourceTimelineCard';
+import MultiSelect, { type MultiSelectOption } from '../components/MultiSelect';
 
 const Dashboard: React.FC = () => {
   const [activeView, setActiveView] = useState<'overview' | 'forecast' | 'resources' | 'timeline'>('overview');
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('quarter');
   const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState<{ stage?: string; category?: string; service_line?: string; lead_offering?: string }>({});
+  const [filters, setFilters] = useState<{ stage?: string[]; category?: string[]; service_line?: string[]; lead_offering?: string[] }>({});
   
   const { data: forecastSummary, isLoading: summaryLoading, error: summaryError } = useForecastSummary(filters);
   const { data: serviceLineForecast, isLoading: serviceLoading, error: serviceError } = useServiceLineForecast(filters);
@@ -38,10 +39,10 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  const handleFilterChange = (key: string, value: string) => {
+  const handleFilterChange = (key: string, values: string[]) => {
     setFilters(prev => ({
       ...prev,
-      [key]: value || undefined,
+      [key]: values.length > 0 ? values : undefined,
     }));
   };
 
@@ -379,21 +380,106 @@ const Dashboard: React.FC = () => {
 
       {/* Filters */}
       <div className="bg-gray-50 rounded-dxc p-4 space-y-4">
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4 items-center">
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`btn-secondary flex items-center gap-2 ${showFilters ? 'bg-dxc-bright-purple text-white' : ''}`}
           >
             <Filter className="w-4 h-4" />
             Filters
+            {(filters.stage?.length || filters.category?.length || filters.service_line?.length || filters.lead_offering?.length) && (
+              <span className="bg-dxc-bright-teal text-white text-xs px-2 py-1 rounded-full ml-1">
+                {(filters.stage?.length || 0) + (filters.category?.length || 0) + (filters.service_line?.length || 0) + (filters.lead_offering?.length || 0)}
+              </span>
+            )}
           </button>
-          {(filters.stage || filters.category || filters.service_line || filters.lead_offering) && (
-            <button
-              onClick={clearFilters}
-              className="text-dxc-purple hover:text-dxc-purple/80 text-sm"
-            >
-              Clear Filters
-            </button>
+          
+          {/* Active Filter Summary */}
+          {(filters.stage?.length || filters.category?.length || filters.service_line?.length || filters.lead_offering?.length) && (
+            <div className="flex flex-wrap gap-2 items-center">
+              {filters.stage?.map(stage => (
+                <span key={`stage-${stage}`} className="bg-dxc-bright-purple text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                  Stage: {SALES_STAGES.find(s => s.code === stage)?.code || stage}
+                  <span 
+                    onClick={() => handleFilterChange('stage', filters.stage?.filter(s => s !== stage) || [])}
+                    className="hover:bg-dxc-dark-purple rounded-full cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleFilterChange('stage', filters.stage?.filter(s => s !== stage) || []);
+                      }
+                    }}
+                  >
+                    ×
+                  </span>
+                </span>
+              ))}
+              {filters.category?.map(category => (
+                <span key={`category-${category}`} className="bg-dxc-blue text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                  {category}
+                  <span 
+                    onClick={() => handleFilterChange('category', filters.category?.filter(c => c !== category) || [])}
+                    className="hover:bg-blue-700 rounded-full cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleFilterChange('category', filters.category?.filter(c => c !== category) || []);
+                      }
+                    }}
+                  >
+                    ×
+                  </span>
+                </span>
+              ))}
+              {filters.service_line?.map(serviceLine => (
+                <span key={`service-${serviceLine}`} className="bg-dxc-green text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                  {serviceLine}
+                  <span 
+                    onClick={() => handleFilterChange('service_line', filters.service_line?.filter(s => s !== serviceLine) || [])}
+                    className="hover:bg-green-700 rounded-full cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleFilterChange('service_line', filters.service_line?.filter(s => s !== serviceLine) || []);
+                      }
+                    }}
+                  >
+                    ×
+                  </span>
+                </span>
+              ))}
+              {filters.lead_offering?.map(leadOffering => (
+                <span key={`lead-${leadOffering}`} className="bg-dxc-orange text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                  Lead: {leadOffering}
+                  <span 
+                    onClick={() => handleFilterChange('lead_offering', filters.lead_offering?.filter(l => l !== leadOffering) || [])}
+                    className="hover:bg-orange-700 rounded-full cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleFilterChange('lead_offering', filters.lead_offering?.filter(l => l !== leadOffering) || []);
+                      }
+                    }}
+                  >
+                    ×
+                  </span>
+                </span>
+              ))}
+              <button
+                onClick={clearFilters}
+                className="text-dxc-purple hover:text-dxc-purple/80 text-sm underline"
+              >
+                Clear All
+              </button>
+            </div>
           )}
         </div>
 
@@ -404,73 +490,67 @@ const Dashboard: React.FC = () => {
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
                 Stage
               </label>
-              <select
-                value={filters.stage || ''}
-                onChange={(e) => handleFilterChange('stage', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">All Stages</option>
-                {SALES_STAGES.map((stage) => (
-                  <option key={stage.code} value={stage.code}>
-                    {stage.label}
-                  </option>
-                ))}
-              </select>
+              <MultiSelect
+                options={SALES_STAGES.map((stage): MultiSelectOption => ({
+                  value: stage.code,
+                  label: stage.label
+                }))}
+                selected={filters.stage || []}
+                onChange={(values) => handleFilterChange('stage', values)}
+                placeholder="All Stages"
+                className="w-full"
+              />
             </div>
             
             <div>
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
                 Category
               </label>
-              <select
-                value={filters.category || ''}
-                onChange={(e) => handleFilterChange('category', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">All Categories</option>
-                {categories?.map((category) => (
-                  <option key={category.id} value={category.name}>
-                    {category.name}
-                  </option>
-                ))}
-                <option value="Uncategorized">Uncategorized</option>
-              </select>
+              <MultiSelect
+                options={[
+                  ...(categories?.map((category): MultiSelectOption => ({
+                    value: category.name,
+                    label: category.name
+                  })) || []),
+                  { value: 'Uncategorized', label: 'Uncategorized' }
+                ]}
+                selected={filters.category || []}
+                onChange={(values) => handleFilterChange('category', values)}
+                placeholder="All Categories"
+                className="w-full"
+              />
             </div>
             
             <div>
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
                 Service Line
               </label>
-              <select
-                value={filters.service_line || ''}
-                onChange={(e) => handleFilterChange('service_line', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">All Service Lines</option>
-                {SERVICE_LINES.map((serviceLine) => (
-                  <option key={serviceLine} value={serviceLine}>
-                    {serviceLine}
-                  </option>
-                ))}
-              </select>
+              <MultiSelect
+                options={SERVICE_LINES.map((serviceLine): MultiSelectOption => ({
+                  value: serviceLine,
+                  label: serviceLine
+                }))}
+                selected={filters.service_line || []}
+                onChange={(values) => handleFilterChange('service_line', values)}
+                placeholder="All Service Lines"
+                className="w-full"
+              />
             </div>
             
             <div>
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
                 Lead Offering
               </label>
-              <select
-                value={filters.lead_offering || ''}
-                onChange={(e) => handleFilterChange('lead_offering', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">All Lead Offerings</option>
-                {SERVICE_LINES.map((serviceLine) => (
-                  <option key={serviceLine} value={serviceLine}>
-                    {serviceLine}
-                  </option>
-                ))}
-              </select>
+              <MultiSelect
+                options={SERVICE_LINES.map((serviceLine): MultiSelectOption => ({
+                  value: serviceLine,
+                  label: serviceLine
+                }))}
+                selected={filters.lead_offering || []}
+                onChange={(values) => handleFilterChange('lead_offering', values)}
+                placeholder="All Lead Offerings"
+                className="w-full"
+              />
             </div>
           </div>
         )}

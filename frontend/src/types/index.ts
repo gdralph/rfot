@@ -134,11 +134,11 @@ export interface OpportunityUpdate {
 export interface OpportunityFilters {
   skip?: number;
   limit?: number;
-  stage?: string;
+  stage?: string | string[];
   search?: string;
-  service_line?: string;
-  status?: string;
-  category?: string;
+  service_line?: string | string[];
+  status?: string | string[];
+  category?: string | string[];
 }
 
 // Response Types

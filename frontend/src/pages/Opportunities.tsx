@@ -7,6 +7,7 @@ import type { OpportunityFilters, Opportunity, OpportunityCategory } from '../ty
 import { SALES_STAGES, STAGE_ORDER, CATEGORY_ORDER, SERVICE_LINES } from '../types/index.js';
 import { getSecurityClearanceColorClass } from '../utils/securityClearance';
 import LoadingSpinner from '../components/LoadingSpinner';
+import MultiSelect, { type MultiSelectOption } from '../components/MultiSelect';
 
 // Helper function to calculate opportunity category based on TCV using backend categories
 const getOpportunityCategory = (tcvMillions: number | undefined, categories: OpportunityCategory[]): string => {
@@ -62,10 +63,18 @@ const Opportunities: React.FC = () => {
     }));
   };
 
-  const handleFilterChange = (key: keyof OpportunityFilters, value: string) => {
+  const handleFilterChange = (key: keyof OpportunityFilters, value: string | string[]) => {
+    let filterValue: string | string[] | undefined = value;
+    
+    if (Array.isArray(value)) {
+      filterValue = value.length > 0 ? value : undefined;
+    } else {
+      filterValue = value || undefined;
+    }
+    
     setFilters(prev => ({
       ...prev,
-      [key]: value || undefined,
+      [key]: filterValue,
       skip: 0, // Reset to first page
     }));
   };
@@ -211,8 +220,110 @@ const Opportunities: React.FC = () => {
           >
             <Filter className="w-4 h-4" />
             Filters
+            {((Array.isArray(filters.stage) && filters.stage.length) || 
+              (Array.isArray(filters.category) && filters.category.length) || 
+              (Array.isArray(filters.service_line) && filters.service_line.length) || 
+              (Array.isArray(filters.status) && filters.status.length)) && (
+              <span className="bg-dxc-bright-teal text-white text-xs px-2 py-1 rounded-full ml-1">
+                {(Array.isArray(filters.stage) ? filters.stage.length : 0) + 
+                 (Array.isArray(filters.category) ? filters.category.length : 0) + 
+                 (Array.isArray(filters.service_line) ? filters.service_line.length : 0) + 
+                 (Array.isArray(filters.status) ? filters.status.length : 0)}
+              </span>
+            )}
           </button>
         </div>
+        
+        {/* Active Filter Summary */}
+        {((Array.isArray(filters.stage) && filters.stage.length) || 
+          (Array.isArray(filters.category) && filters.category.length) || 
+          (Array.isArray(filters.service_line) && filters.service_line.length) || 
+          (Array.isArray(filters.status) && filters.status.length)) && (
+          <div className="flex flex-wrap gap-2 items-center pt-2">
+            {Array.isArray(filters.stage) && filters.stage.map(stage => (
+              <span key={`stage-${stage}`} className="bg-dxc-bright-purple text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                Stage: {SALES_STAGES.find(s => s.code === stage)?.code || stage}
+                <span 
+                  onClick={() => handleFilterChange('stage', Array.isArray(filters.stage) ? filters.stage.filter(s => s !== stage) : [])}
+                  className="hover:bg-dxc-dark-purple rounded-full cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleFilterChange('stage', Array.isArray(filters.stage) ? filters.stage.filter(s => s !== stage) : []);
+                    }
+                  }}
+                >
+                  ×
+                </span>
+              </span>
+            ))}
+            {Array.isArray(filters.category) && filters.category.map(category => (
+              <span key={`category-${category}`} className="bg-dxc-blue text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                {category}
+                <span 
+                  onClick={() => handleFilterChange('category', Array.isArray(filters.category) ? filters.category.filter(c => c !== category) : [])}
+                  className="hover:bg-blue-700 rounded-full cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleFilterChange('category', Array.isArray(filters.category) ? filters.category.filter(c => c !== category) : []);
+                    }
+                  }}
+                >
+                  ×
+                </span>
+              </span>
+            ))}
+            {Array.isArray(filters.service_line) && filters.service_line.map(serviceLine => (
+              <span key={`service-${serviceLine}`} className="bg-dxc-green text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                {serviceLine}
+                <span 
+                  onClick={() => handleFilterChange('service_line', Array.isArray(filters.service_line) ? filters.service_line.filter(s => s !== serviceLine) : [])}
+                  className="hover:bg-green-700 rounded-full cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleFilterChange('service_line', Array.isArray(filters.service_line) ? filters.service_line.filter(s => s !== serviceLine) : []);
+                    }
+                  }}
+                >
+                  ×
+                </span>
+              </span>
+            ))}
+            {Array.isArray(filters.status) && filters.status.map(status => (
+              <span key={`status-${status}`} className="bg-dxc-orange text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                {status}
+                <span 
+                  onClick={() => handleFilterChange('status', Array.isArray(filters.status) ? filters.status.filter(s => s !== status) : [])}
+                  className="hover:bg-orange-700 rounded-full cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleFilterChange('status', Array.isArray(filters.status) ? filters.status.filter(s => s !== status) : []);
+                    }
+                  }}
+                >
+                  ×
+                </span>
+              </span>
+            ))}
+            <button
+              onClick={() => setFilters(prev => ({ ...prev, stage: undefined, category: undefined, service_line: undefined, status: undefined }))}
+              className="text-dxc-purple hover:text-dxc-purple/80 text-sm underline"
+            >
+              Clear All Filters
+            </button>
+          </div>
+        )}
 
         {/* Filter Controls */}
         {showFilters && (
@@ -221,70 +332,67 @@ const Opportunities: React.FC = () => {
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
                 Stage
               </label>
-              <select
-                value={filters.stage || ''}
-                onChange={(e) => handleFilterChange('stage', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">All Stages</option>
-                {SALES_STAGES.map((stage) => (
-                  <option key={stage.code} value={stage.code}>
-                    {stage.label}
-                  </option>
-                ))}
-              </select>
+              <MultiSelect
+                options={SALES_STAGES.map((stage): MultiSelectOption => ({
+                  value: stage.code,
+                  label: stage.label
+                }))}
+                selected={Array.isArray(filters.stage) ? filters.stage : (filters.stage ? [filters.stage] : [])}
+                onChange={(values) => handleFilterChange('stage', values)}
+                placeholder="All Stages"
+                className="w-full"
+              />
             </div>
             
             <div>
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
                 Status
               </label>
-              <select
-                value={filters.status || ''}
-                onChange={(e) => handleFilterChange('status', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">All Statuses</option>
-                <option value="In Forecast">In Forecast (1,629)</option>
-                <option value="Not In Forecast">Not In Forecast (2,402)</option>
-              </select>
+              <MultiSelect
+                options={[
+                  { value: 'In Forecast', label: 'In Forecast' },
+                  { value: 'Not In Forecast', label: 'Not In Forecast' }
+                ]}
+                selected={Array.isArray(filters.status) ? filters.status : (filters.status ? [filters.status] : [])}
+                onChange={(values) => handleFilterChange('status', values)}
+                placeholder="All Statuses"
+                className="w-full"
+              />
             </div>
             
             <div>
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
                 Category
               </label>
-              <select
-                value={filters.category || ''}
-                onChange={(e) => handleFilterChange('category', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">All Categories</option>
-                {categories?.map((category) => (
-                  <option key={category.id} value={category.name}>
-                    {category.name}
-                  </option>
-                ))}
-                <option value="Uncategorized">Uncategorized</option>
-              </select>
+              <MultiSelect
+                options={[
+                  ...(categories?.map((category): MultiSelectOption => ({
+                    value: category.name,
+                    label: category.name
+                  })) || []),
+                  { value: 'Uncategorized', label: 'Uncategorized' }
+                ]}
+                selected={Array.isArray(filters.category) ? filters.category : (filters.category ? [filters.category] : [])}
+                onChange={(values) => handleFilterChange('category', values)}
+                placeholder="All Categories"
+                className="w-full"
+              />
             </div>
             
             <div>
               <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
-                Service Line
+                Service Line (Lead Offering)
               </label>
-              <select
-                value={filters.service_line || ''}
-                onChange={(e) => handleFilterChange('service_line', e.target.value)}
-                className="input w-full"
-              >
-                <option value="">All Service Lines</option>
-                {SERVICE_LINES.map((serviceLine) => (
-                  <option key={serviceLine} value={serviceLine}>
-                    {serviceLine}
-                  </option>
-                ))}
-              </select>
+              <MultiSelect
+                options={SERVICE_LINES.map((serviceLine): MultiSelectOption => ({
+                  value: serviceLine,
+                  label: serviceLine
+                }))}
+                selected={Array.isArray(filters.service_line) ? filters.service_line : (filters.service_line ? [filters.service_line] : [])}
+                onChange={(values) => handleFilterChange('service_line', values)}
+                placeholder="All Service Lines"
+                className="w-full"
+              />
             </div>
           </div>
         )}

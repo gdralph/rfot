@@ -34,10 +34,10 @@ interface UsePortfolioResourceForecastOptions {
   timePeriod?: 'week' | 'month' | 'quarter';
   enabled?: boolean;
   filters?: {
-    stage?: string;
-    category?: string;
-    service_line?: string;
-    lead_offering?: string;
+    stage?: string | string[];
+    category?: string | string[];
+    service_line?: string | string[];
+    lead_offering?: string | string[];
   };
 }
 

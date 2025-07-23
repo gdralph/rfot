@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
-from sqlmodel import Session, select
-from typing import Dict, List, Optional
+from sqlmodel import Session, select, or_
+from typing import Dict, List, Optional, Union
 import structlog
 
 from app.models.database import engine
@@ -41,16 +41,35 @@ def get_session():
         yield session
 
 
+def parse_multi_param(param: Optional[Union[str, List[str]]]) -> List[str]:
+    """Parse parameter that could be a single string or list of strings."""
+    if param is None:
+        return []
+    if isinstance(param, str):
+        # Handle comma-separated values for backward compatibility
+        return [p.strip() for p in param.split(',') if p.strip()]
+    return param
+
+
 @router.get("/summary")
 async def get_forecast_summary(
     session: Session = Depends(get_session),
-    stage: Optional[str] = Query(None),
-    category: Optional[str] = Query(None),
-    service_line: Optional[str] = Query(None),
-    lead_offering: Optional[str] = Query(None)
+    stage: Optional[Union[str, List[str]]] = Query(None),
+    category: Optional[Union[str, List[str]]] = Query(None),
+    service_line: Optional[Union[str, List[str]]] = Query(None),
+    lead_offering: Optional[Union[str, List[str]]] = Query(None)
 ):
     """Get forecast summary metrics."""
-    logger.info("Fetching forecast summary", filters={"stage": stage, "category": category, "service_line": service_line, "lead_offering": lead_offering})
+    # Parse multi-select parameters
+    stages = parse_multi_param(stage)
+    categories_list = parse_multi_param(category)
+    service_lines = parse_multi_param(service_line)
+    lead_offerings = parse_multi_param(lead_offering)
+    
+    logger.info("Fetching forecast summary", filters={
+        "stages": stages, "categories": categories_list, 
+        "service_lines": service_lines, "lead_offerings": lead_offerings
+    })
     
     # Fetch categories from database
     categories_statement = select(OpportunityCategory)
@@ -58,49 +77,55 @@ async def get_forecast_summary(
     
     statement = select(Opportunity)
     
-    if stage:
-        statement = statement.where(Opportunity.sales_stage == stage)
+    if stages:
+        statement = statement.where(Opportunity.sales_stage.in_(stages))
     
     opportunities = session.exec(statement).all()
     
     # Apply category filter after fetching opportunities (since category is calculated)
-    if category:
+    if categories_list:
         filtered_opportunities = []
         for opp in opportunities:
             opp_category = get_opportunity_category(opp.tcv_millions or 0, categories)
-            if opp_category == category:
+            if opp_category in categories_list:
                 filtered_opportunities.append(opp)
         opportunities = filtered_opportunities
     
     # Apply service line filter after fetching all opportunities
-    if service_line:
-        # Filter opportunities that have revenue in the specified service line
+    if service_lines:
+        # Filter opportunities that have revenue in any of the specified service lines
         filtered_opportunities = []
         for opp in opportunities:
-            service_line_value = 0
-            if service_line == "CES":
-                service_line_value = opp.ces_millions or 0
-            elif service_line == "INS":
-                service_line_value = opp.ins_millions or 0
-            elif service_line == "BPS":
-                service_line_value = opp.bps_millions or 0
-            elif service_line == "SEC":
-                service_line_value = opp.sec_millions or 0
-            elif service_line == "ITOC":
-                service_line_value = opp.itoc_millions or 0
-            elif service_line == "MW":
-                service_line_value = opp.mw_millions or 0
+            has_matching_service_line = False
+            for sl in service_lines:
+                service_line_value = 0
+                if sl == "CES":
+                    service_line_value = opp.ces_millions or 0
+                elif sl == "INS":
+                    service_line_value = opp.ins_millions or 0
+                elif sl == "BPS":
+                    service_line_value = opp.bps_millions or 0
+                elif sl == "SEC":
+                    service_line_value = opp.sec_millions or 0
+                elif sl == "ITOC":
+                    service_line_value = opp.itoc_millions or 0
+                elif sl == "MW":
+                    service_line_value = opp.mw_millions or 0
+                
+                if service_line_value > 0:
+                    has_matching_service_line = True
+                    break
             
-            if service_line_value > 0:
+            if has_matching_service_line:
                 filtered_opportunities.append(opp)
         
         opportunities = filtered_opportunities
     
     # Apply lead offering filter after fetching all opportunities
-    if lead_offering:
+    if lead_offerings:
         filtered_opportunities = []
         for opp in opportunities:
-            if opp.lead_offering_l1 == lead_offering:
+            if opp.lead_offering_l1 in lead_offerings:
                 filtered_opportunities.append(opp)
         
         opportunities = filtered_opportunities
@@ -170,13 +195,22 @@ async def get_forecast_summary(
 @router.get("/service-lines")
 async def get_service_line_forecast(
     session: Session = Depends(get_session),
-    stage: Optional[str] = Query(None),
-    category: Optional[str] = Query(None),
-    service_line: Optional[str] = Query(None),
-    lead_offering: Optional[str] = Query(None)
+    stage: Optional[Union[str, List[str]]] = Query(None),
+    category: Optional[Union[str, List[str]]] = Query(None),
+    service_line: Optional[Union[str, List[str]]] = Query(None),
+    lead_offering: Optional[Union[str, List[str]]] = Query(None)
 ):
     """Get service line breakdown and forecasts."""
-    logger.info("Fetching service line forecast", filters={"stage": stage, "category": category, "service_line": service_line, "lead_offering": lead_offering})
+    # Parse multi-select parameters
+    stages = parse_multi_param(stage)
+    categories_list = parse_multi_param(category)
+    service_lines = parse_multi_param(service_line)
+    lead_offerings = parse_multi_param(lead_offering)
+    
+    logger.info("Fetching service line forecast", filters={
+        "stages": stages, "categories": categories_list, 
+        "service_lines": service_lines, "lead_offerings": lead_offerings
+    })
     
     # Fetch categories from database
     categories_statement = select(OpportunityCategory)
@@ -184,49 +218,55 @@ async def get_service_line_forecast(
     
     statement = select(Opportunity)
     
-    if stage:
-        statement = statement.where(Opportunity.sales_stage == stage)
+    if stages:
+        statement = statement.where(Opportunity.sales_stage.in_(stages))
     
     opportunities = session.exec(statement).all()
     
     # Apply category filter after fetching opportunities (since category is calculated)
-    if category:
+    if categories_list:
         filtered_opportunities = []
         for opp in opportunities:
             opp_category = get_opportunity_category(opp.tcv_millions or 0, categories)
-            if opp_category == category:
+            if opp_category in categories_list:
                 filtered_opportunities.append(opp)
         opportunities = filtered_opportunities
     
     # Apply service line filter after fetching all opportunities
-    if service_line:
-        # Filter opportunities that have revenue in the specified service line
+    if service_lines:
+        # Filter opportunities that have revenue in any of the specified service lines
         filtered_opportunities = []
         for opp in opportunities:
-            service_line_value = 0
-            if service_line == "CES":
-                service_line_value = opp.ces_millions or 0
-            elif service_line == "INS":
-                service_line_value = opp.ins_millions or 0
-            elif service_line == "BPS":
-                service_line_value = opp.bps_millions or 0
-            elif service_line == "SEC":
-                service_line_value = opp.sec_millions or 0
-            elif service_line == "ITOC":
-                service_line_value = opp.itoc_millions or 0
-            elif service_line == "MW":
-                service_line_value = opp.mw_millions or 0
+            has_matching_service_line = False
+            for sl in service_lines:
+                service_line_value = 0
+                if sl == "CES":
+                    service_line_value = opp.ces_millions or 0
+                elif sl == "INS":
+                    service_line_value = opp.ins_millions or 0
+                elif sl == "BPS":
+                    service_line_value = opp.bps_millions or 0
+                elif sl == "SEC":
+                    service_line_value = opp.sec_millions or 0
+                elif sl == "ITOC":
+                    service_line_value = opp.itoc_millions or 0
+                elif sl == "MW":
+                    service_line_value = opp.mw_millions or 0
+                
+                if service_line_value > 0:
+                    has_matching_service_line = True
+                    break
             
-            if service_line_value > 0:
+            if has_matching_service_line:
                 filtered_opportunities.append(opp)
         
         opportunities = filtered_opportunities
     
     # Apply lead offering filter after fetching all opportunities
-    if lead_offering:
+    if lead_offerings:
         filtered_opportunities = []
         for opp in opportunities:
-            if opp.lead_offering_l1 == lead_offering:
+            if opp.lead_offering_l1 in lead_offerings:
                 filtered_opportunities.append(opp)
         
         opportunities = filtered_opportunities
@@ -329,13 +369,22 @@ async def get_active_service_lines(
 @router.get("/lead-offerings")
 async def get_lead_offering_forecast(
     session: Session = Depends(get_session),
-    stage: Optional[str] = Query(None),
-    category: Optional[str] = Query(None),
-    service_line: Optional[str] = Query(None),
-    lead_offering: Optional[str] = Query(None)
+    stage: Optional[Union[str, List[str]]] = Query(None),
+    category: Optional[Union[str, List[str]]] = Query(None),
+    service_line: Optional[Union[str, List[str]]] = Query(None),
+    lead_offering: Optional[Union[str, List[str]]] = Query(None)
 ):
     """Get lead offering breakdown and forecasts."""
-    logger.info("Fetching lead offering forecast", filters={"stage": stage, "category": category, "service_line": service_line, "lead_offering": lead_offering})
+    # Parse multi-select parameters
+    stages = parse_multi_param(stage)
+    categories_list = parse_multi_param(category)
+    service_lines = parse_multi_param(service_line)
+    lead_offerings = parse_multi_param(lead_offering)
+    
+    logger.info("Fetching lead offering forecast", filters={
+        "stages": stages, "categories": categories_list, 
+        "service_lines": service_lines, "lead_offerings": lead_offerings
+    })
     
     # Fetch categories from database
     categories_statement = select(OpportunityCategory)
@@ -343,49 +392,55 @@ async def get_lead_offering_forecast(
     
     statement = select(Opportunity)
     
-    if stage:
-        statement = statement.where(Opportunity.sales_stage == stage)
+    if stages:
+        statement = statement.where(Opportunity.sales_stage.in_(stages))
     
     opportunities = session.exec(statement).all()
     
     # Apply category filter after fetching opportunities (since category is calculated)
-    if category:
+    if categories_list:
         filtered_opportunities = []
         for opp in opportunities:
             opp_category = get_opportunity_category(opp.tcv_millions or 0, categories)
-            if opp_category == category:
+            if opp_category in categories_list:
                 filtered_opportunities.append(opp)
         opportunities = filtered_opportunities
     
     # Apply service line filter after fetching all opportunities
-    if service_line:
-        # Filter opportunities that have revenue in the specified service line
+    if service_lines:
+        # Filter opportunities that have revenue in any of the specified service lines
         filtered_opportunities = []
         for opp in opportunities:
-            service_line_value = 0
-            if service_line == "CES":
-                service_line_value = opp.ces_millions or 0
-            elif service_line == "INS":
-                service_line_value = opp.ins_millions or 0
-            elif service_line == "BPS":
-                service_line_value = opp.bps_millions or 0
-            elif service_line == "SEC":
-                service_line_value = opp.sec_millions or 0
-            elif service_line == "ITOC":
-                service_line_value = opp.itoc_millions or 0
-            elif service_line == "MW":
-                service_line_value = opp.mw_millions or 0
+            has_matching_service_line = False
+            for sl in service_lines:
+                service_line_value = 0
+                if sl == "CES":
+                    service_line_value = opp.ces_millions or 0
+                elif sl == "INS":
+                    service_line_value = opp.ins_millions or 0
+                elif sl == "BPS":
+                    service_line_value = opp.bps_millions or 0
+                elif sl == "SEC":
+                    service_line_value = opp.sec_millions or 0
+                elif sl == "ITOC":
+                    service_line_value = opp.itoc_millions or 0
+                elif sl == "MW":
+                    service_line_value = opp.mw_millions or 0
+                
+                if service_line_value > 0:
+                    has_matching_service_line = True
+                    break
             
-            if service_line_value > 0:
+            if has_matching_service_line:
                 filtered_opportunities.append(opp)
         
         opportunities = filtered_opportunities
     
     # Apply lead offering filter after fetching all opportunities
-    if lead_offering:
+    if lead_offerings:
         filtered_opportunities = []
         for opp in opportunities:
-            if opp.lead_offering_l1 == lead_offering:
+            if opp.lead_offering_l1 in lead_offerings:
                 filtered_opportunities.append(opp)
         
         opportunities = filtered_opportunities

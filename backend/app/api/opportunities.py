@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session, select
-from typing import List, Optional
+from sqlmodel import Session, select, or_
+from typing import List, Optional, Union
 import structlog
 
 from app.models.database import engine
@@ -20,71 +20,102 @@ def get_session():
         yield session
 
 
+def parse_multi_param(param: Optional[Union[str, List[str]]]) -> List[str]:
+    """Parse parameter that could be a single string or list of strings."""
+    if param is None:
+        return []
+    if isinstance(param, str):
+        # Handle comma-separated values for backward compatibility
+        return [p.strip() for p in param.split(',') if p.strip()]
+    return param
+
+
 @router.get("/", response_model=List[OpportunityRead])
 async def get_opportunities(
     session: Session = Depends(get_session),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    stage: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    category: Optional[str] = Query(None),
+    stage: Optional[Union[str, List[str]]] = Query(None),
+    status: Optional[Union[str, List[str]]] = Query(None),
+    category: Optional[Union[str, List[str]]] = Query(None),
     search: Optional[str] = Query(None),
-    service_line: Optional[str] = Query(None)
+    service_line: Optional[Union[str, List[str]]] = Query(None)
 ):
     """Get opportunities with optional filtering."""
+    # Parse multi-select parameters
+    stages = parse_multi_param(stage)
+    statuses = parse_multi_param(status)
+    categories = parse_multi_param(category)
+    service_lines = parse_multi_param(service_line)
+    
     logger.info("Fetching opportunities", skip=skip, limit=limit, filters={
-        "stage": stage, "status": status, "category": category, "search": search, "service_line": service_line
+        "stages": stages, "statuses": statuses, "categories": categories, 
+        "search": search, "service_lines": service_lines
     })
     
     statement = select(Opportunity)
     
     # Add service line filtering based on opportunity table service line totals
-    if service_line:
-        if service_line == 'CES':
-            statement = statement.where(Opportunity.ces_millions > 0)
-        elif service_line == 'INS':
-            statement = statement.where(Opportunity.ins_millions > 0)
-        elif service_line == 'BPS':
-            statement = statement.where(Opportunity.bps_millions > 0)
-        elif service_line == 'SEC':
-            statement = statement.where(Opportunity.sec_millions > 0)
-        elif service_line == 'ITOC':
-            statement = statement.where(Opportunity.itoc_millions > 0)
-        elif service_line == 'MW':
-            statement = statement.where(Opportunity.mw_millions > 0)
-    
-    if stage:
-        statement = statement.where(Opportunity.sales_stage == stage)
-    
-    if status:
-        if status == "In Forecast":
-            statement = statement.where(Opportunity.in_forecast == 'Y')
-        elif status == "Not In Forecast":
-            statement = statement.where(Opportunity.in_forecast == 'N')
-    
-    if category:
-        # Get the category configuration from database
-        category_config = session.exec(
-            select(OpportunityCategory).where(OpportunityCategory.name == category)
-        ).first()
+    if service_lines:
+        service_line_conditions = []
+        for sl in service_lines:
+            if sl == 'CES':
+                service_line_conditions.append(Opportunity.ces_millions > 0)
+            elif sl == 'INS':
+                service_line_conditions.append(Opportunity.ins_millions > 0)
+            elif sl == 'BPS':
+                service_line_conditions.append(Opportunity.bps_millions > 0)
+            elif sl == 'SEC':
+                service_line_conditions.append(Opportunity.sec_millions > 0)
+            elif sl == 'ITOC':
+                service_line_conditions.append(Opportunity.itoc_millions > 0)
+            elif sl == 'MW':
+                service_line_conditions.append(Opportunity.mw_millions > 0)
         
-        if category_config:
-            # Apply TCV range filtering based on configuration
-            if category_config.max_tcv is not None:
-                # Category has both min and max TCV
-                statement = statement.where(
-                    (Opportunity.tcv_millions >= category_config.min_tcv) & 
-                    (Opportunity.tcv_millions < category_config.max_tcv)
+        if service_line_conditions:
+            statement = statement.where(or_(*service_line_conditions))
+    
+    if stages:
+        statement = statement.where(Opportunity.sales_stage.in_(stages))
+    
+    if statuses:
+        status_conditions = []
+        for s in statuses:
+            if s == "In Forecast":
+                status_conditions.append(Opportunity.in_forecast == 'Y')
+            elif s == "Not In Forecast":
+                status_conditions.append(Opportunity.in_forecast == 'N')
+        
+        if status_conditions:
+            statement = statement.where(or_(*status_conditions))
+    
+    if categories:
+        category_conditions = []
+        for cat in categories:
+            # Get the category configuration from database
+            category_config = session.exec(
+                select(OpportunityCategory).where(OpportunityCategory.name == cat)
+            ).first()
+            
+            if category_config:
+                # Apply TCV range filtering based on configuration
+                if category_config.max_tcv is not None:
+                    # Category has both min and max TCV
+                    category_conditions.append(
+                        (Opportunity.tcv_millions >= category_config.min_tcv) & 
+                        (Opportunity.tcv_millions < category_config.max_tcv)
+                    )
+                else:
+                    # Category has only min TCV (no upper limit)
+                    category_conditions.append(Opportunity.tcv_millions >= category_config.min_tcv)
+            elif cat == 'Uncategorized' or cat == 'Negative':
+                # Special case for negative/null TCV values
+                category_conditions.append(
+                    (Opportunity.tcv_millions.is_(None)) | (Opportunity.tcv_millions < 0)
                 )
-            else:
-                # Category has only min TCV (no upper limit)
-                statement = statement.where(Opportunity.tcv_millions >= category_config.min_tcv)
-        elif category == 'Uncategorized' or category == 'Negative':
-            # Special case for negative/null TCV values
-            # Supporting both 'Uncategorized' and 'Negative' for backward compatibility
-            statement = statement.where(
-                (Opportunity.tcv_millions.is_(None)) | (Opportunity.tcv_millions < 0)
-            )
+        
+        if category_conditions:
+            statement = statement.where(or_(*category_conditions))
     
     if search:
         statement = statement.where(
