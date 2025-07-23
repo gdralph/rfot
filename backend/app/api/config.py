@@ -303,7 +303,7 @@ async def bulk_create_service_line_stage_efforts(
         existing = session.exec(
             select(ServiceLineStageEffort).where(
                 ServiceLineStageEffort.service_line == effort.service_line,
-                ServiceLineStageEffort.category_id == effort.category_id,
+                ServiceLineStageEffort.service_line_category_id == effort.service_line_category_id,
                 ServiceLineStageEffort.stage_name == effort.stage_name
             )
         ).first()

@@ -52,6 +52,29 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
           /* Fix timeline positioning issues */
           [style*="left:"] { position: static !important; }
           [style*="width:"] { min-width: 20px !important; }
+          
+          /* Configuration report specific fixes */
+          .grid { display: block !important; }
+          .grid > * { margin-bottom: 10px !important; }
+          .overflow-x-auto { overflow: visible !important; }
+          .space-y-4 > * + * { margin-top: 16px !important; }
+          .space-y-6 > * + * { margin-top: 24px !important; }
+          .bg-gray-50, .bg-blue-50, .bg-white { 
+            background-color: #f9fafb !important; 
+            border: 1px solid #e5e7eb !important;
+          }
+          
+          /* Timeline chart fixes */
+          .relative { position: relative !important; }
+          .absolute { position: absolute !important; }
+          .transform { transform: none !important; }
+          
+          /* Ensure timeline elements are visible */
+          [style*="position: absolute"] {
+            position: static !important;
+            display: inline-block !important;
+            margin-right: 5px !important;
+          }
         `;
         clonedDoc.head.appendChild(style);
         
@@ -70,7 +93,7 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
     // Create canvas from HTML element
     const canvas = await html2canvas(element, canvasOptions);
 
-    const imgData = canvas.toDataURL('image/png', 1.0);
+    // const imgData = canvas.toDataURL('image/png', 1.0);
     const pdf = new jsPDF({
       orientation: options.orientation || 'landscape',
       unit: 'mm',
@@ -308,6 +331,103 @@ export const convertReportDataToExcel = (reportData: any, reportType: string) =>
       });
       return timelineData;
 
+    case 'configuration-summary':
+      const configData: any[] = [];
+      
+      // Add opportunity categories
+      reportData.opportunity_categories?.forEach((category: any) => {
+        configData.push({
+          'Configuration Type': 'Opportunity Category',
+          'Name': category.name,
+          'Min TCV': category.min_tcv,
+          'Max TCV': category.max_tcv || 'Unlimited',
+          'Stage 01 Duration': category.stage_durations?.['01'] || 0,
+          'Stage 02 Duration': category.stage_durations?.['02'] || 0,
+          'Stage 03 Duration': category.stage_durations?.['03'] || 0,
+          'Stage 04A Duration': category.stage_durations?.['04A'] || 0,
+          'Stage 04B Duration': category.stage_durations?.['04B'] || 0,
+          'Stage 05A Duration': category.stage_durations?.['05A'] || 0,
+          'Stage 05B Duration': category.stage_durations?.['05B'] || 0,
+          'Stage 06 Duration': category.stage_durations?.['06'] || 0,
+          'Service Line': '',
+          'Service Line Category': '',
+          'FTE Required': '',
+          'Total Effort Weeks': ''
+        });
+      });
+
+      // Add service line categories
+      reportData.service_line_categories?.forEach((slCategory: any) => {
+        configData.push({
+          'Configuration Type': 'Service Line Category',
+          'Name': slCategory.name,
+          'Min TCV': slCategory.min_tcv,
+          'Max TCV': slCategory.max_tcv || 'Unlimited',
+          'Stage 01 Duration': '',
+          'Stage 02 Duration': '',
+          'Stage 03 Duration': '',
+          'Stage 04A Duration': '',
+          'Stage 04B Duration': '',
+          'Stage 05A Duration': '',
+          'Stage 05B Duration': '',
+          'Stage 06 Duration': '',
+          'Service Line': slCategory.service_line,
+          'Service Line Category': slCategory.name,
+          'FTE Required': '',
+          'Total Effort Weeks': ''
+        });
+      });
+
+      // Add service line stage efforts (from the actual backend structure)
+      Object.entries(reportData.stage_efforts || {}).forEach(([serviceLine, categories]: [string, any]) => {
+        Object.entries(categories).forEach(([/*categoryKey*/, categoryData]: [string, any]) => {
+          Object.entries(categoryData.stages || {}).forEach(([stage, stageData]: [string, any]) => {
+            configData.push({
+              'Configuration Type': 'Service Line Stage Effort',
+              'Name': `${serviceLine} - Stage ${stage} - ${categoryData.category_name}`,
+              'Min TCV': '',
+              'Max TCV': '',
+              'Stage 01 Duration': '',
+              'Stage 02 Duration': '',
+              'Stage 03 Duration': '',
+              'Stage 04A Duration': '',
+              'Stage 04B Duration': '',
+              'Stage 05A Duration': '',
+              'Stage 05B Duration': '',
+              'Stage 06 Duration': '',
+              'Service Line': serviceLine,
+              'Service Line Category': categoryData.category_name,
+              'FTE Required': stageData.fte_required,
+              'Total Effort Weeks': ''
+            });
+          });
+        });
+      });
+
+      // Add calculation examples  
+      reportData.calculation_examples?.forEach((example: any, index: number) => {
+        configData.push({
+          'Configuration Type': 'Calculation Example',
+          'Name': `Example ${index + 1}: ${example.opportunity_name}`,
+          'Min TCV': '',
+          'Max TCV': '',
+          'Stage 01 Duration': '',
+          'Stage 02 Duration': '',
+          'Stage 03 Duration': '',
+          'Stage 04A Duration': '',
+          'Stage 04B Duration': '',
+          'Stage 05A Duration': '',
+          'Stage 05B Duration': '',
+          'Stage 06 Duration': '',
+          'Service Line': Object.keys(example.service_line_efforts || {}).join(', ') || '',
+          'Service Line Category': example.timeline_category || '',
+          'FTE Required': example.total_fte_hours ? (example.total_fte_hours / 40).toFixed(1) : '',
+          'Total Effort Weeks': example.total_effort_weeks || ''
+        });
+      });
+
+      return configData;
+
     default:
       return [];
   }
@@ -325,7 +445,7 @@ export const exportTimelineChartToPDF = (reportData: any, filename?: string) => 
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 15;
     const usableWidth = pageWidth - (2 * margin);
-    const usableHeight = pageHeight - (2 * margin);
+    // const usableHeight = pageHeight - (2 * margin);
 
     // Service line colors
     const serviceLineColors: {[key: string]: [number, number, number]} = {
@@ -457,7 +577,7 @@ export const exportTimelineChartToPDF = (reportData: any, filename?: string) => 
       }
 
       // Create opportunity details section (left side)
-      const oppDetailsWidth = 75;
+      // const oppDetailsWidth = 75;
       
       // Opportunity name
       pdf.setFontSize(8);
@@ -636,7 +756,7 @@ export const exportTimelineChartToPDF = (reportData: any, filename?: string) => 
     const sampleFTEs = [minFTE, (minFTE + maxFTE) / 2, maxFTE];
     let sampleX = scaleStartX + 25;
     
-    sampleFTEs.forEach((fte, index) => {
+    sampleFTEs.forEach((fte, /*index*/) => {
       const sampleHeight = getBarHeight(fte);
       pdf.setFillColor(150, 150, 150);
       pdf.rect(sampleX, yPosition - 2 - sampleHeight, 8, sampleHeight, 'F');
@@ -656,7 +776,7 @@ export const exportTimelineChartToPDF = (reportData: any, filename?: string) => 
   }
 };
 
-export const exportToHTML = (reportData: any, reportType: string, viewMode?: string) => {
+export const exportToHTML = (reportData: any, reportType: string, /*viewMode?: string*/) => {
   try {
     const timestamp = new Date().toLocaleString();
     const reportTitle = reportData.report_name || `${reportType.replace(/-/g, ' ')} Report`;
@@ -1150,6 +1270,10 @@ const generateTimelineHTML = (reportData: any): string => {
 };
 
 const generateGenericReportHTML = (reportData: any, reportType: string): string => {
+  if (reportType === 'configuration-summary') {
+    return generateConfigurationHTML(reportData);
+  }
+  
   return `
     <div class="summary-cards">
         <div class="card">
@@ -1162,6 +1286,1328 @@ const generateGenericReportHTML = (reportData: any, reportType: string): string 
 ${JSON.stringify(reportData, null, 2)}
         </pre>
     </div>`;
+};
+
+const generateConfigurationHTML = (reportData: any): string => {
+  const formatCurrencyMillions = (valueInMillions: number) => {
+    return `$${valueInMillions.toFixed(1)}M`;
+  };
+
+  let html = `
+    <!-- Configuration Statistics -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #4B5563; font-size: 0.875rem;">Opportunity Categories</h4>
+            <p style="margin: 0; color: #5F249F; font-size: 2rem; font-weight: bold;">
+                ${reportData.configuration_statistics?.opportunity_categories_count || 0}
+            </p>
+        </div>
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #4B5563; font-size: 0.875rem;">Service Line Categories</h4>
+            <p style="margin: 0; color: #5F249F; font-size: 2rem; font-weight: bold;">
+                ${reportData.configuration_statistics?.service_line_categories_count || 0}
+            </p>
+        </div>
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #4B5563; font-size: 0.875rem;">Stage Efforts Configured</h4>
+            <p style="margin: 0; color: #5F249F; font-size: 2rem; font-weight: bold;">
+                ${reportData.configuration_statistics?.stage_efforts_configured || 0}
+            </p>
+        </div>
+    </div>
+
+    <!-- Opportunity Categories -->
+    <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #4B5563; font-size: 1.125rem; font-weight: 600;">Opportunity Categories (Timeline Durations)</h3>
+            <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.875rem;">Categories determine stage durations based on total TCV</p>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                    <thead>
+                        <tr style="background: #F9FAFB;">
+                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Category</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">TCV Range</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Stage 01</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Stage 02</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Stage 03</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Stage 04A</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Stage 04B</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Stage 05A</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Stage 05B</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Stage 06</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB;">Total Weeks</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+    
+    reportData.opportunity_categories?.forEach((category: any) => {
+      html += `
+                        <tr style="border-bottom: 1px solid #F3F4F6;">
+                            <td style="padding: 12px; font-weight: 500; color: #111827;">${category.name || ''}</td>
+                            <td style="padding: 12px; color: #374151;">${category.tcv_range_display || 'N/A'}</td>
+                            <td style="padding: 12px; text-align: center; color: #374151;">${category.stage_durations?.['01'] || 0}w</td>
+                            <td style="padding: 12px; text-align: center; color: #374151;">${category.stage_durations?.['02'] || 0}w</td>
+                            <td style="padding: 12px; text-align: center; color: #374151;">${category.stage_durations?.['03'] || 0}w</td>
+                            <td style="padding: 12px; text-align: center; color: #374151;">${category.stage_durations?.['04A'] || 0}w</td>
+                            <td style="padding: 12px; text-align: center; color: #374151;">${category.stage_durations?.['04B'] || 0}w</td>
+                            <td style="padding: 12px; text-align: center; color: #374151;">${category.stage_durations?.['05A'] || 0}w</td>
+                            <td style="padding: 12px; text-align: center; color: #374151;">${category.stage_durations?.['05B'] || 0}w</td>
+                            <td style="padding: 12px; text-align: center; color: #374151;">${category.stage_durations?.['06'] || 0}w</td>
+                            <td style="padding: 12px; text-align: center; font-weight: 600; color: #5F249F;">${category.total_timeline_weeks || 0}w</td>
+                        </tr>`;
+    });
+    
+    html += `
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Line Categories -->
+    <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #4B5563; font-size: 1.125rem; font-weight: 600;">Service Line Categories (FTE Requirements)</h3>
+            <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.875rem;">Categories determine FTE requirements based on service line TCV</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px;">`;
+
+    // Group by service line
+    const groupedCategories = reportData.service_line_categories?.reduce((acc: any, cat: any) => {
+      if (!acc[cat.service_line]) acc[cat.service_line] = [];
+      acc[cat.service_line].push(cat);
+      return acc;
+    }, {}) || {};
+
+    Object.entries(groupedCategories).forEach(([serviceLine, categories]: [string, any]) => {
+      html += `
+                <div style="background: #F9FAFB; border-radius: 8px; padding: 16px;">
+                    <h4 style="margin: 0 0 12px 0; color: #5F249F; font-size: 1rem; font-weight: 600;">${serviceLine} Categories</h4>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; font-size: 0.875rem;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #D1D5DB;">
+                                    <th style="padding: 8px 0; text-align: left; font-weight: 600; color: #374151;">Category</th>
+                                    <th style="padding: 8px 0; text-align: left; font-weight: 600; color: #374151;">TCV Range</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+      
+      categories.forEach((category: any) => {
+        html += `
+                                <tr style="border-bottom: 1px solid #E5E7EB;">
+                                    <td style="padding: 8px 0; font-weight: 500; color: #111827;">${category.name || ''}</td>
+                                    <td style="padding: 8px 0; color: #374151;">${category.tcv_range_display || 'N/A'}</td>
+                                </tr>`;
+      });
+      
+      html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+    });
+    
+    html += `
+            </div>
+        </div>
+    </div>
+
+    <!-- FTE Requirements by Stage -->
+    <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #4B5563; font-size: 1.125rem; font-weight: 600;">FTE Requirements by Stage</h3>
+            <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.875rem;">FTE requirements for each service line category and sales stage</p>
+            <div style="display: flex; flex-direction: column; gap: 24px;">`;
+
+    Object.entries(reportData.stage_efforts || {}).forEach(([serviceLine, categories]: [string, any]) => {
+      html += `
+                <div style="background: #F9FAFB; border-radius: 8px; padding: 16px;">
+                    <h4 style="margin: 0 0 12px 0; color: #5F249F; font-size: 1rem; font-weight: 600;">${serviceLine} FTE Requirements</h4>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; font-size: 0.875rem;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #D1D5DB;">
+                                    <th style="padding: 8px; text-align: left; font-weight: 600; color: #374151;">Category</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">01</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">02</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">03</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">04A</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">04B</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">05A</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">05B</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">06</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+      
+      Object.values(categories).forEach((category: any) => {
+        html += `
+                                <tr style="border-bottom: 1px solid #E5E7EB;">
+                                    <td style="padding: 8px; font-weight: 500; color: #111827;">${category.category_name || ''}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${category.stages?.['01']?.fte_required || 0}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${category.stages?.['02']?.fte_required || 0}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${category.stages?.['03']?.fte_required || 0}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${category.stages?.['04A']?.fte_required || 0}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${category.stages?.['04B']?.fte_required || 0}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${category.stages?.['05A']?.fte_required || 0}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${category.stages?.['05B']?.fte_required || 0}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${category.stages?.['06']?.fte_required || 0}</td>
+                                </tr>`;
+      });
+      
+      html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+    });
+    
+    html += `
+            </div>
+        </div>
+    </div>`;
+
+  // Real Calculation Examples
+  if (reportData.calculation_examples?.length > 0) {
+    html += `
+    <!-- Real Calculation Examples -->
+    <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #4B5563; font-size: 1.125rem; font-weight: 600;">Real Calculation Examples</h3>
+            <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.875rem;">Examples using actual opportunity data to demonstrate how configurations are applied</p>
+            <div style="display: flex; flex-direction: column; gap: 16px;">`;
+    
+    reportData.calculation_examples.forEach((example: any, index: number) => {
+      html += `
+                <div style="border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; background: #F9FAFB;">
+                    <!-- Header with opportunity info and calculation method -->
+                    <div style="margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #D1D5DB;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+                            <div>
+                                <h4 style="margin: 0 0 4px 0; color: #4B5563; font-size: 1.125rem; font-weight: 600;">${example.opportunity_name || 'Unknown'}</h4>
+                                <p style="margin: 0 0 4px 0; color: #6B7280; font-size: 0.875rem;">${example.opportunity_id || ''}</p>
+                                <p style="margin: 0; color: #374151; font-size: 0.875rem; font-weight: 500;">${example.account_name || 'Unknown Account'}</p>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 1.125rem; font-weight: bold; color: #5F249F; margin-bottom: 4px;">${formatCurrencyMillions(example.tcv_millions || 0)} TCV</div>
+                                <div style="display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; ${
+                                  example.calculation_method === 'lead_offering_fallback' 
+                                    ? 'background: #FEF3C7; color: #92400E;' 
+                                    : 'background: #D1FAE5; color: #065F46;'
+                                }">
+                                    ${example.calculation_method === 'lead_offering_fallback' ? 'Lead Offering Method' : 'Service Line TCV Method'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Calculation Explanation -->
+                    <div style="margin-bottom: 16px;">
+                        <h5 style="margin: 0 0 8px 0; color: #4B5563; font-weight: 500;">Calculation Flow</h5>
+                        <div style="background: #EBF8FF; border-radius: 8px; padding: 12px;">
+                            <ol style="margin: 0; padding-left: 16px; color: #1E40AF; font-size: 0.875rem; line-height: 1.5;">`;
+
+      example.calculation_explanation?.forEach((step: string, stepIndex: number) => {
+        html += `
+                                <li style="margin-bottom: 4px;">
+                                    <span style="font-weight: bold; color: #1D4ED8;">${stepIndex + 1}.</span> ${step}
+                                </li>`;
+      });
+
+      html += `
+                            </ol>
+                        </div>
+                    </div>
+
+                    <!-- Input Data and Configuration Applied -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 16px;">
+                        <!-- Input Data -->
+                        <div>
+                            <h5 style="margin: 0 0 8px 0; color: #4B5563; font-weight: 500;">Input Data</h5>
+                            <div style="background: white; border-radius: 8px; padding: 12px; font-size: 0.875rem;">
+                                <div style="margin-bottom: 8px;"><strong>Current Stage:</strong> ${example.current_stage || 'N/A'}</div>
+                                <div style="margin-bottom: 8px;"><strong>Decision Date:</strong> ${example.decision_date ? new Date(example.decision_date).toLocaleDateString() : 'N/A'}</div>
+                                <div style="margin-bottom: 8px;"><strong>Timeline Category:</strong> ${example.timeline_category || 'N/A'}</div>
+                                ${example.lead_offering_l1 ? `<div style="margin-bottom: 8px;"><strong>Lead Offering:</strong> ${example.lead_offering_l1}</div>` : ''}
+                                <div style="padding-top: 8px; border-top: 1px solid #E5E7EB;">
+                                    <strong>Service Line TCV Breakdown:</strong>
+                                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-top: 4px; font-size: 0.75rem;">`;
+
+      Object.entries(example.service_line_tcv_breakdown || {}).forEach(([sl, tcv]: [string, any]) => {
+        html += `
+                                        <div style="${tcv > 0 ? 'font-weight: 500; color: #5F249F;' : 'color: #6B7280;'}">
+                                            ${sl.toUpperCase()}: ${formatCurrencyMillions(tcv || 0)}
+                                        </div>`;
+      });
+
+      html += `
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Configuration Applied -->
+                        <div>
+                            <h5 style="margin: 0 0 8px 0; color: #4B5563; font-weight: 500;">Configuration Applied</h5>
+                            <div style="background: white; border-radius: 8px; padding: 12px; font-size: 0.875rem;">
+                                <div style="margin-bottom: 8px;"><strong>Remaining Stages:</strong> ${example.remaining_stages?.join(', ') || 'N/A'}</div>`;
+
+      Object.entries(example.service_line_categories || {}).forEach(([sl, config]: [string, any]) => {
+        html += `
+                                <div style="padding-top: 8px; border-top: 1px solid #E5E7EB; margin-top: 8px;">
+                                    <div style="font-weight: 500; color: #5F249F; margin-bottom: 4px;">${sl} Service Line</div>
+                                    <div>Resource Category: ${config.resource_category || 'N/A'}</div>
+                                    <div>Service Line TCV: ${formatCurrencyMillions(config.service_line_tcv || 0)}</div>
+                                </div>`;
+      });
+
+      html += `
+                            </div>
+                        </div>
+                    </div>`;
+
+      // Detailed Stage Breakdown
+      if (example.detailed_stage_breakdown && Object.keys(example.detailed_stage_breakdown).length > 0) {
+        html += `
+                    <!-- Detailed Stage Calculations -->
+                    <div style="margin-bottom: 16px;">
+                        <h5 style="margin: 0 0 8px 0; color: #4B5563; font-weight: 500;">Detailed Stage Calculations</h5>`;
+
+        Object.entries(example.detailed_stage_breakdown).forEach(([sl, stages]: [string, any]) => {
+          html += `
+                        <div style="margin-bottom: 12px;">
+                            <h6 style="margin: 0 0 8px 0; color: #5F249F; font-weight: 500;">${sl} Timeline</h6>
+                            <div style="overflow-x: auto;">
+                                <table style="width: 100%; font-size: 0.75rem; border: 1px solid #D1D5DB; border-radius: 4px; overflow: hidden;">
+                                    <thead style="background: #F3F4F6;">
+                                        <tr>
+                                            <th style="border: 1px solid #D1D5DB; padding: 8px; text-align: left; font-weight: 600;">Stage</th>
+                                            <th style="border: 1px solid #D1D5DB; padding: 8px; text-align: left; font-weight: 600;">Start Date</th>
+                                            <th style="border: 1px solid #D1D5DB; padding: 8px; text-align: left; font-weight: 600;">End Date</th>
+                                            <th style="border: 1px solid #D1D5DB; padding: 8px; text-align: right; font-weight: 600;">Duration (weeks)</th>
+                                            <th style="border: 1px solid #D1D5DB; padding: 8px; text-align: right; font-weight: 600;">FTE</th>
+                                            <th style="border: 1px solid #D1D5DB; padding: 8px; text-align: right; font-weight: 600;">Effort (weeks)</th>
+                                            <th style="border: 1px solid #D1D5DB; padding: 8px; text-align: left; font-weight: 600;">Resource Category</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+
+          stages?.forEach((stage: any) => {
+            html += `
+                                        <tr style="background: white;">
+                                            <td style="border: 1px solid #D1D5DB; padding: 8px; font-weight: 500;">${stage.stage_code || 'N/A'}</td>
+                                            <td style="border: 1px solid #D1D5DB; padding: 8px;">${stage.stage_start_date ? new Date(stage.stage_start_date).toLocaleDateString() : 'N/A'}</td>
+                                            <td style="border: 1px solid #D1D5DB; padding: 8px;">${stage.stage_end_date ? new Date(stage.stage_end_date).toLocaleDateString() : 'N/A'}</td>
+                                            <td style="border: 1px solid #D1D5DB; padding: 8px; text-align: right;">${stage.duration_weeks || 0}</td>
+                                            <td style="border: 1px solid #D1D5DB; padding: 8px; text-align: right;">${stage.fte_required || 0}</td>
+                                            <td style="border: 1px solid #D1D5DB; padding: 8px; text-align: right; font-weight: 500; color: #5F249F;">${stage.total_effort_weeks || 0}</td>
+                                            <td style="border: 1px solid #D1D5DB; padding: 8px;">${stage.resource_category_used || 'N/A'}</td>
+                                        </tr>`;
+          });
+
+          html += `
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Timeline Chart -->
+                            ${generateTimelineChart(sl, stages)}
+                        </div>`;
+        });
+
+        html += `
+                    </div>`;
+      }
+
+      // Results Summary
+      html += `
+                    <!-- Final Results -->
+                    <div style="padding-top: 12px; border-top: 1px solid #D1D5DB;">
+                        <h5 style="margin: 0 0 8px 0; color: #4B5563; font-weight: 500;">Final Results</h5>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+                            <div style="background: #5F249F; color: white; border-radius: 6px; padding: 12px; text-align: center;">
+                                <div style="font-size: 1.5rem; font-weight: bold; margin-bottom: 4px;">${(example.total_effort_weeks || 0).toFixed(1)}</div>
+                                <div style="font-size: 0.875rem;">Total Effort Weeks</div>
+                            </div>
+                            <div style="background: #2563EB; color: white; border-radius: 6px; padding: 12px; text-align: center;">
+                                <div style="font-size: 1.5rem; font-weight: bold; margin-bottom: 4px;">${(example.total_fte_hours || 0).toFixed(0)}</div>
+                                <div style="font-size: 0.875rem;">Total Hours</div>
+                            </div>
+                            <div style="background: #059669; color: white; border-radius: 6px; padding: 12px; text-align: center;">
+                                <div style="font-size: 1.5rem; font-weight: bold; margin-bottom: 4px;">${Object.keys(example.service_line_efforts || {}).length}</div>
+                                <div style="font-size: 0.875rem;">Service Lines</div>
+                            </div>
+                        </div>`;
+
+      if (example.service_line_efforts && Object.keys(example.service_line_efforts).length > 0) {
+        html += `
+                        <div style="margin-top: 12px;">
+                            <div style="font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 4px;">Effort by Service Line:</div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px;">`;
+
+        Object.entries(example.service_line_efforts).forEach(([sl, effort]: [string, any]) => {
+          html += `
+                                <span style="display: inline-block; background: #E5E7EB; color: #374151; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;">
+                                    ${sl}: ${(effort || 0).toFixed(1)} weeks
+                                </span>`;
+        });
+
+        html += `
+                            </div>
+                        </div>`;
+      }
+
+      html += `
+                    </div>
+                </div>`;
+    });
+    
+    html += `
+            </div>
+        </div>
+    </div>`;
+  }
+
+  // Configuration Notes
+  if (reportData.notes?.length > 0) {
+    html += `
+    <!-- Configuration Notes -->
+    <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #4B5563; font-size: 1.125rem; font-weight: 600;">Configuration Notes</h3>
+            <div style="background: #EBF8FF; border-radius: 8px; padding: 16px;">
+                <ul style="margin: 0; padding-left: 16px; color: #1E40AF; font-size: 0.875rem; line-height: 1.6;">`;
+
+    reportData.notes.forEach((note: string) => {
+      html += `
+                    <li style="margin-bottom: 8px;">${note}</li>`;
+    });
+
+    html += `
+                </ul>
+            </div>
+        </div>
+    </div>`;
+  }
+
+  return html;
+};
+
+// Helper function to generate timeline chart HTML
+const generateTimelineChart = (serviceLine: string, stages: any[]): string => {
+  if (!stages || stages.length === 0) return '';
+
+  // Calculate date range
+  const startDates = stages.map(s => new Date(s.stage_start_date)).filter(d => !isNaN(d.getTime()));
+  const endDates = stages.map(s => new Date(s.stage_end_date)).filter(d => !isNaN(d.getTime()));
+  
+  if (startDates.length === 0 || endDates.length === 0) return '';
+
+  const minDate = new Date(Math.min(...startDates.map(d => d.getTime())));
+  const maxDate = new Date(Math.max(...endDates.map(d => d.getTime())));
+  
+  // Calculate total duration
+  const totalDays = (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24);
+  const totalWeeks = Math.ceil(totalDays / 7);
+  
+  // Determine if we should show months or weeks
+  const showMonths = totalWeeks > 16;
+  
+  // Create time markers
+  const timeMarkers = [];
+  if (showMonths) {
+    let currentMonth = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+    while (currentMonth <= maxDate) {
+      timeMarkers.push(new Date(currentMonth));
+      currentMonth.setMonth(currentMonth.getMonth() + 1);
+    }
+  } else {
+    let currentWeek = new Date(minDate);
+    currentWeek.setDate(currentWeek.getDate() - currentWeek.getDay()); // Start of week
+    while (currentWeek <= maxDate) {
+      timeMarkers.push(new Date(currentWeek));
+      currentWeek.setDate(currentWeek.getDate() + 7);
+    }
+  }
+
+  const getPositionFromDate = (date: Date) => {
+    const totalDuration = maxDate.getTime() - minDate.getTime();
+    const datePosition = date.getTime() - minDate.getTime();
+    return Math.max(0, Math.min(100, (datePosition / totalDuration) * 100));
+  };
+
+  const getWidthFromDuration = (startDate: Date, endDate: Date) => {
+    const totalDuration = maxDate.getTime() - minDate.getTime();
+    const stageDuration = endDate.getTime() - startDate.getTime();
+    return Math.max(2, Math.min(100, (stageDuration / totalDuration) * 100));
+  };
+
+  const stageColors: {[key: string]: string} = {
+    '01': '#3B82F6', '02': '#10B981', '03': '#F59E0B', '04A': '#EF4444', 
+    '04B': '#8B5CF6', '05A': '#06B6D4', '05B': '#84CC16', '06': '#F97316'
+  };
+
+  let html = `
+            <!-- Timeline Chart -->
+            <div style="margin-top: 12px; background: white; border-radius: 8px; border: 1px solid #E5E7EB; padding: 12px;">
+                <h6 style="margin: 0 0 12px 0; color: #374151; font-weight: 500;">${serviceLine} Timeline (${showMonths ? 'Monthly' : 'Weekly'} View)</h6>
+                
+                <!-- Time markers header -->
+                <div style="position: relative; margin-bottom: 8px; height: 32px; border-bottom: 1px solid #E5E7EB;">
+                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 100%;">`;
+
+  timeMarkers.forEach((marker, /*index*/) => {
+    const position = getPositionFromDate(marker);
+    html += `
+                        <div style="position: absolute; left: ${position}%; top: 0; transform: translateX(-50%); font-size: 0.75rem; color: #6B7280;">
+                            <div style="border-left: 1px solid #D1D5DB; height: 16px;"></div>
+                            <div style="margin-top: 4px; white-space: nowrap;">
+                                ${showMonths 
+                                  ? marker.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+                                  : `W${Math.ceil((marker.getTime() - minDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1}`
+                                }
+                            </div>
+                        </div>`;
+  });
+
+  html += `
+                    </div>
+                </div>
+
+                <!-- Timeline bars -->
+                <div style="position: relative; height: 32px; background: #F9FAFB; border-radius: 4px; border: 1px solid #E5E7EB;">`;
+
+  stages.forEach((stage, /*index*/) => {
+    const startDate = new Date(stage.stage_start_date);
+    const endDate = new Date(stage.stage_end_date);
+    const left = getPositionFromDate(startDate);
+    const width = getWidthFromDuration(startDate, endDate);
+    const color = stageColors[stage.stage_code] || '#6B7280';
+    
+    html += `
+                    <div style="position: absolute; top: 4px; left: ${left}%; width: ${width}%; height: 24px; background: ${color}; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; color: white; font-size: 0.75rem; font-weight: 500; min-width: 20px;" title="${stage.stage_code}: ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()} (${stage.duration_weeks}w, ${stage.fte_required} FTE)">
+                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px;">
+                            ${width > 8 ? stage.stage_code : stage.stage_code.substring(0, 2)}
+                        </span>
+                    </div>`;
+  });
+
+  html += `
+                </div>
+
+                <!-- Legend -->
+                <div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.75rem;">`;
+
+  stages.forEach((stage, /*index*/) => {
+    const color = stageColors[stage.stage_code] || '#6B7280';
+    html += `
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <div style="width: 12px; height: 12px; background: ${color}; border-radius: 2px;"></div>
+                        <span>${stage.stage_code}: ${stage.duration_weeks}w, ${stage.fte_required} FTE</span>
+                    </div>`;
+  });
+
+  html += `
+                </div>
+            </div>`;
+
+  return html;
+};
+
+// Helper function to render timeline charts in PDF
+const renderPDFTimelineChart = (
+  pdf: any,
+  stages: any[],
+  marginX: number,
+  startY: number,
+  chartWidth: number,
+  serviceLine: string
+): number => {
+  if (!stages || stages.length === 0) return startY;
+
+  // Stage colors matching the web app
+  const stageColors: {[key: string]: [number, number, number]} = {
+    '01': [59, 130, 246],   // Blue
+    '02': [16, 185, 129],   // Green
+    '03': [245, 158, 11],   // Orange
+    '04A': [239, 68, 68],   // Red
+    '04B': [139, 92, 246],  // Purple
+    '05A': [6, 182, 212],   // Cyan
+    '05B': [132, 204, 22],  // Lime
+    '06': [249, 115, 22]    // Orange-Red
+  };
+
+  // Calculate date range
+  const startDates = stages.map(s => new Date(s.stage_start_date)).filter(d => !isNaN(d.getTime()));
+  const endDates = stages.map(s => new Date(s.stage_end_date)).filter(d => !isNaN(d.getTime()));
+  
+  if (startDates.length === 0 || endDates.length === 0) return startY;
+
+  const minDate = new Date(Math.min(...startDates.map(d => d.getTime())));
+  const maxDate = new Date(Math.max(...endDates.map(d => d.getTime())));
+  
+  // Calculate total duration
+  const totalDays = (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24);
+  const totalWeeks = Math.ceil(totalDays / 7);
+  
+  // Determine if we should show months or weeks
+  const showMonths = totalWeeks > 16;
+  
+  // Chart dimensions - increased for better visibility
+  const chartHeight = Math.max(30, stages.length * 8 + 15); // Dynamic height based on stage count
+  const timelineBarHeight = 6;
+  const stageTrackHeight = 8; // Height per stage track
+  
+  // Create time markers
+  const timeMarkers = [];
+  if (showMonths) {
+    let currentMonth = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+    while (currentMonth <= maxDate) {
+      timeMarkers.push(new Date(currentMonth));
+      currentMonth.setMonth(currentMonth.getMonth() + 1);
+    }
+  } else {
+    let currentWeek = new Date(minDate);
+    currentWeek.setDate(currentWeek.getDate() - currentWeek.getDay()); // Start of week
+    while (currentWeek <= maxDate) {
+      timeMarkers.push(new Date(currentWeek));
+      currentWeek.setDate(currentWeek.getDate() + 7);
+    }
+  }
+
+  // Helper functions
+  const getPositionFromDate = (date: Date) => {
+    const totalDuration = maxDate.getTime() - minDate.getTime();
+    const datePosition = date.getTime() - minDate.getTime();
+    return Math.max(0, Math.min(1, datePosition / totalDuration));
+  };
+
+  const getWidthFromDuration = (startDate: Date, endDate: Date) => {
+    const totalDuration = maxDate.getTime() - minDate.getTime();
+    const stageDuration = endDate.getTime() - startDate.getTime();
+    return Math.max(0.02, Math.min(1, stageDuration / totalDuration));
+  };
+
+  // Draw chart background with better styling
+  pdf.setFillColor(249, 250, 251);
+  pdf.setDrawColor(209, 213, 219);
+  pdf.setLineWidth(0.5);
+  pdf.rect(marginX, startY, chartWidth, chartHeight, 'FD');
+  
+  // Add chart title background
+  pdf.setFillColor(243, 244, 246);
+  pdf.rect(marginX, startY, chartWidth, 12, 'F');
+  
+  // Add chart title
+  pdf.setFontSize(6);  
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(75, 85, 99);
+  pdf.text(`${serviceLine} Timeline`, marginX + 2, startY + 7);
+
+  // Draw time markers below title
+  const markerY = startY + 14;
+  pdf.setFontSize(5);
+  pdf.setTextColor(107, 114, 128);
+  
+  timeMarkers.forEach((marker) => {
+    const position = getPositionFromDate(marker);
+    const xPos = marginX + (position * chartWidth);
+    
+    // Draw marker line from marker area to bottom of chart
+    pdf.setDrawColor(229, 231, 235);
+    pdf.setLineWidth(0.2);
+    pdf.line(xPos, markerY + 6, xPos, startY + chartHeight - 8);
+    
+    // Draw marker text
+    const markerText = showMonths 
+      ? marker.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+      : `W${Math.ceil((marker.getTime() - minDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1}`;
+    
+    const textWidth = pdf.getTextWidth(markerText);
+    pdf.text(markerText, Math.max(marginX + 1, Math.min(marginX + chartWidth - textWidth - 1, xPos - textWidth/2)), markerY + 4);
+  });
+
+  // Draw timeline bars with proper spacing
+  const barStartY = startY + 22; // Start below time markers and title
+  stages.forEach((stage, index) => {
+    const startDate = new Date(stage.stage_start_date);
+    const endDate = new Date(stage.stage_end_date);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return;
+    
+    const leftPosition = getPositionFromDate(startDate);
+    const width = getWidthFromDuration(startDate, endDate);
+    
+    const barX = marginX + (leftPosition * chartWidth);
+    const barWidth = Math.max(3, width * chartWidth); // Minimum 3mm width
+    const barY = barStartY + (index * stageTrackHeight);
+    
+    // Get stage color
+    const color = stageColors[stage.stage_code] || [107, 114, 128];
+    
+    // Draw stage bar with rounded corners effect
+    pdf.setFillColor(color[0], color[1], color[2]);
+    pdf.rect(barX, barY, barWidth, timelineBarHeight, 'F');
+    
+    // Add stage label - always show stage code
+    pdf.setFontSize(5);
+    pdf.setTextColor(255, 255, 255);
+    const stageLabel = stage.stage_code || '';
+    const labelWidth = pdf.getTextWidth(stageLabel);
+    
+    // Position label in center of bar, or to the right if bar is too narrow
+    if (barWidth > labelWidth + 2) {
+      pdf.text(stageLabel, barX + (barWidth/2) - (labelWidth/2), barY + 4);
+    } else {
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(stageLabel, barX + barWidth + 2, barY + 4);
+    }
+    
+    // Add stage details to the left
+    pdf.setFontSize(5);
+    pdf.setTextColor(75, 85, 99);
+    const stageInfo = `${stage.stage_code}: ${stage.fte_required || 0} FTE, ${stage.total_effort_weeks || 0}w`;
+    const maxLabelWidth = 25; // Maximum width for stage info
+    if (marginX > 25) {
+      pdf.text(stageInfo.substring(0, 15) + '...', marginX - maxLabelWidth, barY + 4);
+    }
+  });
+
+  // Add improved legend at the bottom
+  const legendY = startY + chartHeight + 2;
+  pdf.setFontSize(6);
+  pdf.setTextColor(75, 85, 99);
+  
+  // Timeline title
+  const titleText = `${serviceLine} Timeline (${showMonths ? 'Monthly' : 'Weekly'} View)`;
+  pdf.text(titleText, marginX, legendY);
+  
+  // Add total duration info
+  const durationText = `Duration: ${totalWeeks} weeks | Stages: ${stages.length}`;
+  pdf.setFontSize(5);
+  pdf.setTextColor(107, 114, 128);
+  pdf.text(durationText, marginX, legendY + 4);
+  
+  // Add stage color legend if we have multiple stages
+  if (stages.length > 1) {
+    const legendStartY = legendY + 8;
+    pdf.setFontSize(4);
+    pdf.setTextColor(75, 85, 99);
+    pdf.text('Stage Colors:', marginX, legendStartY);
+    
+    let legendX = marginX;
+    const uniqueStages = [...new Set(stages.map(s => s.stage_code))];
+    uniqueStages.slice(0, 4).forEach((stageCode, index) => { // Show max 4 stages in legend
+      const color = stageColors[stageCode] || [107, 114, 128];
+      const legendItemX = legendX + (index * 25);
+      
+      // Draw color square
+      pdf.setFillColor(color[0], color[1], color[2]);
+      pdf.rect(legendItemX, legendStartY + 2, 3, 3, 'F');
+      
+      // Add stage label
+      pdf.setTextColor(75, 85, 99);
+      pdf.text(stageCode, legendItemX + 4, legendStartY + 4);
+    });
+    
+    return legendStartY + 8;
+  }
+
+  return legendY + 8;
+};
+
+export const exportConfigurationToPDF = (reportData: any, filename?: string) => {
+  try {
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 15;
+    const usableWidth = pageWidth - (2 * margin);
+    let yPosition = margin;
+
+    // Helper functions
+    const formatCurrencyMillions = (valueInMillions: number) => {
+      return `$${valueInMillions.toFixed(1)}M`;
+    };
+
+    const addNewPageIfNeeded = (requiredHeight: number) => {
+      if (yPosition + requiredHeight > pageHeight - margin - 10) {
+        pdf.addPage();
+        yPosition = margin;
+        return true;
+      }
+      return false;
+    };
+
+    const addSectionTitle = (title: string) => {
+      addNewPageIfNeeded(15);
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(95, 36, 159); // DXC Purple
+      pdf.text(title, margin, yPosition);
+      yPosition += 8;
+    };
+
+    const addSubtitle = (subtitle: string) => {
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(75, 85, 99);
+      pdf.text(subtitle, margin, yPosition);
+      yPosition += 6;
+    };
+
+    // Title
+    pdf.setFontSize(16);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(95, 36, 159);
+    pdf.text('Configuration Summary Report', margin, yPosition);
+    yPosition += 10;
+
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(`Generated on ${new Date().toLocaleDateString()}`, margin, yPosition);
+    yPosition += 15;
+
+    // Configuration Statistics Cards
+    addSectionTitle('Configuration Overview');
+    
+    const stats = [
+      { label: 'Opportunity Categories', value: reportData.configuration_statistics?.opportunity_categories_count || 0 },
+      { label: 'Service Line Categories', value: reportData.configuration_statistics?.service_line_categories_count || 0 },
+      { label: 'Stage Efforts Configured', value: reportData.configuration_statistics?.stage_efforts_configured || 0 }
+    ];
+
+    const cardWidth = (usableWidth - 8) / 3;
+    const cardHeight = 20;
+
+    stats.forEach((stat, index) => {
+      const cardX = margin + (index * (cardWidth + 4));
+      
+      // Card with border
+      pdf.setFillColor(249, 250, 251);
+      pdf.setDrawColor(229, 231, 235);
+      pdf.setLineWidth(0.5);
+      pdf.rect(cardX, yPosition, cardWidth, cardHeight, 'FD');
+      
+      // Label
+      pdf.setFontSize(7);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(75, 85, 99);
+      const labelLines = pdf.splitTextToSize(stat.label, cardWidth - 4);
+      pdf.text(labelLines, cardX + 2, yPosition + 6);
+      
+      // Value
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(95, 36, 159);
+      pdf.text(String(stat.value), cardX + 2, yPosition + 15);
+    });
+    
+    pdf.setTextColor(0, 0, 0);
+    yPosition += cardHeight + 15;
+
+    // Opportunity Categories Complete Table
+    if (reportData.opportunity_categories?.length > 0) {
+      addSectionTitle('Opportunity Categories (Timeline Durations)');
+      addSubtitle('Categories determine stage durations based on total TCV');
+
+      // Complete table with all stages
+      const headers = ['Category', 'TCV Range', '01', '02', '03', '04A', '04B', '05A', '05B', '06', 'Total'];
+      const colWidths = [25, 25, 12, 12, 12, 12, 12, 12, 12, 12, 15];
+      const rowHeight = 6;
+
+      // Header
+      addNewPageIfNeeded(rowHeight);
+      pdf.setFillColor(95, 36, 159);
+      pdf.rect(margin, yPosition, usableWidth, rowHeight, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(7);
+
+      let xPos = margin;
+      headers.forEach((header, index) => {
+        if (index < 2) {
+          pdf.text(header, xPos + 1, yPosition + 4);
+        } else {
+          const textWidth = pdf.getTextWidth(header);
+          pdf.text(header, xPos + colWidths[index]/2 - textWidth/2, yPosition + 4);
+        }
+        xPos += colWidths[index];
+      });
+      yPosition += rowHeight;
+
+      // Data rows
+      reportData.opportunity_categories.forEach((category: any, rowIndex: number) => {
+        addNewPageIfNeeded(rowHeight);
+
+        if (rowIndex % 2 === 1) {
+          pdf.setFillColor(249, 250, 251);
+          pdf.rect(margin, yPosition, usableWidth, rowHeight, 'F');
+        }
+
+        pdf.setTextColor(0, 0, 0);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(7);
+
+        xPos = margin;
+        const rowData = [
+          category.name || '',
+          category.tcv_range_display || 'N/A',
+          `${category.stage_durations?.['01'] || 0}w`,
+          `${category.stage_durations?.['02'] || 0}w`,
+          `${category.stage_durations?.['03'] || 0}w`,
+          `${category.stage_durations?.['04A'] || 0}w`,
+          `${category.stage_durations?.['04B'] || 0}w`,
+          `${category.stage_durations?.['05A'] || 0}w`,
+          `${category.stage_durations?.['05B'] || 0}w`,
+          `${category.stage_durations?.['06'] || 0}w`,
+          `${category.total_timeline_weeks || 0}w`
+        ];
+
+        rowData.forEach((data, index) => {
+          if (index < 2) {
+            if (index === 0) pdf.setFont('helvetica', 'bold');
+            pdf.text(data, xPos + 1, yPosition + 4);
+          } else {
+            if (index === rowData.length - 1) {
+              pdf.setFont('helvetica', 'bold');
+              pdf.setTextColor(95, 36, 159);
+            }
+            const textWidth = pdf.getTextWidth(data);
+            pdf.text(data, xPos + colWidths[index]/2 - textWidth/2, yPosition + 4);
+          }
+          xPos += colWidths[index];
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(0, 0, 0);
+        });
+
+        pdf.setDrawColor(200, 200, 200);
+        pdf.line(margin, yPosition + rowHeight, pageWidth - margin, yPosition + rowHeight);
+        yPosition += rowHeight;
+      });
+      yPosition += 10;
+    }
+
+    // Service Line Categories Section
+    if (reportData.service_line_categories?.length > 0) {
+      addSectionTitle('Service Line Categories (FTE Requirements)');
+      addSubtitle('Categories determine FTE requirements based on service line TCV');
+
+      const groupedCategories = reportData.service_line_categories.reduce((acc: any, cat: any) => {
+        if (!acc[cat.service_line]) acc[cat.service_line] = [];
+        acc[cat.service_line].push(cat);
+        return acc;
+      }, {});
+
+      Object.entries(groupedCategories).forEach(([serviceLine, categories]: [string, any]) => {
+        addNewPageIfNeeded(30);
+
+        // Service line header
+        pdf.setFillColor(249, 250, 251);
+        pdf.setDrawColor(229, 231, 235);
+        pdf.rect(margin, yPosition, usableWidth, 8, 'FD');
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(95, 36, 159);
+        pdf.text(`${serviceLine} Categories`, margin + 3, yPosition + 5);
+        yPosition += 10;
+
+        // Categories table header
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(75, 85, 99);
+        pdf.text('Category', margin + 3, yPosition);
+        pdf.text('TCV Range', margin + 80, yPosition);
+        yPosition += 5;
+
+        // Categories rows
+        categories.forEach((category: any, index: number) => {
+          if (index % 2 === 1) {
+            pdf.setFillColor(255, 255, 255);
+            pdf.rect(margin + 3, yPosition - 1, usableWidth - 6, 5, 'F');
+          }
+          
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(category.name || 'Unknown', margin + 5, yPosition + 2);
+          
+          pdf.setFont('helvetica', 'normal');
+          pdf.text(category.tcv_range_display || 'N/A', margin + 80, yPosition + 2);
+          
+          yPosition += 4;
+        });
+        yPosition += 8;
+      });
+    }
+
+    // FTE Requirements by Stage Section (COMPLETE)
+    if (reportData.stage_efforts && Object.keys(reportData.stage_efforts).length > 0) {
+      addSectionTitle('FTE Requirements by Stage');
+      addSubtitle('FTE requirements for each service line category and sales stage');
+
+      Object.entries(reportData.stage_efforts).forEach(([serviceLine, categories]: [string, any]) => {
+        addNewPageIfNeeded(60);
+
+        // Service line header
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(95, 36, 159);
+        pdf.text(`${serviceLine} FTE Requirements`, margin, yPosition);
+        yPosition += 8;
+
+        // FTE table
+        const fteHeaders = ['Category', '01', '02', '03', '04A', '04B', '05A', '05B', '06'];
+        const fteColWidths = [50, 16, 16, 16, 16, 16, 16, 16, 16];
+        const fteRowHeight = 6;
+
+        // Header
+        pdf.setFillColor(95, 36, 159);
+        pdf.rect(margin, yPosition, usableWidth, fteRowHeight, 'F');
+        
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(255, 255, 255);
+        
+        let xPos = margin;
+        fteHeaders.forEach((header, index) => {
+          if (index === 0) {
+            pdf.text(header, xPos + 2, yPosition + 4);
+          } else {
+            const textWidth = pdf.getTextWidth(header);
+            pdf.text(header, xPos + fteColWidths[index]/2 - textWidth/2, yPosition + 4);
+          }
+          xPos += fteColWidths[index];
+        });
+        yPosition += fteRowHeight;
+
+        // Data rows
+        Object.values(categories).forEach((category: any, catIndex: number) => {
+          if (catIndex % 2 === 1) {
+            pdf.setFillColor(249, 250, 251);
+            pdf.rect(margin, yPosition, usableWidth, fteRowHeight, 'F');
+          }
+
+          pdf.setFontSize(7);
+          pdf.setTextColor(0, 0, 0);
+          
+          xPos = margin;
+          const fteRowData = [
+            category.category_name || '',
+            category.stages?.['01']?.fte_required || '0',
+            category.stages?.['02']?.fte_required || '0',
+            category.stages?.['03']?.fte_required || '0',
+            category.stages?.['04A']?.fte_required || '0',
+            category.stages?.['04B']?.fte_required || '0',
+            category.stages?.['05A']?.fte_required || '0',
+            category.stages?.['05B']?.fte_required || '0',
+            category.stages?.['06']?.fte_required || '0'
+          ];
+
+          fteRowData.forEach((data, index) => {
+            if (index === 0) {
+              pdf.setFont('helvetica', 'bold');
+              pdf.text(String(data), xPos + 2, yPosition + 4);
+            } else {
+              pdf.setFont('helvetica', 'normal');
+              const textWidth = pdf.getTextWidth(String(data));
+              pdf.text(String(data), xPos + fteColWidths[index]/2 - textWidth/2, yPosition + 4);
+            }
+            xPos += fteColWidths[index];
+          });
+
+          pdf.setDrawColor(229, 231, 235);
+          pdf.line(margin, yPosition + fteRowHeight, pageWidth - margin, yPosition + fteRowHeight);
+          yPosition += fteRowHeight;
+        });
+        yPosition += 10;
+      });
+    }
+
+    // Real Calculation Examples Section (COMPLETE with all details)
+    if (reportData.calculation_examples?.length > 0) {
+      addSectionTitle('Real Calculation Examples');
+      addSubtitle('Examples using actual opportunity data to demonstrate how configurations are applied');
+
+      reportData.calculation_examples.forEach((example: any, /*index: number*/) => {
+        addNewPageIfNeeded(150);
+
+        // Example container
+        pdf.setFillColor(249, 250, 251);
+        pdf.setDrawColor(229, 231, 235);
+        pdf.setLineWidth(0.5);
+        pdf.rect(margin, yPosition, usableWidth, 80, 'FD');
+
+        // Opportunity header
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(75, 85, 99);
+        const oppName = example.opportunity_name?.length > 40 ? 
+          example.opportunity_name.substring(0, 37) + '...' : 
+          example.opportunity_name || 'Unknown Opportunity';
+        pdf.text(oppName, margin + 3, yPosition + 8);
+        
+        // Header info row
+        pdf.setFontSize(8);
+        pdf.setTextColor(107, 114, 128);
+        pdf.text(example.opportunity_id || '', margin + 3, yPosition + 13);
+        pdf.text(example.account_name || '', margin + 3, yPosition + 18);
+
+        // TCV and method
+        pdf.setFontSize(9);
+        pdf.setTextColor(95, 36, 159);
+        pdf.text(`TCV: ${formatCurrencyMillions(example.tcv_millions || 0)}`, pageWidth - margin - 40, yPosition + 8);
+        
+        const methodText = example.calculation_method === 'lead_offering_fallback' ? 
+          'Lead Offering Method' : 'Service Line TCV Method';
+        pdf.setFontSize(7);
+        pdf.setTextColor(75, 85, 99);
+        pdf.text(`Method: ${methodText}`, pageWidth - margin - 40, yPosition + 13);
+
+        // Calculation Flow
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(75, 85, 99);
+        pdf.text('Calculation Flow', margin + 3, yPosition + 25);
+        
+        pdf.setFillColor(235, 248, 255);
+        pdf.rect(margin + 3, yPosition + 27, usableWidth - 6, 15, 'F');
+        
+        pdf.setFontSize(6);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(30, 64, 175);
+        
+        let stepY = yPosition + 30;
+        example.calculation_explanation?.slice(0, 3).forEach((step: string, stepIndex: number) => {
+          const stepText = step.length > 75 ? step.substring(0, 72) + '...' : step;
+          pdf.text(`${stepIndex + 1}. ${stepText}`, margin + 5, stepY);
+          stepY += 4;
+        });
+
+        // Input Data and Configuration (side by side)
+        const colWidth = (usableWidth - 10) / 2;
+        let dataY = yPosition + 45;
+        
+        // Input Data
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(margin + 3, dataY, colWidth, 18, 'FD');
+        
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(75, 85, 99);
+        pdf.text('Input Data', margin + 5, dataY + 4);
+        
+        pdf.setFontSize(6);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(`Current Stage: ${example.current_stage || 'N/A'}`, margin + 5, dataY + 8);
+        pdf.text(`Decision Date: ${example.decision_date ? new Date(example.decision_date).toLocaleDateString() : 'N/A'}`, margin + 5, dataY + 12);
+        pdf.text(`Category: ${example.timeline_category || 'N/A'}`, margin + 5, dataY + 16);
+
+        // Configuration Applied
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(margin + 7 + colWidth, dataY, colWidth, 18, 'FD');
+        
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(75, 85, 99);
+        pdf.text('Configuration Applied', margin + 9 + colWidth, dataY + 4);
+        
+        pdf.setFontSize(6);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(`Remaining Stages: ${example.remaining_stages?.join(', ') || 'N/A'}`, margin + 9 + colWidth, dataY + 8);
+
+        // Service Line breakdown
+        if (example.service_line_tcv_breakdown) {
+          let serviceY = dataY + 12;
+          Object.entries(example.service_line_tcv_breakdown).slice(0, 2).forEach(([sl, tcv]: [string, any]) => {
+            const color = tcv > 0 ? [95, 36, 159] : [107, 114, 128];
+            pdf.setTextColor(color[0], color[1], color[2]);
+            pdf.text(`${sl}: ${formatCurrencyMillions(tcv || 0)}`, margin + 9 + colWidth, serviceY);
+            serviceY += 3;
+          });
+        }
+
+        // Detailed Stage Timeline Table
+        if (example.detailed_stage_breakdown && Object.keys(example.detailed_stage_breakdown).length > 0) {
+          let timelineY = yPosition + 85;
+          
+          Object.entries(example.detailed_stage_breakdown).forEach(([serviceLine, stages]: [string, any]) => {
+            addNewPageIfNeeded(35);
+            
+            pdf.setFontSize(8);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(95, 36, 159);
+            pdf.text(`${serviceLine} Timeline Details`, margin, timelineY);
+            timelineY += 6;
+
+            // Timeline table headers
+            const stageHeaders = ['Stage', 'Start Date', 'End Date', 'Weeks', 'FTE', 'Effort'];
+            const stageColWidths = [18, 25, 25, 15, 15, 20];
+            const stageRowHeight = 5;
+
+            // Header
+            pdf.setFillColor(243, 244, 246);
+            pdf.rect(margin, timelineY, usableWidth, stageRowHeight, 'F');
+            
+            pdf.setFontSize(6);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(75, 85, 99);
+            
+            let stageXPos = margin;
+            stageHeaders.forEach((header, index) => {
+              pdf.text(header, stageXPos + 1, timelineY + 3);
+              stageXPos += stageColWidths[index];
+            });
+            timelineY += stageRowHeight;
+
+            // Stage data rows
+            stages?.slice(0, 6).forEach((stage: any, stageIndex: number) => {
+              if (stageIndex % 2 === 1) {
+                pdf.setFillColor(249, 250, 251);
+                pdf.rect(margin, timelineY, usableWidth, stageRowHeight, 'F');
+              }
+
+              pdf.setFontSize(6);
+              pdf.setFont('helvetica', 'normal');
+              pdf.setTextColor(0, 0, 0);
+              
+              stageXPos = margin;
+              const stageRowData = [
+                stage.stage_code || 'N/A',
+                stage.stage_start_date ? new Date(stage.stage_start_date).toLocaleDateString('en-GB') : 'N/A',
+                stage.stage_end_date ? new Date(stage.stage_end_date).toLocaleDateString('en-GB') : 'N/A',
+                (stage.duration_weeks || 0).toString(),
+                (stage.fte_required || 0).toString(),
+                (stage.total_effort_weeks || 0).toFixed(1)
+              ];
+
+              stageRowData.forEach((data, index) => {
+                if (index === 0) pdf.setFont('helvetica', 'bold');
+                else if (index === stageRowData.length - 1) {
+                  pdf.setFont('helvetica', 'bold');
+                  pdf.setTextColor(95, 36, 159);
+                }
+                pdf.text(data, stageXPos + 1, timelineY + 3);
+                stageXPos += stageColWidths[index];
+                pdf.setFont('helvetica', 'normal');
+                pdf.setTextColor(0, 0, 0);
+              });
+
+              pdf.setDrawColor(229, 231, 235);
+              pdf.line(margin, timelineY + stageRowHeight, pageWidth - margin, timelineY + stageRowHeight);
+              timelineY += stageRowHeight;
+            });
+            
+            // Add Timeline Chart after the table
+            timelineY += 8;
+            addNewPageIfNeeded(Math.max(40, stages.length * 8 + 25)); // Dynamic space requirement
+            
+            pdf.setFontSize(7);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(95, 36, 159);
+            pdf.text(`${serviceLine} Timeline Chart`, margin, timelineY);
+            timelineY += 6;
+            
+            // Render timeline chart
+            timelineY = renderPDFTimelineChart(pdf, stages, margin, timelineY, usableWidth, serviceLine);
+            timelineY += 10;
+          });
+          yPosition = timelineY;
+        } else {
+          yPosition += 85;
+        }
+
+        // Final Results Summary
+        addNewPageIfNeeded(25);
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(75, 85, 99);
+        pdf.text('Final Results', margin, yPosition);
+        yPosition += 6;
+
+        const resultBoxWidth = (usableWidth - 12) / 3;
+        const results = [
+          { label: 'Total Effort', value: `${(example.total_effort_weeks || 0).toFixed(1)}w`, color: [95, 36, 159] },
+          { label: 'Total Hours', value: (example.total_fte_hours || 0).toFixed(0), color: [37, 99, 235] },
+          { label: 'Service Lines', value: Object.keys(example.service_line_efforts || {}).length.toString(), color: [5, 150, 105] }
+        ];
+
+        results.forEach((result, rIndex) => {
+          const boxX = margin + (rIndex * (resultBoxWidth + 6));
+          
+          pdf.setFillColor(result.color[0], result.color[1], result.color[2]);
+          pdf.rect(boxX, yPosition, resultBoxWidth, 12, 'F');
+          
+          pdf.setFontSize(10);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(255, 255, 255);
+          const valueWidth = pdf.getTextWidth(result.value);
+          pdf.text(result.value, boxX + resultBoxWidth/2 - valueWidth/2, yPosition + 6);
+          
+          pdf.setFontSize(6);
+          pdf.setFont('helvetica', 'normal');
+          const labelWidth = pdf.getTextWidth(result.label);
+          pdf.text(result.label, boxX + resultBoxWidth/2 - labelWidth/2, yPosition + 10);
+        });
+
+        yPosition += 20;
+      });
+    }
+
+    // Configuration Notes Section
+    if (reportData.notes?.length > 0) {
+      addSectionTitle('Configuration Notes');
+      
+      pdf.setFillColor(235, 248, 255);
+      pdf.setDrawColor(191, 219, 254);
+      const notesHeight = Math.min(reportData.notes.length * 5 + 10, 50);
+      pdf.rect(margin, yPosition, usableWidth, notesHeight, 'FD');
+      
+      yPosition += 5;
+      reportData.notes.forEach((note: string) => {
+        addNewPageIfNeeded(8);
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(30, 64, 175);
+        
+        const noteLines = pdf.splitTextToSize(`• ${note}`, usableWidth - 10);
+        pdf.text(noteLines, margin + 5, yPosition);
+        yPosition += noteLines.length * 4 + 2;
+      });
+      yPosition += 5;
+    }
+
+    // Add footer with page numbers
+    const pageCount = pdf.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(6);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(
+        `Configuration Summary Report - Generated ${new Date().toLocaleDateString()} - Page ${i} of ${pageCount}`,
+        margin,
+        pageHeight - 5
+      );
+    }
+
+    // Save PDF
+    const safeFilename = filename || `configuration_summary_report_${new Date().toISOString().split('T')[0]}.pdf`;
+    pdf.save(safeFilename);
+
+  } catch (error) {
+    console.error('Error exporting to PDF:', error);
+    throw error;
+  }
 };
 
 export const generateReportSummary = (reportData: any, reportType: string): string => {
@@ -1210,6 +2656,14 @@ Period: ${reportData.report_period?.start_date} to ${reportData.report_period?.e
 Total Opportunities: ${reportData.summary?.total_opportunities || 0}
 Service Line Activities: ${reportData.summary?.total_service_line_activities || 0}
 Total Effort Weeks: ${reportData.summary?.total_effort_weeks || 0}`;
+
+    case 'configuration-summary':
+      return `Configuration Summary Report
+Generated: ${generatedAt}
+Opportunity Categories: ${reportData.opportunity_categories?.length || 0}
+Service Line Categories: ${reportData.service_line_categories?.length || 0}
+Stage Effort Templates: ${reportData.service_line_stage_efforts?.length || 0}
+Calculation Examples: ${reportData.calculation_examples?.length || 0}`;
 
     default:
       return `Report Generated: ${generatedAt}`;

@@ -8,7 +8,7 @@ from sqlmodel import Session, select, func, text
 from app.models.database import engine
 from app.models.opportunity import Opportunity, OpportunityLineItem
 from app.models.resources import OpportunityResourceTimeline
-from app.models.config import OpportunityCategory, ServiceLineStageEffort
+from app.models.config import OpportunityCategory, ServiceLineStageEffort, ServiceLineCategory
 import structlog
 
 logger = structlog.get_logger()
@@ -804,6 +804,325 @@ async def get_service_line_activity_timeline_report(
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 
+@router.get("/configuration-summary")
+async def get_configuration_summary_report(
+    session: Session = Depends(get_session)
+) -> Dict[str, Any]:
+    """
+    Configuration Summary Report - Shows all configuration settings and calculation examples.
+    """
+    try:
+        # Get opportunity categories
+        opportunity_categories = session.exec(
+            select(OpportunityCategory).order_by(OpportunityCategory.min_tcv)
+        ).all()
+        
+        # Get service line categories
+        service_line_categories = session.exec(
+            select(ServiceLineCategory).order_by(ServiceLineCategory.service_line, ServiceLineCategory.min_tcv)
+        ).all()
+        
+        # Get service line stage efforts
+        stage_efforts = session.exec(
+            select(ServiceLineStageEffort).order_by(
+                ServiceLineStageEffort.service_line,
+                ServiceLineStageEffort.service_line_category_id,
+                ServiceLineStageEffort.stage_name
+            )
+        ).all()
+        
+        # Get diverse sample opportunities for calculation examples
+        # Get opportunities across different categories and scenarios
+        
+        # Get one opportunity from each category range
+        diverse_opportunities = []
+        
+        # Sub $5M opportunity
+        sub_5m_opp = session.exec(
+            select(Opportunity).where(
+                Opportunity.tcv_millions.isnot(None),
+                Opportunity.tcv_millions < 5.0,
+                Opportunity.decision_date.isnot(None),
+                Opportunity.sales_stage.isnot(None)
+            ).limit(1)
+        ).first()
+        if sub_5m_opp:
+            diverse_opportunities.append(sub_5m_opp)
+        
+        # Cat C opportunity (5M - 20M)
+        cat_c_opp = session.exec(
+            select(Opportunity).where(
+                Opportunity.tcv_millions >= 5.0,
+                Opportunity.tcv_millions <= 20.0,
+                Opportunity.decision_date.isnot(None),
+                Opportunity.sales_stage.isnot(None)
+            ).limit(1)
+        ).first()
+        if cat_c_opp:
+            diverse_opportunities.append(cat_c_opp)
+        
+        # Cat B opportunity (20M - 100M)
+        cat_b_opp = session.exec(
+            select(Opportunity).where(
+                Opportunity.tcv_millions >= 20.0,
+                Opportunity.tcv_millions <= 100.0,
+                Opportunity.decision_date.isnot(None),
+                Opportunity.sales_stage.isnot(None)
+            ).limit(1)
+        ).first()
+        if cat_b_opp:
+            diverse_opportunities.append(cat_b_opp)
+        
+        # Cat A opportunity (100M+)
+        cat_a_opp = session.exec(
+            select(Opportunity).where(
+                Opportunity.tcv_millions >= 100.0,
+                Opportunity.decision_date.isnot(None),
+                Opportunity.sales_stage.isnot(None)
+            ).limit(1)
+        ).first()
+        if cat_a_opp:
+            diverse_opportunities.append(cat_a_opp)
+        
+        # Get an opportunity with both MW and ITOC service line TCV
+        multi_service_line_opp = session.exec(
+            select(Opportunity).where(
+                Opportunity.tcv_millions.isnot(None),
+                Opportunity.decision_date.isnot(None),
+                Opportunity.sales_stage.isnot(None),
+                # Has both MW and ITOC millions
+                Opportunity.mw_millions.isnot(None),
+                Opportunity.mw_millions > 0,
+                Opportunity.itoc_millions.isnot(None),
+                Opportunity.itoc_millions > 0
+            ).limit(1)
+        ).first()
+        if multi_service_line_opp:
+            diverse_opportunities.append(multi_service_line_opp)
+        
+        # Get an opportunity with lead_offering_l1 but no service line TCV
+        lead_offering_only_opp = session.exec(
+            select(Opportunity).where(
+                Opportunity.lead_offering_l1.in_(["MW", "ITOC"]),
+                Opportunity.tcv_millions.isnot(None),
+                Opportunity.decision_date.isnot(None),
+                Opportunity.sales_stage.isnot(None),
+                # No MW or ITOC millions
+                (Opportunity.mw_millions.is_(None) | (Opportunity.mw_millions == 0)),
+                (Opportunity.itoc_millions.is_(None) | (Opportunity.itoc_millions == 0))
+            ).limit(1)
+        ).first()
+        if lead_offering_only_opp:
+            diverse_opportunities.append(lead_offering_only_opp)
+        
+        sample_opportunities = diverse_opportunities
+        
+        # Format opportunity categories
+        opportunity_categories_data = []
+        for cat in opportunity_categories:
+            opportunity_categories_data.append({
+                "id": cat.id,
+                "name": cat.name,
+                "min_tcv": cat.min_tcv,
+                "max_tcv": cat.max_tcv,
+                "tcv_range_display": f"${cat.min_tcv}M{' - $' + str(cat.max_tcv) + 'M' if cat.max_tcv else '+'}",
+                "stage_durations": {
+                    "01": cat.stage_01_duration_weeks or 0,
+                    "02": cat.stage_02_duration_weeks or 0,
+                    "03": cat.stage_03_duration_weeks or 0,
+                    "04A": cat.stage_04a_duration_weeks or 0,
+                    "04B": cat.stage_04b_duration_weeks or 0,
+                    "05A": cat.stage_05a_duration_weeks or 0,
+                    "05B": cat.stage_05b_duration_weeks or 0,
+                    "06": cat.stage_06_duration_weeks or 0
+                },
+                "total_timeline_weeks": sum([
+                    cat.stage_01_duration_weeks or 0,
+                    cat.stage_02_duration_weeks or 0,
+                    cat.stage_03_duration_weeks or 0,
+                    cat.stage_04a_duration_weeks or 0,
+                    cat.stage_04b_duration_weeks or 0,
+                    cat.stage_05a_duration_weeks or 0,
+                    cat.stage_05b_duration_weeks or 0,
+                    cat.stage_06_duration_weeks or 0
+                ])
+            })
+        
+        # Format service line categories
+        service_line_categories_data = []
+        for cat in service_line_categories:
+            service_line_categories_data.append({
+                "id": cat.id,
+                "service_line": cat.service_line,
+                "name": cat.name,
+                "min_tcv": cat.min_tcv,
+                "max_tcv": cat.max_tcv,
+                "tcv_range_display": f"${cat.min_tcv}M{' - $' + str(cat.max_tcv) + 'M' if cat.max_tcv else '+'}"
+            })
+        
+        # Format stage efforts by service line
+        stage_efforts_data = {}
+        for effort in stage_efforts:
+            if effort.service_line not in stage_efforts_data:
+                stage_efforts_data[effort.service_line] = {}
+            
+            # Find the category name
+            category_name = "Unknown"
+            for sl_cat in service_line_categories:
+                if sl_cat.id == effort.service_line_category_id:
+                    category_name = sl_cat.name
+                    break
+            
+            category_key = f"{effort.service_line_category_id}_{category_name}"
+            if category_key not in stage_efforts_data[effort.service_line]:
+                stage_efforts_data[effort.service_line][category_key] = {
+                    "category_id": effort.service_line_category_id,
+                    "category_name": category_name,
+                    "stages": {}
+                }
+            
+            stage_efforts_data[effort.service_line][category_key]["stages"][effort.stage_name] = {
+                "fte_required": effort.fte_required
+            }
+        
+        # Create calculation examples using sample opportunities
+        calculation_examples = []
+        from app.services.resource_calculation import calculate_opportunity_resource_timeline
+        
+        for opp in sample_opportunities:
+            try:
+                timeline_result = calculate_opportunity_resource_timeline(opp.id, session)
+                
+                # Calculate totals for this opportunity
+                total_effort_weeks = 0
+                total_fte_hours = 0
+                service_line_efforts = {}
+                
+                for service_line, timeline in timeline_result.get("service_line_timelines", {}).items():
+                    service_line_effort = 0
+                    for stage in timeline:
+                        effort = stage.get("total_effort_weeks", 0)
+                        total_effort_weeks += effort
+                        service_line_effort += effort
+                    service_line_efforts[service_line] = service_line_effort
+                    total_fte_hours += service_line_effort * 40  # 40 hours per week
+                
+                # Determine calculation method used
+                has_service_line_tcv = any([
+                    opp.mw_millions and opp.mw_millions > 0,
+                    opp.itoc_millions and opp.itoc_millions > 0
+                ])
+                
+                calculation_method = "lead_offering_fallback" if not has_service_line_tcv else "service_line_tcv"
+                
+                # Create detailed stage breakdown
+                detailed_stages = {}
+                remaining_stages_from_current = []
+                
+                # Get remaining stages from current stage
+                from app.services.resource_calculation import SALES_STAGES_ORDER, get_remaining_stages
+                remaining_stages_from_current = get_remaining_stages(opp.sales_stage or "01")
+                
+                for service_line, timeline in timeline_result.get("service_line_timelines", {}).items():
+                    detailed_stages[service_line] = []
+                    for stage_data in timeline:
+                        stage_detail = {
+                            "stage_code": stage_data.get("stage_name"),
+                            "stage_start_date": stage_data.get("stage_start_date").isoformat() if stage_data.get("stage_start_date") else None,
+                            "stage_end_date": stage_data.get("stage_end_date").isoformat() if stage_data.get("stage_end_date") else None,
+                            "duration_weeks": stage_data.get("duration_weeks", 0),
+                            "fte_required": stage_data.get("fte_required", 0),
+                            "total_effort_weeks": stage_data.get("total_effort_weeks", 0),
+                            "resource_category_used": stage_data.get("resource_category", "Unknown")
+                        }
+                        detailed_stages[service_line].append(stage_detail)
+                
+                # Calculate explanation text
+                explanation_parts = []
+                explanation_parts.append(f"Opportunity TCV: ${opp.tcv_millions}M → Timeline Category: {timeline_result.get('category')}")
+                
+                if calculation_method == "lead_offering_fallback":
+                    explanation_parts.append(f"No service line TCV found → Used Lead Offering: {opp.lead_offering_l1} with default 1.0M TCV")
+                    for sl, categories in timeline_result.get("service_line_categories", {}).items():
+                        explanation_parts.append(f"{sl}: 1.0M TCV → Resource Category: {categories.get('resource_category')}")
+                else:
+                    for sl, categories in timeline_result.get("service_line_categories", {}).items():
+                        sl_tcv = categories.get('service_line_tcv', 0)
+                        explanation_parts.append(f"{sl}: ${sl_tcv}M TCV → Resource Category: {categories.get('resource_category')}")
+                
+                explanation_parts.append(f"Current Stage: {opp.sales_stage} → Remaining Stages: {', '.join(remaining_stages_from_current)}")
+                explanation_parts.append(f"Calculation works backwards from Decision Date: {opp.decision_date.strftime('%Y-%m-%d') if opp.decision_date else 'N/A'}")
+                
+                calculation_examples.append({
+                    "opportunity_id": opp.opportunity_id,
+                    "opportunity_name": opp.opportunity_name,
+                    "account_name": opp.account_name,
+                    "tcv_millions": opp.tcv_millions,
+                    "decision_date": opp.decision_date.isoformat() if opp.decision_date else None,
+                    "current_stage": opp.sales_stage,
+                    "lead_offering_l1": opp.lead_offering_l1,
+                    "service_line_tcv_breakdown": {
+                        "mw_millions": opp.mw_millions or 0,
+                        "itoc_millions": opp.itoc_millions or 0,
+                        "ces_millions": opp.ces_millions or 0,
+                        "ins_millions": opp.ins_millions or 0,
+                        "bps_millions": opp.bps_millions or 0,
+                        "sec_millions": opp.sec_millions or 0
+                    },
+                    "calculation_method": calculation_method,
+                    "timeline_category": timeline_result.get("category"),
+                    "service_line_categories": timeline_result.get("service_line_categories", {}),
+                    "remaining_stages": remaining_stages_from_current,
+                    "total_effort_weeks": total_effort_weeks,
+                    "total_fte_hours": total_fte_hours,
+                    "service_line_efforts": service_line_efforts,
+                    "detailed_stage_breakdown": detailed_stages,
+                    "calculation_explanation": explanation_parts,
+                    "timeline_summary": {
+                        service_line: {
+                            "stages_count": len(timeline),
+                            "total_weeks": sum(stage.get("total_effort_weeks", 0) for stage in timeline),
+                            "avg_fte_per_stage": sum(stage.get("fte_required", 0) for stage in timeline) / len(timeline) if timeline else 0
+                        }
+                        for service_line, timeline in timeline_result.get("service_line_timelines", {}).items()
+                    }
+                })
+            except Exception as e:
+                logger.warning(f"Could not calculate timeline for opportunity {opp.id}: {str(e)}")
+                continue
+        
+        # Configuration summary statistics
+        config_stats = {
+            "opportunity_categories_count": len(opportunity_categories),
+            "service_line_categories_count": len(service_line_categories),
+            "stage_efforts_configured": len(stage_efforts),
+            "service_lines_configured": len(set(effort.service_line for effort in stage_efforts)),
+            "total_fte_configured": sum(effort.fte_required for effort in stage_efforts),
+            "calculation_examples_generated": len(calculation_examples)
+        }
+        
+        return {
+            "report_name": "Configuration Summary Report",
+            "opportunity_categories": opportunity_categories_data,
+            "service_line_categories": service_line_categories_data,
+            "stage_efforts": stage_efforts_data,
+            "calculation_examples": calculation_examples,
+            "configuration_statistics": config_stats,
+            "generated_at": datetime.utcnow().isoformat(),
+            "notes": [
+                "Opportunity Categories determine timeline durations based on total TCV",
+                "Service Line Categories determine FTE requirements based on service line TCV",
+                "Timeline calculations work backwards from decision date using current sales stage",
+                "FTE requirements are multiplied by stage durations to calculate total effort weeks",
+                "Total effort hours = effort weeks × 40 hours per week"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error("Error generating configuration summary report", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+
 @router.get("/available-reports")
 async def get_available_reports() -> Dict[str, Any]:
     """
@@ -811,6 +1130,13 @@ async def get_available_reports() -> Dict[str, Any]:
     """
     return {
         "available_reports": [
+            {
+                "id": "configuration-summary",
+                "name": "Configuration Summary Report",
+                "description": "Shows all configuration settings in tabular format with real calculation examples",
+                "export_formats": ["excel", "pdf", "html"],
+                "filters": []
+            },
             {
                 "id": "resource-utilization",
                 "name": "Resource Utilization Report",

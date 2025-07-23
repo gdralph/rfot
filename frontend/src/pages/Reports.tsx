@@ -15,7 +15,7 @@ import {
   Table
 } from 'lucide-react';
 import { api } from '../services/api.js';
-import { exportToPDF, exportToExcel, convertReportDataToExcel, exportTimelineChartToPDF, exportToHTML } from '../utils/exportUtils.js';
+import { exportToPDF, exportToExcel, convertReportDataToExcel, exportTimelineChartToPDF, exportToHTML, exportConfigurationToPDF } from '../utils/exportUtils.js';
 
 interface ReportInfo {
   id: string;
@@ -97,6 +97,7 @@ const Reports: React.FC = () => {
   });
 
   const reportIcons = {
+    'configuration-summary': FileText,
     'resource-utilization': Users,
     'opportunity-pipeline': TrendingUp,
     'service-line-performance': BarChart3,
@@ -143,6 +144,12 @@ const Reports: React.FC = () => {
           await exportTimelineChartToPDF(
             reportData,
             `${reportName}_timeline_${timestamp}.pdf`
+          );
+        } else if (selectedReport === 'configuration-summary') {
+          // Use custom configuration PDF export
+          await exportConfigurationToPDF(
+            reportData,
+            `${reportName}_report_${timestamp}.pdf`
           );
         } else {
           // Use regular HTML-to-PDF for other views
@@ -349,7 +356,9 @@ const Reports: React.FC = () => {
     if (!data) return null;
 
     // Different rendering based on report type
-    if (data.utilization_data) {
+    if (data.opportunity_categories && data.service_line_categories) {
+      return renderConfigurationReport(data);
+    } else if (data.utilization_data) {
       return renderUtilizationReport(data);
     } else if (data.pipeline_data) {
       return renderPipelineReport(data);
@@ -371,6 +380,490 @@ const Reports: React.FC = () => {
       </div>
     );
   };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(value);
+  };
+
+  const formatCurrencyMillions = (valueInMillions: number) => {
+    return `${formatCurrency(valueInMillions)}M`;
+  };
+
+  const renderStageTimelineChart = (serviceLine: string, stages: any[]) => {
+    if (!stages || stages.length === 0) return null;
+
+    // Calculate date range
+    const startDates = stages.map(s => new Date(s.stage_start_date)).filter(d => !isNaN(d.getTime()));
+    const endDates = stages.map(s => new Date(s.stage_end_date)).filter(d => !isNaN(d.getTime()));
+    
+    if (startDates.length === 0 || endDates.length === 0) return null;
+
+    const minDate = new Date(Math.min(...startDates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...endDates.map(d => d.getTime())));
+    
+    // Calculate total duration
+    const totalDays = (maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24);
+    const totalWeeks = Math.ceil(totalDays / 7);
+    
+    // Determine if we should show months or weeks
+    const showMonths = totalWeeks > 16;
+    
+    // Create time markers
+    const timeMarkers = [];
+    if (showMonths) {
+      let currentMonth = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+      while (currentMonth <= maxDate) {
+        timeMarkers.push(new Date(currentMonth));
+        currentMonth.setMonth(currentMonth.getMonth() + 1);
+      }
+    } else {
+      let currentWeek = new Date(minDate);
+      currentWeek.setDate(currentWeek.getDate() - currentWeek.getDay()); // Start of week
+      while (currentWeek <= maxDate) {
+        timeMarkers.push(new Date(currentWeek));
+        currentWeek.setDate(currentWeek.getDate() + 7);
+      }
+    }
+
+    const getPositionFromDate = (date: Date) => {
+      const totalDuration = maxDate.getTime() - minDate.getTime();
+      const datePosition = date.getTime() - minDate.getTime();
+      return Math.max(0, Math.min(100, (datePosition / totalDuration) * 100));
+    };
+
+    const getWidthFromDuration = (startDate: Date, endDate: Date) => {
+      const totalDuration = maxDate.getTime() - minDate.getTime();
+      const stageDuration = endDate.getTime() - startDate.getTime();
+      return Math.max(2, Math.min(100, (stageDuration / totalDuration) * 100));
+    };
+
+    const stageColors = {
+      '01': '#3B82F6', '02': '#10B981', '03': '#F59E0B', '04A': '#EF4444', 
+      '04B': '#8B5CF6', '05A': '#06B6D4', '05B': '#84CC16', '06': '#F97316'
+    };
+
+    return (
+      <div className="mt-3 bg-white rounded-lg border border-gray-200 p-3">
+        <h6 className="font-medium text-gray-700 mb-3">
+          {serviceLine} Timeline ({showMonths ? 'Monthly' : 'Weekly'} View)
+        </h6>
+        
+        {/* Time markers header */}
+        <div className="relative mb-2 h-8 border-b border-gray-200">
+          <div className="absolute inset-0 flex">
+            {timeMarkers.map((marker, index) => {
+              const position = getPositionFromDate(marker);
+              return (
+                <div
+                  key={index}
+                  className="absolute text-xs text-gray-600 transform -translate-x-1/2"
+                  style={{ left: `${position}%`, top: '0px' }}
+                >
+                  <div className="border-l border-gray-300 h-4"></div>
+                  <div className="mt-1 whitespace-nowrap">
+                    {showMonths 
+                      ? marker.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+                      : `W${Math.ceil((marker.getTime() - minDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1}`
+                    }
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Timeline bars */}
+        <div className="relative h-8 bg-gray-50 rounded border">
+          {stages.map((stage, index) => {
+            const startDate = new Date(stage.stage_start_date);
+            const endDate = new Date(stage.stage_end_date);
+            const left = getPositionFromDate(startDate);
+            const width = getWidthFromDuration(startDate, endDate);
+            const color = stageColors[stage.stage_code as keyof typeof stageColors] || '#6B7280';
+            
+            return (
+              <div
+                key={index}
+                className="absolute top-1 rounded shadow-sm flex items-center justify-center text-white text-xs font-medium"
+                style={{
+                  left: `${left}%`,
+                  width: `${width}%`,
+                  height: '24px',
+                  backgroundColor: color,
+                  minWidth: '20px'
+                }}
+                title={`${stage.stage_code}: ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()} (${stage.duration_weeks}w, ${stage.fte_required} FTE)`}
+              >
+                <span className="truncate px-1">
+                  {width > 8 ? stage.stage_code : stage.stage_code.substring(0, 2)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Legend */}
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          {stages.map((stage, index) => {
+            const color = stageColors[stage.stage_code as keyof typeof stageColors] || '#6B7280';
+            return (
+              <div key={index} className="flex items-center gap-1">
+                <div 
+                  className="w-3 h-3 rounded" 
+                  style={{ backgroundColor: color }}
+                ></div>
+                <span>{stage.stage_code}: {stage.duration_weeks}w, {stage.fte_required} FTE</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderConfigurationReport = (data: any) => (
+    <div className="mt-6 space-y-6">
+      {/* Configuration Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="card p-4">
+          <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Opportunity Categories</h4>
+          <p className="text-2xl font-bold text-dxc-bright-purple">
+            {data.configuration_statistics.opportunity_categories_count}
+          </p>
+        </div>
+        <div className="card p-4">
+          <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Service Line Categories</h4>
+          <p className="text-2xl font-bold text-dxc-bright-purple">
+            {data.configuration_statistics.service_line_categories_count}
+          </p>
+        </div>
+        <div className="card p-4">
+          <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Stage Efforts Configured</h4>
+          <p className="text-2xl font-bold text-dxc-bright-purple">
+            {data.configuration_statistics.stage_efforts_configured}
+          </p>
+        </div>
+      </div>
+
+      {/* Opportunity Categories */}
+      <div className="card">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Opportunity Categories (Timeline Durations)</h3>
+          <p className="text-sm text-gray-600 mb-4">Categories determine stage durations based on total TCV</p>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>TCV Range</th>
+                  <th>Stage 01</th>
+                  <th>Stage 02</th>
+                  <th>Stage 03</th>
+                  <th>Stage 04A</th>
+                  <th>Stage 04B</th>
+                  <th>Stage 05A</th>
+                  <th>Stage 05B</th>
+                  <th>Stage 06</th>
+                  <th>Total Weeks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.opportunity_categories.map((category: any) => (
+                  <tr key={category.id}>
+                    <td className="font-medium">{category.name}</td>
+                    <td>{category.tcv_range_display}</td>
+                    <td>{category.stage_durations['01']}w</td>
+                    <td>{category.stage_durations['02']}w</td>
+                    <td>{category.stage_durations['03']}w</td>
+                    <td>{category.stage_durations['04A']}w</td>
+                    <td>{category.stage_durations['04B']}w</td>
+                    <td>{category.stage_durations['05A']}w</td>
+                    <td>{category.stage_durations['05B']}w</td>
+                    <td>{category.stage_durations['06']}w</td>
+                    <td className="font-medium text-dxc-bright-purple">{category.total_timeline_weeks}w</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Service Line Categories */}
+      <div className="card">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Service Line Categories (FTE Requirements)</h3>
+          <p className="text-sm text-gray-600 mb-4">Categories determine FTE requirements based on service line TCV</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {Object.entries(data.service_line_categories.reduce((acc: any, cat: any) => {
+              if (!acc[cat.service_line]) acc[cat.service_line] = [];
+              acc[cat.service_line].push(cat);
+              return acc;
+            }, {})).map(([serviceLine, categories]: [string, any]) => (
+              <div key={serviceLine} className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-semibold text-dxc-bright-purple mb-3">{serviceLine} Categories</h4>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-300">
+                        <th className="text-left py-2">Category</th>
+                        <th className="text-left py-2">TCV Range</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categories.map((category: any) => (
+                        <tr key={category.id} className="border-b border-gray-200">
+                          <td className="py-2 font-medium">{category.name}</td>
+                          <td className="py-2">{category.tcv_range_display}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Stage Efforts Matrix */}
+      <div className="card">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">FTE Requirements by Stage</h3>
+          <p className="text-sm text-gray-600 mb-4">FTE requirements for each service line category and sales stage</p>
+          <div className="space-y-6">
+            {Object.entries(data.stage_efforts).map(([serviceLine, categories]: [string, any]) => (
+              <div key={serviceLine} className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-semibold text-dxc-bright-purple mb-3">{serviceLine} FTE Requirements</h4>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-300">
+                        <th className="text-left py-2">Category</th>
+                        <th className="text-center py-2">01</th>
+                        <th className="text-center py-2">02</th>
+                        <th className="text-center py-2">03</th>
+                        <th className="text-center py-2">04A</th>
+                        <th className="text-center py-2">04B</th>
+                        <th className="text-center py-2">05A</th>
+                        <th className="text-center py-2">05B</th>
+                        <th className="text-center py-2">06</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.values(categories).map((category: any) => (
+                        <tr key={category.category_id} className="border-b border-gray-200">
+                          <td className="py-2 font-medium">{category.category_name}</td>
+                          <td className="text-center py-2">{category.stages['01']?.fte_required || 0}</td>
+                          <td className="text-center py-2">{category.stages['02']?.fte_required || 0}</td>
+                          <td className="text-center py-2">{category.stages['03']?.fte_required || 0}</td>
+                          <td className="text-center py-2">{category.stages['04A']?.fte_required || 0}</td>
+                          <td className="text-center py-2">{category.stages['04B']?.fte_required || 0}</td>
+                          <td className="text-center py-2">{category.stages['05A']?.fte_required || 0}</td>
+                          <td className="text-center py-2">{category.stages['05B']?.fte_required || 0}</td>
+                          <td className="text-center py-2">{category.stages['06']?.fte_required || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Calculation Examples */}
+      {data.calculation_examples && data.calculation_examples.length > 0 && (
+        <div className="card">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Real Calculation Examples</h3>
+            <p className="text-sm text-gray-600 mb-4">Examples using actual opportunity data to demonstrate how configurations are applied</p>
+            <div className="space-y-4">
+              {data.calculation_examples.map((example: any, index: number) => (
+                <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  {/* Header with opportunity info and calculation method */}
+                  <div className="mb-4 pb-3 border-b border-gray-300">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-semibold text-dxc-dark-gray text-lg">{example.opportunity_name}</h4>
+                        <p className="text-sm text-gray-600">{example.opportunity_id}</p>
+                        <p className="text-sm font-medium text-gray-700">{example.account_name}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-dxc-bright-purple">{formatCurrencyMillions(example.tcv_millions)} TCV</div>
+                        <div className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                          example.calculation_method === 'lead_offering_fallback' 
+                            ? 'bg-orange-100 text-orange-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {example.calculation_method === 'lead_offering_fallback' ? 'Lead Offering Method' : 'Service Line TCV Method'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Calculation Explanation */}
+                  <div className="mb-4">
+                    <h5 className="font-medium text-dxc-dark-gray mb-2">Calculation Flow</h5>
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <ol className="space-y-1 text-sm text-blue-800">
+                        {example.calculation_explanation.map((step: string, stepIndex: number) => (
+                          <li key={stepIndex} className="flex items-start">
+                            <span className="font-bold text-blue-600 mr-2">{stepIndex + 1}.</span>
+                            {step}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                    {/* Input Data */}
+                    <div>
+                      <h5 className="font-medium text-dxc-dark-gray mb-2">Input Data</h5>
+                      <div className="bg-white rounded-lg p-3 space-y-2 text-sm">
+                        <div><strong>Current Stage:</strong> {example.current_stage}</div>
+                        <div><strong>Decision Date:</strong> {new Date(example.decision_date).toLocaleDateString()}</div>
+                        <div><strong>Timeline Category:</strong> {example.timeline_category}</div>
+                        {example.lead_offering_l1 && (
+                          <div><strong>Lead Offering:</strong> {example.lead_offering_l1}</div>
+                        )}
+                        <div className="pt-2 border-t border-gray-200">
+                          <strong>Service Line TCV Breakdown:</strong>
+                          <div className="grid grid-cols-2 gap-1 text-xs mt-1">
+                            {Object.entries(example.service_line_tcv_breakdown).map(([sl, tcv]: [string, any]) => (
+                              <div key={sl} className={tcv > 0 ? 'font-medium text-dxc-bright-purple' : 'text-gray-500'}>
+                                {sl.toUpperCase()}: {formatCurrencyMillions(tcv)}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Configuration Applied */}
+                    <div>
+                      <h5 className="font-medium text-dxc-dark-gray mb-2">Configuration Applied</h5>
+                      <div className="bg-white rounded-lg p-3 space-y-2 text-sm">
+                        <div><strong>Remaining Stages:</strong> {example.remaining_stages.join(', ')}</div>
+                        {Object.entries(example.service_line_categories).map(([sl, config]: [string, any]) => (
+                          <div key={sl} className="pt-2 border-t border-gray-200">
+                            <div className="font-medium text-dxc-bright-purple">{sl} Service Line</div>
+                            <div>Resource Category: {config.resource_category}</div>
+                            <div>Service Line TCV: {formatCurrencyMillions(config.service_line_tcv)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Detailed Stage Breakdown */}
+                  <div className="mb-4">
+                    <h5 className="font-medium text-dxc-dark-gray mb-2">Detailed Stage Calculations</h5>
+                    {Object.entries(example.detailed_stage_breakdown).map(([sl, stages]: [string, any]) => (
+                      <div key={sl} className="mb-3">
+                        <h6 className="font-medium text-dxc-bright-purple mb-2">{sl} Timeline</h6>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-xs border border-gray-300">
+                            <thead className="bg-gray-100">
+                              <tr>
+                                <th className="border border-gray-300 px-2 py-1 text-left">Stage</th>
+                                <th className="border border-gray-300 px-2 py-1 text-left">Start Date</th>
+                                <th className="border border-gray-300 px-2 py-1 text-left">End Date</th>
+                                <th className="border border-gray-300 px-2 py-1 text-right">Duration (weeks)</th>
+                                <th className="border border-gray-300 px-2 py-1 text-right">FTE</th>
+                                <th className="border border-gray-300 px-2 py-1 text-right">Effort (weeks)</th>
+                                <th className="border border-gray-300 px-2 py-1 text-left">Resource Category</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {stages.map((stage: any, stageIndex: number) => (
+                                <tr key={stageIndex} className="hover:bg-gray-50">
+                                  <td className="border border-gray-300 px-2 py-1 font-medium">{stage.stage_code}</td>
+                                  <td className="border border-gray-300 px-2 py-1">
+                                    {stage.stage_start_date ? new Date(stage.stage_start_date).toLocaleDateString() : 'N/A'}
+                                  </td>
+                                  <td className="border border-gray-300 px-2 py-1">
+                                    {stage.stage_end_date ? new Date(stage.stage_end_date).toLocaleDateString() : 'N/A'}
+                                  </td>
+                                  <td className="border border-gray-300 px-2 py-1 text-right">{stage.duration_weeks}</td>
+                                  <td className="border border-gray-300 px-2 py-1 text-right">{stage.fte_required}</td>
+                                  <td className="border border-gray-300 px-2 py-1 text-right font-medium text-dxc-bright-purple">{stage.total_effort_weeks}</td>
+                                  <td className="border border-gray-300 px-2 py-1">{stage.resource_category_used}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        
+                        {/* Add timeline chart */}
+                        {renderStageTimelineChart(sl, stages)}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Results Summary */}
+                  <div className="pt-3 border-t border-gray-300">
+                    <h5 className="font-medium text-dxc-dark-gray mb-2">Final Results</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="bg-dxc-bright-purple text-white rounded p-3 text-center">
+                        <div className="text-2xl font-bold">{example.total_effort_weeks.toFixed(1)}</div>
+                        <div className="text-sm">Total Effort Weeks</div>
+                      </div>
+                      <div className="bg-blue-600 text-white rounded p-3 text-center">
+                        <div className="text-2xl font-bold">{example.total_fte_hours.toFixed(0)}</div>
+                        <div className="text-sm">Total Hours</div>
+                      </div>
+                      <div className="bg-green-600 text-white rounded p-3 text-center">
+                        <div className="text-2xl font-bold">{Object.keys(example.service_line_efforts).length}</div>
+                        <div className="text-sm">Service Lines</div>
+                      </div>
+                    </div>
+                    
+                    {Object.keys(example.service_line_efforts).length > 0 && (
+                      <div className="mt-3">
+                        <div className="text-sm font-medium text-gray-700 mb-1">Effort by Service Line:</div>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(example.service_line_efforts).map(([sl, effort]: [string, any]) => (
+                            <span key={sl} className="inline-block bg-gray-200 text-gray-800 px-2 py-1 rounded text-xs">
+                              {sl}: {effort.toFixed(1)} weeks
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Configuration Notes */}
+      <div className="card">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Configuration Notes</h3>
+          <div className="bg-blue-50 rounded-lg p-4">
+            <ul className="space-y-2 text-sm text-blue-800">
+              {data.notes.map((note: string, index: number) => (
+                <li key={index} className="flex items-start">
+                  <span className="text-blue-600 mr-2">•</span>
+                  {note}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   const renderUtilizationReport = (data: any) => (
     <div className="mt-6 space-y-6">
