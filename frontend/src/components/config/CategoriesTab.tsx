@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Edit2, DollarSign, Trash2, Check, X } from 'lucide-react';
+import { Plus, Edit2, DollarSign, Trash2, Check, X, Clock } from 'lucide-react';
 import { useCreateCategory, useUpdateCategory, useDeleteCategory } from '../../hooks/useConfig';
 import type { OpportunityCategory } from '../../types/index';
+import { SALES_STAGES } from '../../types/index';
 
 interface CategoriesTabProps {
   categories: OpportunityCategory[];
@@ -14,12 +15,28 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
   const [formData, setFormData] = useState({
     name: '',
     min_tcv: '',
-    max_tcv: ''
+    max_tcv: '',
+    stage_01_duration_weeks: '0',
+    stage_02_duration_weeks: '0',
+    stage_03_duration_weeks: '0',
+    stage_04a_duration_weeks: '0',
+    stage_04b_duration_weeks: '0',
+    stage_05a_duration_weeks: '0',
+    stage_05b_duration_weeks: '0',
+    stage_06_duration_weeks: '0'
   });
   const [editData, setEditData] = useState({
     name: '',
     min_tcv: '',
-    max_tcv: ''
+    max_tcv: '',
+    stage_01_duration_weeks: '0',
+    stage_02_duration_weeks: '0',
+    stage_03_duration_weeks: '0',
+    stage_04a_duration_weeks: '0',
+    stage_04b_duration_weeks: '0',
+    stage_05a_duration_weeks: '0',
+    stage_05b_duration_weeks: '0',
+    stage_06_duration_weeks: '0'
   });
 
   const createCategoryMutation = useCreateCategory();
@@ -33,13 +50,26 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
       const categoryData: Omit<OpportunityCategory, 'id'> = {
         name: formData.name,
         min_tcv: parseFloat(formData.min_tcv),
-        max_tcv: formData.max_tcv ? parseFloat(formData.max_tcv) : undefined
+        max_tcv: formData.max_tcv ? parseFloat(formData.max_tcv) : undefined,
+        stage_01_duration_weeks: parseFloat(formData.stage_01_duration_weeks) || 0,
+        stage_02_duration_weeks: parseFloat(formData.stage_02_duration_weeks) || 0,
+        stage_03_duration_weeks: parseFloat(formData.stage_03_duration_weeks) || 0,
+        stage_04a_duration_weeks: parseFloat(formData.stage_04a_duration_weeks) || 0,
+        stage_04b_duration_weeks: parseFloat(formData.stage_04b_duration_weeks) || 0,
+        stage_05a_duration_weeks: parseFloat(formData.stage_05a_duration_weeks) || 0,
+        stage_05b_duration_weeks: parseFloat(formData.stage_05b_duration_weeks) || 0,
+        stage_06_duration_weeks: parseFloat(formData.stage_06_duration_weeks) || 0
       };
 
       await createCategoryMutation.mutateAsync(categoryData);
       
       // Reset form
-      setFormData({ name: '', min_tcv: '', max_tcv: '' });
+      setFormData({
+        name: '', min_tcv: '', max_tcv: '',
+        stage_01_duration_weeks: '0', stage_02_duration_weeks: '0', stage_03_duration_weeks: '0',
+        stage_04a_duration_weeks: '0', stage_04b_duration_weeks: '0', stage_05a_duration_weeks: '0',
+        stage_05b_duration_weeks: '0', stage_06_duration_weeks: '0'
+      });
       setShowAddForm(false);
     } catch (error) {
       console.error('Failed to create category:', error);
@@ -52,7 +82,15 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
     setEditData({
       name: category.name,
       min_tcv: category.min_tcv.toString(),
-      max_tcv: category.max_tcv?.toString() || ''
+      max_tcv: category.max_tcv?.toString() || '',
+      stage_01_duration_weeks: (category.stage_01_duration_weeks || 0).toString(),
+      stage_02_duration_weeks: (category.stage_02_duration_weeks || 0).toString(),
+      stage_03_duration_weeks: (category.stage_03_duration_weeks || 0).toString(),
+      stage_04a_duration_weeks: (category.stage_04a_duration_weeks || 0).toString(),
+      stage_04b_duration_weeks: (category.stage_04b_duration_weeks || 0).toString(),
+      stage_05a_duration_weeks: (category.stage_05a_duration_weeks || 0).toString(),
+      stage_05b_duration_weeks: (category.stage_05b_duration_weeks || 0).toString(),
+      stage_06_duration_weeks: (category.stage_06_duration_weeks || 0).toString()
     });
   };
 
@@ -61,7 +99,15 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
       const categoryData: Omit<OpportunityCategory, 'id'> = {
         name: editData.name,
         min_tcv: parseFloat(editData.min_tcv),
-        max_tcv: editData.max_tcv ? parseFloat(editData.max_tcv) : undefined
+        max_tcv: editData.max_tcv ? parseFloat(editData.max_tcv) : undefined,
+        stage_01_duration_weeks: parseFloat(editData.stage_01_duration_weeks) || 0,
+        stage_02_duration_weeks: parseFloat(editData.stage_02_duration_weeks) || 0,
+        stage_03_duration_weeks: parseFloat(editData.stage_03_duration_weeks) || 0,
+        stage_04a_duration_weeks: parseFloat(editData.stage_04a_duration_weeks) || 0,
+        stage_04b_duration_weeks: parseFloat(editData.stage_04b_duration_weeks) || 0,
+        stage_05a_duration_weeks: parseFloat(editData.stage_05a_duration_weeks) || 0,
+        stage_05b_duration_weeks: parseFloat(editData.stage_05b_duration_weeks) || 0,
+        stage_06_duration_weeks: parseFloat(editData.stage_06_duration_weeks) || 0
       };
 
       await updateCategoryMutation.mutateAsync({ id: categoryId, data: categoryData });
@@ -82,7 +128,12 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditData({ name: '', min_tcv: '', max_tcv: '' });
+    setEditData({
+      name: '', min_tcv: '', max_tcv: '',
+      stage_01_duration_weeks: '0', stage_02_duration_weeks: '0', stage_03_duration_weeks: '0',
+      stage_04a_duration_weeks: '0', stage_04b_duration_weeks: '0', stage_05a_duration_weeks: '0',
+      stage_05b_duration_weeks: '0', stage_06_duration_weeks: '0'
+    });
   };
 
   const formatCurrency = (value: number) => {
@@ -120,6 +171,7 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
         <div className="bg-gray-50 rounded-dxc p-4 border border-dxc-light-gray">
           <h4 className="font-semibold mb-4">Add New Category</h4>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* TCV Configuration */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
@@ -162,6 +214,52 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
                   step="0.01"
                   className="input w-full"
                 />
+              </div>
+            </div>
+            
+            {/* Stage Duration Configuration */}
+            <div className="border-t border-dxc-light-gray pt-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Clock className="w-5 h-5 text-dxc-bright-purple" />
+                <h5 className="font-semibold text-dxc-dark-gray">Stage Durations (Weeks)</h5>
+                <span className="text-sm text-dxc-medium-gray">Timeline for opportunities in this category</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {SALES_STAGES.map((stage) => {
+                  // Map stage codes to field names
+                  const fieldMapping: Record<string, keyof typeof formData> = {
+                    '01': 'stage_01_duration_weeks',
+                    '02': 'stage_02_duration_weeks',
+                    '03': 'stage_03_duration_weeks',
+                    '04A': 'stage_04a_duration_weeks',
+                    '04B': 'stage_04b_duration_weeks',
+                    '05A': 'stage_05a_duration_weeks',
+                    '05B': 'stage_05b_duration_weeks',
+                    '06': 'stage_06_duration_weeks'
+                  };
+                  
+                  const fieldName = fieldMapping[stage.code];
+                  
+                  return (
+                    <div key={stage.code}>
+                      <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                        {stage.code}
+                      </label>
+                      <input
+                        type="number"
+                        value={formData[fieldName]}
+                        onChange={(e) => setFormData({ ...formData, [fieldName]: e.target.value })}
+                        placeholder="0"
+                        min="0"
+                        step="0.5"
+                        className="input w-full"
+                      />
+                      <span className="text-xs text-dxc-medium-gray mt-1 block truncate">
+                        {stage.label.replace('Stage ' + stage.code + ' ', '')}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="flex gap-3">
@@ -209,6 +307,7 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
                       #{category.id}
                     </span>
                   </div>
+                  {/* TCV Configuration */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
@@ -249,6 +348,52 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
                         className="input w-full"
                         placeholder="Leave empty for no limit"
                       />
+                    </div>
+                  </div>
+                  
+                  {/* Stage Duration Configuration */}
+                  <div className="border-t border-dxc-light-gray pt-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Clock className="w-5 h-5 text-dxc-bright-purple" />
+                      <h5 className="font-semibold text-dxc-dark-gray">Stage Durations (Weeks)</h5>
+                      <span className="text-sm text-dxc-medium-gray">Timeline for opportunities in this category</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {SALES_STAGES.map((stage) => {
+                        // Map stage codes to field names
+                        const fieldMapping: Record<string, keyof typeof editData> = {
+                          '01': 'stage_01_duration_weeks',
+                          '02': 'stage_02_duration_weeks',
+                          '03': 'stage_03_duration_weeks',
+                          '04A': 'stage_04a_duration_weeks',
+                          '04B': 'stage_04b_duration_weeks',
+                          '05A': 'stage_05a_duration_weeks',
+                          '05B': 'stage_05b_duration_weeks',
+                          '06': 'stage_06_duration_weeks'
+                        };
+                        
+                        const fieldName = fieldMapping[stage.code];
+                        
+                        return (
+                          <div key={stage.code}>
+                            <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                              {stage.code}
+                            </label>
+                            <input
+                              type="number"
+                              value={editData[fieldName]}
+                              onChange={(e) => setEditData({ ...editData, [fieldName]: e.target.value })}
+                              placeholder="0"
+                              min="0"
+                              step="0.5"
+                              className="input w-full"
+                            />
+                            <span className="text-xs text-dxc-medium-gray mt-1 block truncate">
+                              {stage.label.replace('Stage ' + stage.code + ' ', '')}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -342,8 +487,9 @@ const CategoriesTab: React.FC<CategoriesTabProps> = ({ categories }) => {
         <ul className="text-sm text-blue-800 space-y-1">
           <li>• Categories are automatically assigned based on opportunity TCV (Total Contract Value)</li>
           <li>• Categories should not overlap - ensure min/max ranges don't conflict</li>
-          <li>• Categories are used for effort estimation and resource allocation</li>
-          <li>• Higher value categories (Cat A) typically require more specialized resources</li>
+          <li>• Categories determine stage durations for opportunity timelines</li>
+          <li>• Stage durations apply to all service lines within an opportunity</li>
+          <li>• FTE requirements are managed separately in Service Line Resource Planning</li>
         </ul>
       </div>
     </div>

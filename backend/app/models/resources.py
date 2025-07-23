@@ -35,7 +35,8 @@ class OpportunityResourceTimeline(SQLModel, table=True):
     
     # Opportunity context (denormalized for efficient querying)
     opportunity_name: Optional[str] = Field(max_length=200)
-    category: str = Field(max_length=20, index=True)
+    category: str = Field(max_length=20, index=True)  # Timeline category based on total TCV
+    resource_category: Optional[str] = Field(max_length=20, index=True)  # Resource category based on service line TCV
     tcv_millions: Optional[float]
     decision_date: datetime
     
@@ -58,6 +59,7 @@ class OpportunityEffortPrediction(SQLModel):
     decision_date: datetime
     
     service_line_timelines: dict  # Service line -> list of stage timeline data
+    service_line_categories: Optional[dict] = None  # Service line -> category info
     
     # Summary metrics
     total_remaining_effort_weeks: float

@@ -6,6 +6,7 @@ import structlog
 from app.models.database import engine
 from app.models.config import (
     OpportunityCategory, OpportunityCategoryRead, OpportunityCategoryCreate, OpportunityCategoryUpdate,
+    ServiceLineCategory, ServiceLineCategoryRead, ServiceLineCategoryCreate, ServiceLineCategoryUpdate,
     ServiceLineStageEffort, ServiceLineStageEffortRead, ServiceLineStageEffortCreate, ServiceLineStageEffortUpdate
 )
 
@@ -83,6 +84,110 @@ async def delete_category(
     return {"message": "Category deleted successfully"}
 
 
+# Service Line Categories (Service-line-specific TCV thresholds)
+@router.get("/service-line-categories", response_model=List[ServiceLineCategoryRead])
+async def get_service_line_categories(
+    service_line: str = None,
+    session: Session = Depends(get_session)
+):
+    """Get service line categories, optionally filtered by service line."""
+    query = select(ServiceLineCategory)
+    if service_line:
+        query = query.where(ServiceLineCategory.service_line == service_line)
+    
+    categories = session.exec(query.order_by(ServiceLineCategory.service_line, ServiceLineCategory.min_tcv)).all()
+    logger.info("Retrieved service line categories", count=len(categories), service_line=service_line)
+    return categories
+
+
+@router.post("/service-line-categories", response_model=ServiceLineCategoryRead)
+async def create_service_line_category(
+    category: ServiceLineCategoryCreate,
+    session: Session = Depends(get_session)
+):
+    """Create a new service line category."""
+    # Check for duplicates
+    existing = session.exec(
+        select(ServiceLineCategory).where(
+            ServiceLineCategory.service_line == category.service_line,
+            ServiceLineCategory.name == category.name
+        )
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Category '{category.name}' already exists for service line {category.service_line}"
+        )
+    
+    db_category = ServiceLineCategory.from_orm(category)
+    session.add(db_category)
+    session.commit()
+    session.refresh(db_category)
+    
+    logger.info("Created service line category", 
+                category_id=db_category.id, 
+                service_line=db_category.service_line,
+                name=db_category.name)
+    return db_category
+
+
+@router.put("/service-line-categories/{category_id}", response_model=ServiceLineCategoryRead)
+async def update_service_line_category(
+    category_id: int,
+    category: ServiceLineCategoryUpdate,
+    session: Session = Depends(get_session)
+):
+    """Update a service line category."""
+    db_category = session.get(ServiceLineCategory, category_id)
+    if not db_category:
+        raise HTTPException(status_code=404, detail="Service line category not found")
+    
+    # Update fields
+    for field, value in category.dict(exclude_unset=True).items():
+        setattr(db_category, field, value)
+    
+    session.add(db_category)
+    session.commit()
+    session.refresh(db_category)
+    
+    logger.info("Updated service line category", 
+                category_id=db_category.id, 
+                service_line=db_category.service_line,
+                name=db_category.name)
+    return db_category
+
+
+@router.delete("/service-line-categories/{category_id}")
+async def delete_service_line_category(
+    category_id: int,
+    session: Session = Depends(get_session)
+):
+    """Delete a service line category."""
+    db_category = session.get(ServiceLineCategory, category_id)
+    if not db_category:
+        raise HTTPException(status_code=404, detail="Service line category not found")
+    
+    # Check if category is in use
+    effort_count = session.exec(
+        select(ServiceLineStageEffort).where(
+            ServiceLineStageEffort.service_line_category_id == category_id
+        ).limit(1)
+    ).first()
+    
+    if effort_count:
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot delete category that is in use by service line stage efforts"
+        )
+    
+    session.delete(db_category)
+    session.commit()
+    
+    logger.info("Deleted service line category", category_id=category_id)
+    return {"message": "Service line category deleted successfully"}
+
+
 
 
 
@@ -91,7 +196,7 @@ async def delete_category(
 @router.get("/service-line-stage-efforts", response_model=List[ServiceLineStageEffortRead])
 async def get_service_line_stage_efforts(
     service_line: str = None,
-    category_id: int = None,
+    service_line_category_id: int = None,
     session: Session = Depends(get_session)
 ):
     """Get service line stage efforts with optional filtering."""
@@ -99,21 +204,14 @@ async def get_service_line_stage_efforts(
     
     if service_line:
         query = query.where(ServiceLineStageEffort.service_line == service_line)
-    if category_id:
-        query = query.where(ServiceLineStageEffort.category_id == category_id)
+    if service_line_category_id:
+        query = query.where(ServiceLineStageEffort.service_line_category_id == service_line_category_id)
     
     efforts = session.exec(query).all()
     
-    # Convert to response model with calculated effort_weeks
-    response_efforts = []
-    for effort in efforts:
-        effort_dict = effort.dict()
-        effort_dict['effort_weeks'] = effort.fte_required * effort.duration_weeks
-        response_efforts.append(ServiceLineStageEffortRead(**effort_dict))
-    
-    logger.info("Retrieved service line stage efforts", count=len(response_efforts), 
-               service_line=service_line, category_id=category_id)
-    return response_efforts
+    logger.info("Retrieved service line stage efforts", count=len(efforts), 
+               service_line=service_line, service_line_category_id=service_line_category_id)
+    return efforts
 
 
 @router.post("/service-line-stage-efforts", response_model=ServiceLineStageEffortRead)
@@ -126,7 +224,7 @@ async def create_service_line_stage_effort(
     existing = session.exec(
         select(ServiceLineStageEffort).where(
             ServiceLineStageEffort.service_line == effort.service_line,
-            ServiceLineStageEffort.category_id == effort.category_id,
+            ServiceLineStageEffort.service_line_category_id == effort.service_line_category_id,
             ServiceLineStageEffort.stage_name == effort.stage_name
         )
     ).first()
@@ -134,7 +232,7 @@ async def create_service_line_stage_effort(
     if existing:
         raise HTTPException(
             status_code=400, 
-            detail=f"Service line stage effort already exists for {effort.service_line} - {effort.stage_name} - Category {effort.category_id}"
+            detail=f"Service line stage effort already exists for {effort.service_line} - {effort.stage_name} - Service Line Category {effort.service_line_category_id}"
         )
     
     db_effort = ServiceLineStageEffort.from_orm(effort)
@@ -142,15 +240,11 @@ async def create_service_line_stage_effort(
     session.commit()
     session.refresh(db_effort)
     
-    # Convert to response model with calculated effort_weeks
-    effort_dict = db_effort.dict()
-    effort_dict['effort_weeks'] = db_effort.fte_required * db_effort.duration_weeks
-    
     logger.info("Created service line stage effort", 
                effort_id=db_effort.id, 
                service_line=db_effort.service_line,
                stage=db_effort.stage_name)
-    return ServiceLineStageEffortRead(**effort_dict)
+    return db_effort
 
 
 @router.put("/service-line-stage-efforts/{effort_id}", response_model=ServiceLineStageEffortRead)
@@ -172,15 +266,11 @@ async def update_service_line_stage_effort(
     session.commit()
     session.refresh(db_effort)
     
-    # Convert to response model with calculated effort_weeks
-    effort_dict = db_effort.dict()
-    effort_dict['effort_weeks'] = db_effort.fte_required * db_effort.duration_weeks
-    
     logger.info("Updated service line stage effort", 
                effort_id=db_effort.id, 
                service_line=db_effort.service_line,
                stage=db_effort.stage_name)
-    return ServiceLineStageEffortRead(**effort_dict)
+    return db_effort
 
 
 @router.delete("/service-line-stage-efforts/{effort_id}")

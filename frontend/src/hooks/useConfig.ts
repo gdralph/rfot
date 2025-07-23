@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import type { OpportunityCategory, ServiceLineStageEffort } from '../types/index';
+import type { OpportunityCategory, ServiceLineCategory, ServiceLineStageEffort } from '../types/index';
 
 // API functions
 const configApi = {
@@ -12,11 +12,17 @@ const configApi = {
     api.updateCategory(id, data),
   deleteCategory: (id: number) => api.deleteCategory(id),
   
-  
+  // Service Line Categories
+  getServiceLineCategories: (serviceLine?: string) => api.getServiceLineCategories(serviceLine),
+  createServiceLineCategory: (data: Omit<ServiceLineCategory, 'id'>) =>
+    api.createServiceLineCategory(data),
+  updateServiceLineCategory: (id: number, data: Omit<ServiceLineCategory, 'id'>) =>
+    api.updateServiceLineCategory(id, data),
+  deleteServiceLineCategory: (id: number) => api.deleteServiceLineCategory(id),
   
   // Service Line Stage Efforts
-  getServiceLineStageEfforts: (serviceLine?: string, categoryId?: number) =>
-    api.getServiceLineStageEfforts(serviceLine, categoryId),
+  getServiceLineStageEfforts: (serviceLine?: string, serviceLineCategoryId?: number) =>
+    api.getServiceLineStageEfforts(serviceLine, serviceLineCategoryId),
   createServiceLineStageEffort: (data: Omit<ServiceLineStageEffort, 'id' | 'effort_weeks'>) =>
     api.createServiceLineStageEffort(data),
   updateServiceLineStageEffort: (id: number, data: Omit<ServiceLineStageEffort, 'id' | 'effort_weeks'>) =>
@@ -71,10 +77,53 @@ export const useDeleteCategory = () => {
 
 
 // Hooks for Service Line Stage Efforts
-export const useServiceLineStageEfforts = (serviceLine?: string, categoryId?: number) => {
+// Hooks for Service Line Categories
+export const useServiceLineCategories = (serviceLine?: string) => {
   return useQuery({
-    queryKey: ['config', 'service-line-stage-efforts', serviceLine, categoryId],
-    queryFn: () => configApi.getServiceLineStageEfforts(serviceLine, categoryId),
+    queryKey: ['config', 'service-line-categories', serviceLine],
+    queryFn: () => configApi.getServiceLineCategories(serviceLine),
+  });
+};
+
+export const useCreateServiceLineCategory = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: configApi.createServiceLineCategory,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-categories'] });
+    },
+  });
+};
+
+export const useUpdateServiceLineCategory = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Omit<ServiceLineCategory, 'id'> }) =>
+      configApi.updateServiceLineCategory(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-categories'] });
+    },
+  });
+};
+
+export const useDeleteServiceLineCategory = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: configApi.deleteServiceLineCategory,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-categories'] });
+    },
+  });
+};
+
+// Hooks for Service Line Stage Efforts
+export const useServiceLineStageEfforts = (serviceLine?: string, serviceLineCategoryId?: number) => {
+  return useQuery({
+    queryKey: ['config', 'service-line-stage-efforts', serviceLine, serviceLineCategoryId],
+    queryFn: () => configApi.getServiceLineStageEfforts(serviceLine, serviceLineCategoryId),
   });
 };
 

@@ -85,6 +85,11 @@ def calculate_and_store_timeline(
         for service_line, stages in timeline_data["service_line_timelines"].items():
             service_lines.append(service_line)
             
+            # Get resource category for this service line
+            resource_category = None
+            if "service_line_categories" in timeline_data and service_line in timeline_data["service_line_categories"]:
+                resource_category = timeline_data["service_line_categories"][service_line]["resource_category"]
+            
             for stage_data in stages:
                 timeline_record = OpportunityResourceTimeline(
                     opportunity_id=timeline_data["opportunity_id"],
@@ -97,6 +102,7 @@ def calculate_and_store_timeline(
                     total_effort_weeks=stage_data["total_effort_weeks"],
                     opportunity_name=timeline_data["opportunity_name"],
                     category=timeline_data["category"],
+                    resource_category=resource_category or stage_data.get("resource_category"),
                     tcv_millions=timeline_data["tcv_millions"],
                     decision_date=timeline_data["decision_date"],
                     calculated_date=datetime.utcnow()
@@ -118,6 +124,7 @@ def calculate_and_store_timeline(
             tcv_millions=timeline_data["tcv_millions"],
             decision_date=timeline_data["decision_date"],
             service_line_timelines=timeline_data["service_line_timelines"],
+            service_line_categories=timeline_data.get("service_line_categories"),
             total_remaining_effort_weeks=total_effort_weeks,
             earliest_stage_start=earliest_start_date,
             supported_service_lines=service_lines
@@ -166,6 +173,7 @@ def get_opportunity_timeline(
     
     # Group by service line
     service_line_timelines = {}
+    service_line_categories = {}
     total_effort_weeks = 0
     earliest_start_date = None
     service_lines = []
@@ -175,6 +183,12 @@ def get_opportunity_timeline(
         if service_line not in service_line_timelines:
             service_line_timelines[service_line] = []
             service_lines.append(service_line)
+            # Track the resource category for this service line
+            if record.resource_category:
+                service_line_categories[service_line] = {
+                    "timeline_category": record.category,
+                    "resource_category": record.resource_category
+                }
         
         service_line_timelines[service_line].append({
             "stage_name": record.stage_name,
@@ -184,6 +198,7 @@ def get_opportunity_timeline(
             "fte_required": record.fte_required,
             "total_effort_weeks": record.total_effort_weeks,
             "resource_status": record.resource_status,
+            "resource_category": record.resource_category,
             "last_updated": record.last_updated
         })
         
@@ -199,6 +214,7 @@ def get_opportunity_timeline(
         tcv_millions=timeline_records[0].tcv_millions,
         decision_date=timeline_records[0].decision_date,
         service_line_timelines=service_line_timelines,
+        service_line_categories=service_line_categories if service_line_categories else None,
         total_remaining_effort_weeks=total_effort_weeks,
         earliest_stage_start=earliest_start_date,
         supported_service_lines=service_lines
@@ -504,24 +520,27 @@ def get_stage_effort_breakdown(
     """
     Get stage effort breakdown for a specific service line and category.
     """
-    from app.models.config import ServiceLineStageEffort
+    from app.models.config import ServiceLineStageEffort, ServiceLineCategory
     
     if service_line not in SUPPORTED_SERVICE_LINES:
         raise HTTPException(status_code=400, detail=f"Service line {service_line} not supported")
     
-    # Find the category record to get its ID
+    # Find the service line category record to get its ID
     category_record = session.exec(
-        select(OpportunityCategory).where(OpportunityCategory.name == category)
+        select(ServiceLineCategory).where(
+            ServiceLineCategory.service_line == service_line,
+            ServiceLineCategory.name == category
+        )
     ).first()
     
     if not category_record:
-        raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
+        raise HTTPException(status_code=404, detail=f"Category '{category}' not found for service line {service_line}")
     
     # Get stage effort configuration
     stage_efforts = session.exec(
         select(ServiceLineStageEffort).where(
             ServiceLineStageEffort.service_line == service_line,
-            ServiceLineStageEffort.category_id == category_record.id
+            ServiceLineStageEffort.service_line_category_id == category_record.id
         ).order_by(ServiceLineStageEffort.stage_name)
     ).all()
     
@@ -993,25 +1012,21 @@ def _is_opportunity_eligible_for_generation(opportunity: Opportunity, session: S
     
     Criteria:
     - Has TCV and decision date
-    - Has category (determined from TCV)
+    - Has timeline category (determined from total TCV)
     - Has service line revenue (mw_millions or itoc_millions > 0) OR lead_offering_l1 in supported service lines
-    - Service line stage effort configuration exists for determined service line + category
+    - Service line can determine resource category from its TCV
+    - Service line stage effort configuration exists
     """
     # Check basic requirements
     if not opportunity.tcv_millions or not opportunity.decision_date:
         return False
     
-    from app.models.config import ServiceLineStageEffort, OpportunityCategory
+    from app.models.config import ServiceLineStageEffort, OpportunityCategory, ServiceLineCategory
+    from app.services.resource_calculation import determine_opportunity_category, determine_service_line_resource_category
     
-    # Get category from TCV
-    categories = session.exec(select(OpportunityCategory)).all()
-    category = None
-    for cat in categories:
-        if cat.min_tcv <= opportunity.tcv_millions <= (cat.max_tcv or float('inf')):
-            category = cat.name
-            break
-    
-    if not category:
+    # Get timeline category from total TCV
+    timeline_category = determine_opportunity_category(opportunity.tcv_millions, session)
+    if not timeline_category:
         return False
     
     # Determine which service lines to check (matching calculate_opportunity_resource_timeline logic)
@@ -1019,34 +1034,44 @@ def _is_opportunity_eligible_for_generation(opportunity: Opportunity, session: S
     
     # Check MW service line
     if opportunity.mw_millions and opportunity.mw_millions > 0:
-        service_lines_to_check.append("MW")
+        service_lines_to_check.append(("MW", opportunity.mw_millions))
     
     # Check ITOC service line  
     if opportunity.itoc_millions and opportunity.itoc_millions > 0:
-        service_lines_to_check.append("ITOC")
+        service_lines_to_check.append(("ITOC", opportunity.itoc_millions))
     
     # Fallback to lead offering if no service line revenue
     if not service_lines_to_check and opportunity.lead_offering_l1:
         if opportunity.lead_offering_l1 in SUPPORTED_SERVICE_LINES:
-            service_lines_to_check.append(opportunity.lead_offering_l1)
+            # Use a default small amount for resource category when no specific revenue
+            service_lines_to_check.append((opportunity.lead_offering_l1, 1.0))
     
     if not service_lines_to_check:
         return False
     
-    # Find the category record to get its ID
-    category_record = session.exec(
-        select(OpportunityCategory).where(OpportunityCategory.name == category)
-    ).first()
-    
-    if not category_record:
-        return False
-    
-    # Check if stage effort configuration exists for at least one service line
-    for service_line in service_lines_to_check:
+    # Check if at least one service line is eligible
+    for service_line, service_line_tcv in service_lines_to_check:
+        # Determine resource category based on service line TCV
+        resource_category = determine_service_line_resource_category(service_line, service_line_tcv, session)
+        if not resource_category:
+            continue
+            
+        # Find the resource category record to get its ID
+        category_record = session.exec(
+            select(ServiceLineCategory).where(
+                ServiceLineCategory.service_line == service_line,
+                ServiceLineCategory.name == resource_category
+            )
+        ).first()
+        
+        if not category_record:
+            continue
+        
+        # Check if stage effort configuration exists for this service line + resource category
         stage_effort = session.exec(
             select(ServiceLineStageEffort).where(
                 ServiceLineStageEffort.service_line == service_line,
-                ServiceLineStageEffort.category_id == category_record.id
+                ServiceLineStageEffort.service_line_category_id == category_record.id
             ).limit(1)
         ).first()
         
@@ -1073,6 +1098,11 @@ def _generate_timeline_for_opportunity(opportunity: Opportunity, session: Sessio
         
         # Store new timeline data
         for service_line, stages in timeline_data["service_line_timelines"].items():
+            # Get resource category for this service line
+            resource_category = None
+            if "service_line_categories" in timeline_data and service_line in timeline_data["service_line_categories"]:
+                resource_category = timeline_data["service_line_categories"][service_line]["resource_category"]
+                
             for stage_data in stages:
                 timeline_record = OpportunityResourceTimeline(
                     opportunity_id=timeline_data["opportunity_id"],
@@ -1085,6 +1115,7 @@ def _generate_timeline_for_opportunity(opportunity: Opportunity, session: Sessio
                     total_effort_weeks=stage_data["total_effort_weeks"],
                     opportunity_name=timeline_data["opportunity_name"],
                     category=timeline_data["category"],
+                    resource_category=resource_category or stage_data.get("resource_category"),
                     tcv_millions=timeline_data["tcv_millions"],
                     decision_date=timeline_data["decision_date"],
                     calculated_date=datetime.utcnow(),

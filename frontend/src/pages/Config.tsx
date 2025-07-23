@@ -68,7 +68,7 @@ const Config: React.FC = () => {
       case 'categories':
         return <CategoriesTab categories={categories || []} />;
       case 'service-line-resources':
-        return <ServiceLineResourceTab categories={categories || []} />;
+        return <ServiceLineResourceTab />;
       case 'service-allocation':
         return <ServiceLineAllocationTab />;
       case 'timeline-generation':

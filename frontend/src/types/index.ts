@@ -80,18 +80,31 @@ export interface OpportunityCategory {
   name: string;
   min_tcv: number;
   max_tcv?: number;
+  // Stage duration fields (in weeks)
+  stage_01_duration_weeks?: number;
+  stage_02_duration_weeks?: number;
+  stage_03_duration_weeks?: number;
+  stage_04a_duration_weeks?: number;
+  stage_04b_duration_weeks?: number;
+  stage_05a_duration_weeks?: number;
+  stage_05b_duration_weeks?: number;
+  stage_06_duration_weeks?: number;
 }
 
-
+export interface ServiceLineCategory {
+  id?: number;
+  service_line: string;
+  name: string;
+  min_tcv: number;
+  max_tcv?: number;
+}
 
 export interface ServiceLineStageEffort {
   id?: number;
   service_line: string;
-  category_id: number;
+  service_line_category_id: number;
   stage_name: string;
-  duration_weeks: number;
   fte_required: number;
-  effort_weeks?: number; // Computed property
 }
 
 export interface ImportTask {

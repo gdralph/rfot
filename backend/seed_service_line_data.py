@@ -15,7 +15,7 @@ import structlog
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
 
 from app.models.database import engine
-from app.models.config import ServiceLineStageEffort, OpportunityCategory
+from app.models.config import ServiceLineStageEffort, ServiceLineCategory
 
 logger = structlog.get_logger()
 
@@ -127,20 +127,20 @@ def seed_service_line_stage_efforts():
             session.delete(effort)
         session.commit()
         print(f"Removed {len(existing_efforts)} existing entries")
-        # Get all categories
-        categories = session.exec(select(OpportunityCategory)).all()
-        category_by_name = {cat.name: cat for cat in categories}
+        # Get all service line categories
+        categories = session.exec(select(ServiceLineCategory)).all()
+        category_by_service_line_and_name = {(cat.service_line, cat.name): cat for cat in categories}
         
-        print(f"Found {len(categories)} categories:")
+        print(f"Found {len(categories)} service line categories:")
         for cat in categories:
-            print(f"  - {cat.name} (ID: {cat.id})")
+            print(f"  - {cat.service_line}/{cat.name} (ID: {cat.id})")
         
         # Process MW templates
         logger.info("Seeding MW (Modern Workplace) templates")
         for category_name, stages in MW_TEMPLATES.items():
-            category = category_by_name.get(category_name)
+            category = category_by_service_line_and_name.get(("MW", category_name))
             if not category:
-                logger.warning("Category not found, skipping", category=category_name)
+                logger.warning("MW Service line category not found, skipping", category=category_name)
                 continue
                 
             logger.info("Processing MW category", category=category_name)
@@ -148,7 +148,7 @@ def seed_service_line_stage_efforts():
                 # Create new effort record
                 effort = ServiceLineStageEffort(
                     service_line="MW",
-                    category_id=category.id,
+                    service_line_category_id=category.id,
                     stage_name=stage_name,
                     duration_weeks=config["duration_weeks"],
                     fte_required=config["fte_required"]
@@ -161,9 +161,9 @@ def seed_service_line_stage_efforts():
         # Process ITOC templates
         logger.info("Seeding ITOC (Infrastructure & Cloud) templates")
         for category_name, stages in ITOC_TEMPLATES.items():
-            category = category_by_name.get(category_name)
+            category = category_by_service_line_and_name.get(("ITOC", category_name))
             if not category:
-                logger.warning("Category not found, skipping", category=category_name)
+                logger.warning("ITOC Service line category not found, skipping", category=category_name)
                 continue
                 
             logger.info("Processing ITOC category", category=category_name)
@@ -171,7 +171,7 @@ def seed_service_line_stage_efforts():
                 # Create new effort record
                 effort = ServiceLineStageEffort(
                     service_line="ITOC",
-                    category_id=category.id,
+                    service_line_category_id=category.id,
                     stage_name=stage_name,
                     duration_weeks=config["duration_weeks"],
                     fte_required=config["fte_required"]

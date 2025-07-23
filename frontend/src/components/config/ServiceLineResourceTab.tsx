@@ -1,37 +1,63 @@
-import React, { useState } from 'react';
-import { Settings, Save, Loader2, Users } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Settings, Save, Loader2, Users, Plus, X, AlertCircle, Edit2, Trash2, Check, DollarSign } from 'lucide-react';
 import {
+  useServiceLineCategories,
+  useCreateServiceLineCategory,
+  useUpdateServiceLineCategory,
+  useDeleteServiceLineCategory,
   useServiceLineStageEfforts,
   useUpdateServiceLineStageEffort,
   useBulkCreateServiceLineStageEfforts
 } from '../../hooks/useConfig';
-import type { OpportunityCategory, ServiceLineStageEffort } from '../../types/index';
+import type { ServiceLineCategory, ServiceLineStageEffort } from '../../types/index';
 import { SALES_STAGES } from '../../types/index';
 
-interface ServiceLineResourceTabProps {
-  categories: OpportunityCategory[];
-}
-
-const ServiceLineResourceTab: React.FC<ServiceLineResourceTabProps> = ({ categories }) => {
+const ServiceLineResourceTab: React.FC = () => {
   const [activeServiceLine, setActiveServiceLine] = useState<'MW' | 'ITOC'>('MW');
-  // const [editingCell, setEditingCell] = useState<string | null>(null);
   const [pendingChanges, setPendingChanges] = useState<Map<string, Partial<ServiceLineStageEffort>>>(new Map());
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [newCategory, setNewCategory] = useState<Partial<ServiceLineCategory>>({
+    service_line: activeServiceLine,
+    name: '',
+    min_tcv: 0,
+    max_tcv: undefined
+  });
+  const [editCategory, setEditCategory] = useState<Partial<ServiceLineCategory>>({
+    service_line: activeServiceLine,
+    name: '',
+    min_tcv: 0,
+    max_tcv: undefined
+  });
   
-  const { data: stageEfforts = [], isLoading, refetch } = useServiceLineStageEfforts(activeServiceLine);
+  // Fetch service line categories for active service line
+  const { data: categories = [], isLoading: categoriesLoading } = useServiceLineCategories(activeServiceLine);
+  const createCategoryMutation = useCreateServiceLineCategory();
+  const updateCategoryMutation = useUpdateServiceLineCategory();
+  const deleteCategoryMutation = useDeleteServiceLineCategory();
+  
+  // Fetch stage efforts for all categories of the active service line
+  const { data: allStageEfforts = [], isLoading: effortsLoading } = useServiceLineStageEfforts(activeServiceLine);
   const updateEffortMutation = useUpdateServiceLineStageEffort();
   const bulkCreateMutation = useBulkCreateServiceLineStageEfforts();
 
-  // Create a matrix of all possible combinations
-  const createEffortMatrix = () => {
+  // Update form data when switching service lines
+  React.useEffect(() => {
+    setNewCategory(prev => ({ ...prev, service_line: activeServiceLine }));
+    setEditCategory(prev => ({ ...prev, service_line: activeServiceLine }));
+    setIsAddingCategory(false);
+    setEditingCategoryId(null);
+    setPendingChanges(new Map());
+  }, [activeServiceLine]);
+
+  // Create effort matrix for all categories and stages
+  const effortMatrix = useMemo(() => {
     const matrix = new Map<string, ServiceLineStageEffort>();
     
     // Initialize with existing data
-    stageEfforts.forEach(effort => {
-      const key = `${effort.category_id}-${effort.stage_name}`;
-      matrix.set(key, {
-        ...effort,
-        effort_weeks: effort.fte_required * effort.duration_weeks
-      });
+    allStageEfforts.forEach(effort => {
+      const key = `${effort.service_line_category_id}-${effort.stage_name}`;
+      matrix.set(key, effort);
     });
     
     // Fill in missing combinations with defaults
@@ -41,22 +67,98 @@ const ServiceLineResourceTab: React.FC<ServiceLineResourceTabProps> = ({ categor
         if (!matrix.has(key)) {
           matrix.set(key, {
             service_line: activeServiceLine,
-            category_id: category.id!,
+            service_line_category_id: category.id!,
             stage_name: stage.code,
-            duration_weeks: 0,
-            fte_required: 0,
-            effort_weeks: 0
+            fte_required: 0
           });
         }
       });
     });
     
     return matrix;
+  }, [allStageEfforts, categories, activeServiceLine]);
+
+  // Category management handlers
+  const handleAddCategory = async () => {
+    if (!newCategory.name || newCategory.min_tcv === undefined) return;
+    
+    try {
+      await createCategoryMutation.mutateAsync({
+        service_line: activeServiceLine,
+        name: newCategory.name,
+        min_tcv: newCategory.min_tcv,
+        max_tcv: newCategory.max_tcv
+      });
+      setIsAddingCategory(false);
+      setNewCategory({
+        service_line: activeServiceLine,
+        name: '',
+        min_tcv: 0,
+        max_tcv: undefined
+      });
+    } catch (error) {
+      console.error('Failed to create category:', error);
+    }
   };
 
-  const effortMatrix = createEffortMatrix();
+  const handleEditCategory = (category: ServiceLineCategory) => {
+    setEditingCategoryId(category.id!);
+    setEditCategory({
+      service_line: category.service_line,
+      name: category.name,
+      min_tcv: category.min_tcv,
+      max_tcv: category.max_tcv
+    });
+  };
 
-  const handleCellEdit = (categoryId: number, stageCode: string, field: 'duration_weeks' | 'fte_required', value: string) => {
+  const handleUpdateCategory = async () => {
+    if (!editingCategoryId || !editCategory.name || editCategory.min_tcv === undefined) return;
+    
+    try {
+      await updateCategoryMutation.mutateAsync({
+        id: editingCategoryId,
+        data: {
+          service_line: activeServiceLine,
+          name: editCategory.name,
+          min_tcv: editCategory.min_tcv,
+          max_tcv: editCategory.max_tcv
+        }
+      });
+      setEditingCategoryId(null);
+      setEditCategory({
+        service_line: activeServiceLine,
+        name: '',
+        min_tcv: 0,
+        max_tcv: undefined
+      });
+    } catch (error) {
+      console.error('Failed to update category:', error);
+    }
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this category? All associated stage efforts will be deleted.')) {
+      return;
+    }
+    
+    try {
+      await deleteCategoryMutation.mutateAsync(id);
+    } catch (error) {
+      console.error('Failed to delete category:', error);
+    }
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  // FTE editing handlers
+  const handleCellEdit = (categoryId: number, stageCode: string, value: string) => {
     const key = `${categoryId}-${stageCode}`;
     const currentEffort = effortMatrix.get(key);
     if (!currentEffort) return;
@@ -65,20 +167,15 @@ const ServiceLineResourceTab: React.FC<ServiceLineResourceTabProps> = ({ categor
     const changes = pendingChanges.get(key) || {};
     const updatedChanges = {
       ...changes,
-      [field]: numValue
+      fte_required: numValue
     };
-
-    // Calculate effort_weeks based on updated values
-    const duration = field === 'duration_weeks' ? numValue : (changes.duration_weeks ?? currentEffort.duration_weeks);
-    const fte = field === 'fte_required' ? numValue : (changes.fte_required ?? currentEffort.fte_required);
-    updatedChanges.effort_weeks = duration * fte;
 
     setPendingChanges(new Map(pendingChanges.set(key, updatedChanges)));
   };
 
   const handleSaveChanges = async () => {
     const updates: Array<{ existing: ServiceLineStageEffort; changes: Partial<ServiceLineStageEffort> }> = [];
-    const creates: Array<Omit<ServiceLineStageEffort, 'id' | 'effort_weeks'>> = [];
+    const creates: Array<Omit<ServiceLineStageEffort, 'id'>> = [];
 
     for (const [key, changes] of pendingChanges.entries()) {
       const existing = effortMatrix.get(key);
@@ -87,248 +184,398 @@ const ServiceLineResourceTab: React.FC<ServiceLineResourceTabProps> = ({ categor
       if (existing.id) {
         // Update existing
         updates.push({ existing, changes });
-      } else if (changes.duration_weeks || changes.fte_required) {
+      } else if (changes.fte_required) {
         // Create new (only if values are non-zero)
         creates.push({
-          service_line: activeServiceLine,
-          category_id: existing.category_id,
+          service_line: existing.service_line,
+          service_line_category_id: existing.service_line_category_id,
           stage_name: existing.stage_name,
-          duration_weeks: changes.duration_weeks || 0,
           fte_required: changes.fte_required || 0
         });
       }
     }
 
     try {
-      // Process updates
-      for (const { existing, changes } of updates) {
-        if (existing.id) {
-          await updateEffortMutation.mutateAsync({
-            id: existing.id,
+      // Execute updates
+      await Promise.all(
+        updates.map(({ existing, changes }) =>
+          updateEffortMutation.mutateAsync({
+            id: existing.id!,
             data: {
               service_line: existing.service_line,
-              category_id: existing.category_id,
+              service_line_category_id: existing.service_line_category_id,
               stage_name: existing.stage_name,
-              duration_weeks: changes.duration_weeks ?? existing.duration_weeks,
               fte_required: changes.fte_required ?? existing.fte_required
             }
-          });
-        }
-      }
+          })
+        )
+      );
 
-      // Process creates
+      // Execute bulk create
       if (creates.length > 0) {
         await bulkCreateMutation.mutateAsync(creates);
       }
 
       setPendingChanges(new Map());
-      refetch();
     } catch (error) {
       console.error('Failed to save changes:', error);
     }
   };
 
-  const getCellValue = (categoryId: number, stageCode: string, field: 'duration_weeks' | 'fte_required' | 'effort_weeks') => {
+  const getCellValue = (categoryId: number, stageCode: string) => {
     const key = `${categoryId}-${stageCode}`;
     const changes = pendingChanges.get(key);
-    const existing = effortMatrix.get(key);
+    const effort = effortMatrix.get(key);
     
-    if (changes && field in changes) {
-      return changes[field];
-    }
+    if (!effort) return 0;
     
-    return existing?.[field] || 0;
+    return changes?.fte_required ?? effort.fte_required ?? 0;
   };
 
-  // const getCategoryName = (categoryId: number) => {
-  //   const category = categories.find(c => c.id === categoryId);
-  //   return category?.name || `Category #${categoryId}`;
-  // };
-
-  // const getStageLabel = (stageCode: string) => {
-  //   const stage = SALES_STAGES.find(s => s.code === stageCode);
-  //   return stage?.label || stageCode;
-  // };
-
-  const hasPendingChanges = pendingChanges.size > 0;
-  const isSaving = updateEffortMutation.isPending || bulkCreateMutation.isPending;
-
-  if (isLoading) {
+  if (categoriesLoading || effortsLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-dxc-bright-purple" />
-        <span className="ml-2 text-dxc-medium-gray">Loading resource configuration...</span>
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-dxc-purple" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-dxc-subtitle font-semibold flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Service Line Resource Configuration
-          </h3>
-          <p className="text-sm text-dxc-medium-gray mt-1">
-            Configure duration and FTE requirements for MW and ITOC service lines by category and stage
-          </p>
-        </div>
-        {hasPendingChanges && (
-          <button
-            onClick={handleSaveChanges}
-            disabled={isSaving}
-            className="btn-primary flex items-center gap-2"
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </button>
-        )}
-      </div>
-
-      {/* Service Line Selector */}
-      <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
-        {(['MW', 'ITOC'] as const).map((serviceLine) => (
-          <button
-            key={serviceLine}
-            onClick={() => {
-              setActiveServiceLine(serviceLine);
-              setPendingChanges(new Map()); // Clear pending changes when switching
-            }}
-            className={`flex-1 py-2 px-4 rounded-md font-medium transition-colors ${
-              activeServiceLine === serviceLine
-                ? 'bg-dxc-bright-purple text-white shadow-sm'
-                : 'text-dxc-medium-gray hover:text-dxc-dark-gray hover:bg-gray-200'
-            }`}
-          >
-            {serviceLine} {serviceLine === 'MW' ? '(Modern Workplace)' : '(Infrastructure & Cloud)'}
-          </button>
-        ))}
-      </div>
-
-      {/* Configuration Matrix */}
-      <div className="bg-white border border-dxc-light-gray rounded-dxc overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-dxc-light-gray">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dxc-dark-gray min-w-[140px]">
-                  Category
-                </th>
-                {SALES_STAGES.map((stage) => (
-                  <th key={stage.code} className="px-2 py-3 text-center text-xs font-semibold text-dxc-dark-gray min-w-[110px]">
-                    <div className="text-xs text-dxc-medium-gray">{stage.code}</div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {categories.map((category) => (
-                <tr key={category.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-dxc-dark-gray">
-                    <div className="text-sm font-semibold">{category.name}</div>
-                    <div className="text-xs text-dxc-medium-gray">
-                      ${category.min_tcv.toFixed(category.min_tcv % 1 === 0 ? 0 : 1)}M{category.max_tcv ? ` - $${category.max_tcv.toFixed(category.max_tcv % 1 === 0 ? 0 : 1)}M` : '+'}
-                    </div>
-                  </td>
-                  {SALES_STAGES.map((stage) => {
-                    const key = `${category.id}-${stage.code}`;
-                    const duration = getCellValue(category.id!, stage.code, 'duration_weeks');
-                    const fte = getCellValue(category.id!, stage.code, 'fte_required');
-                    const effort = getCellValue(category.id!, stage.code, 'effort_weeks');
-                    const hasChanges = pendingChanges.has(key);
-
-                    return (
-                      <td key={stage.code} className={`px-2 py-2 text-center ${hasChanges ? 'bg-yellow-50' : ''}`}>
-                        <div className="space-y-1">
-                          {/* Duration input */}
-                          <div>
-                            <label className="text-xs text-dxc-medium-gray block mb-1">Weeks</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={duration}
-                              onChange={(e) => handleCellEdit(category.id!, stage.code, 'duration_weeks', e.target.value)}
-                              className="w-full text-xs border border-gray-200 rounded px-1 py-1 text-center focus:border-dxc-bright-purple focus:outline-none"
-                              placeholder="0"
-                            />
-                          </div>
-                          {/* FTE input */}
-                          <div>
-                            <label className="text-xs text-dxc-medium-gray block mb-1">FTE</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              value={fte}
-                              onChange={(e) => handleCellEdit(category.id!, stage.code, 'fte_required', e.target.value)}
-                              className="w-full text-xs border border-gray-200 rounded px-1 py-1 text-center focus:border-dxc-bright-purple focus:outline-none"
-                              placeholder="0"
-                            />
-                          </div>
-                          {/* Calculated effort */}
-                          <div className="text-xs font-medium text-dxc-blue mt-1 whitespace-nowrap">
-                            {effort?.toFixed(1) || '0.0'} FTE-wks
-                          </div>
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Information Panel */}
-      <div className="bg-blue-50 border border-blue-200 rounded-dxc p-4">
-        <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-          <Users className="w-4 h-4" />
-          Resource Configuration Guide
-        </h4>
-        <ul className="text-sm text-blue-800 space-y-1">
-          <li>• <strong>Duration:</strong> Calendar weeks from stage start to finish</li>
-          <li>• <strong>FTE:</strong> Full-time equivalent people working on this stage</li>
-          <li>• <strong>Total Effort:</strong> Automatically calculated as Duration × FTE</li>
-          <li>• Enter 0 for stages that don't require resources from this service line</li>
-          <li>• Changes are highlighted in yellow and must be saved</li>
-        </ul>
-      </div>
-
-      {/* Pending Changes Notice */}
-      {hasPendingChanges && (
-        <div className="bg-amber-50 border border-amber-200 rounded-dxc p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-semibold text-amber-900">Unsaved Changes</h4>
-              <p className="text-sm text-amber-800">You have {pendingChanges.size} unsaved changes. Don't forget to save!</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPendingChanges(new Map())}
-                className="btn-secondary text-sm"
-              >
-                Discard Changes
-              </button>
-              <button
-                onClick={handleSaveChanges}
-                disabled={isSaving}
-                className="btn-primary text-sm flex items-center gap-1"
-              >
-                {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                Save All
-              </button>
-            </div>
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center gap-4">
+          <Users className="h-8 w-8 text-dxc-purple" />
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900">Service Line Resource Planning</h2>
+            <p className="text-gray-600 mt-1">Configure service-line-specific TCV thresholds and FTE requirements per stage</p>
+            <p className="text-sm text-gray-500 mt-1">Stage durations are managed in Opportunity Categories</p>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Service Line Tabs */}
+      <div className="flex justify-center">
+        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+          <button
+            onClick={() => setActiveServiceLine('MW')}
+            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+              activeServiceLine === 'MW'
+                ? 'bg-dxc-purple text-white shadow-sm'
+                : 'text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            MW (Modern Workplace)
+          </button>
+          <button
+            onClick={() => setActiveServiceLine('ITOC')}
+            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+              activeServiceLine === 'ITOC'
+                ? 'bg-dxc-purple text-white shadow-sm'
+                : 'text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            ITOC (Infrastructure & Cloud)
+          </button>
+        </div>
+      </div>
+
+      {/* SECTION 1: Service Line Categories Management */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <DollarSign className="h-6 w-6 text-dxc-purple" />
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">{activeServiceLine} Service Line TCV Categories</h3>
+            <p className="text-gray-600 text-sm">Create and manage TCV thresholds for {activeServiceLine} service line</p>
+          </div>
+        </div>
+
+        {/* Add New Category Button */}
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={() => setIsAddingCategory(true)}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Add Category
+          </button>
+        </div>
+
+        {/* Categories List */}
+        <div className="space-y-3">
+          {categories.length === 0 ? (
+            <div className="text-center py-8 text-dxc-medium-gray">
+              <DollarSign className="w-12 h-12 mx-auto mb-4 text-dxc-light-gray" />
+              <p className="text-lg mb-2">No categories configured for {activeServiceLine}</p>
+              <p className="text-sm">Add your first service line category to get started</p>
+            </div>
+          ) : (
+            categories.map((category) => (
+              <div
+                key={category.id}
+                className="bg-gray-50 border border-dxc-light-gray rounded-dxc p-4 hover:shadow-sm transition-shadow"
+              >
+                {editingCategoryId === category.id ? (
+                  // Edit Mode
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 mb-4">
+                      <h4 className="font-semibold text-dxc-dark-gray">Editing Category</h4>
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-dxc-bright-purple text-white">
+                        #{category.id}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                          Category Name
+                        </label>
+                        <input
+                          type="text"
+                          value={editCategory.name}
+                          onChange={(e) => setEditCategory({ ...editCategory, name: e.target.value })}
+                          className="input w-full"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                          Minimum TCV ($M)
+                        </label>
+                        <input
+                          type="number"
+                          value={editCategory.min_tcv}
+                          onChange={(e) => setEditCategory({ ...editCategory, min_tcv: parseFloat(e.target.value) || 0 })}
+                          min="0"
+                          step="0.01"
+                          className="input w-full"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                          Maximum TCV ($M)
+                        </label>
+                        <input
+                          type="number"
+                          value={editCategory.max_tcv || ''}
+                          onChange={(e) => setEditCategory({ ...editCategory, max_tcv: parseFloat(e.target.value) || undefined })}
+                          min="0"
+                          step="0.01"
+                          className="input w-full"
+                          placeholder="Leave empty for no limit"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleUpdateCategory}
+                        disabled={updateCategoryMutation.isPending}
+                        className="btn-primary flex items-center gap-2"
+                      >
+                        <Check className="w-4 h-4" />
+                        {updateCategoryMutation.isPending ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setEditingCategoryId(null)}
+                        className="btn-secondary flex items-center gap-2"
+                      >
+                        <X className="w-4 h-4" />
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  // View Mode
+                  <div className="flex justify-between items-center">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3">
+                        <h4 className="font-semibold text-dxc-dark-gray">{category.name}</h4>
+                        <span className="text-sm text-dxc-medium-gray">
+                          {formatCurrency(category.min_tcv * 1000000)}
+                          {category.max_tcv ? ` - ${formatCurrency(category.max_tcv * 1000000)}` : ' and above'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleEditCategory(category)}
+                        className="text-dxc-medium-gray hover:text-dxc-bright-purple p-2"
+                        title="Edit category"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteCategory(category.id!)}
+                        className="text-dxc-medium-gray hover:text-red-600 p-2"
+                        title="Delete category"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+
+          {/* Add Category Form */}
+          {isAddingCategory && (
+            <div className="bg-blue-50 rounded-dxc p-4 border border-blue-200">
+              <h4 className="font-semibold mb-4">Add New {activeServiceLine} Category</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                    Category Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newCategory.name}
+                    onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
+                    placeholder="e.g., Small, Medium, Large"
+                    className="input w-full"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                    Minimum TCV ($M)
+                  </label>
+                  <input
+                    type="number"
+                    value={newCategory.min_tcv}
+                    onChange={(e) => setNewCategory({ ...newCategory, min_tcv: parseFloat(e.target.value) || 0 })}
+                    placeholder="0"
+                    min="0"
+                    step="0.01"
+                    className="input w-full"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+                    Maximum TCV ($M) <span className="text-dxc-medium-gray">(optional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={newCategory.max_tcv || ''}
+                    onChange={(e) => setNewCategory({ ...newCategory, max_tcv: parseFloat(e.target.value) || undefined })}
+                    placeholder="Leave empty for no limit"
+                    min="0"
+                    step="0.01"
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleAddCategory}
+                  disabled={createCategoryMutation.isPending}
+                  className="btn-primary"
+                >
+                  {createCategoryMutation.isPending ? 'Creating...' : 'Create Category'}
+                </button>
+                <button
+                  onClick={() => setIsAddingCategory(false)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECTION 2: FTE Requirements Matrix */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Users className="h-6 w-6 text-dxc-purple" />
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">{activeServiceLine} FTE Requirements</h3>
+            <p className="text-gray-600 text-sm">Configure FTE requirements by stage for each {activeServiceLine} category</p>
+          </div>
+        </div>
+
+        {categories.length === 0 ? (
+          <div className="text-center py-12">
+            <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600 text-lg mb-2">No categories defined</p>
+            <p className="text-gray-500">Create service line categories first to configure FTE requirements</p>
+          </div>
+        ) : (
+          <div>
+            {/* Save Changes Button */}
+            {pendingChanges.size > 0 && (
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={handleSaveChanges}
+                  className="btn-primary flex items-center gap-2"
+                  disabled={updateEffortMutation.isPending || bulkCreateMutation.isPending}
+                >
+                  {(updateEffortMutation.isPending || bulkCreateMutation.isPending) ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save Changes ({pendingChanges.size})
+                </button>
+              </div>
+            )}
+
+            {/* FTE Matrix Table */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Category
+                    </th>
+                    {SALES_STAGES.map((stage) => (
+                      <th key={stage.code} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <div className="flex flex-col items-center">
+                          <span className="font-semibold">{stage.code}</span>
+                          <span className="text-xs mt-1 font-normal">{stage.label.replace(`Stage ${stage.code} `, '')}</span>
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {categories.map((category) => (
+                    <tr key={category.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gray-900">{category.name}</span>
+                          <span className="text-xs text-gray-500">
+                            ${category.min_tcv}M{category.max_tcv ? ` - $${category.max_tcv}M` : '+'}
+                          </span>
+                        </div>
+                      </td>
+                      {SALES_STAGES.map((stage) => {
+                        const key = `${category.id}-${stage.code}`;
+                        const hasChanges = pendingChanges.has(key);
+                        return (
+                          <td key={stage.code} className={`px-3 py-3 text-center ${hasChanges ? 'bg-yellow-50' : ''}`}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.25"
+                              value={getCellValue(category.id!, stage.code)}
+                              onChange={(e) => handleCellEdit(category.id!, stage.code, e.target.value)}
+                              className="w-16 px-2 py-1 text-center border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-dxc-purple text-sm"
+                              placeholder="0"
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

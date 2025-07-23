@@ -4,6 +4,7 @@ import type {
   OpportunityUpdate,
   OpportunityFilters,
   OpportunityCategory,
+  ServiceLineCategory,
   ServiceLineStageEffort,
   ForecastSummary,
   ServiceLineForecast,
@@ -215,11 +216,40 @@ class ApiClient {
     });
   }
 
-  // Service Line Stage Efforts
-  async getServiceLineStageEfforts(serviceLine?: string, categoryId?: number): Promise<ServiceLineStageEffort[]> {
+  // Service Line Categories
+  async getServiceLineCategories(serviceLine?: string): Promise<ServiceLineCategory[]> {
     const params = new URLSearchParams();
     if (serviceLine) params.append('service_line', serviceLine);
-    if (categoryId) params.append('category_id', categoryId.toString());
+    
+    const queryString = params.toString();
+    return this.request(`/api/config/service-line-categories${queryString ? '?' + queryString : ''}`);
+  }
+
+  async createServiceLineCategory(data: Omit<ServiceLineCategory, 'id'>): Promise<ServiceLineCategory> {
+    return this.request('/api/config/service-line-categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateServiceLineCategory(id: number, data: Omit<ServiceLineCategory, 'id'>): Promise<ServiceLineCategory> {
+    return this.request(`/api/config/service-line-categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteServiceLineCategory(id: number): Promise<void> {
+    return this.request(`/api/config/service-line-categories/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Service Line Stage Efforts
+  async getServiceLineStageEfforts(serviceLine?: string, serviceLineCategoryId?: number): Promise<ServiceLineStageEffort[]> {
+    const params = new URLSearchParams();
+    if (serviceLine) params.append('service_line', serviceLine);
+    if (serviceLineCategoryId) params.append('service_line_category_id', serviceLineCategoryId.toString());
     
     const queryString = params.toString();
     return this.request(`/api/config/service-line-stage-efforts${queryString ? '?' + queryString : ''}`);
