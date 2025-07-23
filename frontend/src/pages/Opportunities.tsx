@@ -5,6 +5,7 @@ import { useOpportunities } from '../hooks/useOpportunities';
 import { useCategories } from '../hooks/useConfig';
 import type { OpportunityFilters, Opportunity, OpportunityCategory } from '../types/index.js';
 import { SALES_STAGES, STAGE_ORDER, CATEGORY_ORDER, SERVICE_LINES } from '../types/index.js';
+import { getSecurityClearanceColorClass } from '../utils/securityClearance';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 // Helper function to calculate opportunity category based on TCV using backend categories
@@ -381,7 +382,7 @@ const Opportunities: React.FC = () => {
             {sortedOpportunities?.map((opportunity) => (
               <tr key={opportunity.id}>
                 <td>
-                  <div className="font-semibold text-dxc-dark-gray">
+                  <div className={`font-semibold ${getSecurityClearanceColorClass(opportunity.security_clearance) || 'text-dxc-dark-gray'}`}>
                     {opportunity.account_name || (
                       <span className="text-dxc-medium-gray italic">No account</span>
                     )}

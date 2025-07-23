@@ -8,6 +8,7 @@ import OpportunityDetail from './pages/OpportunityDetail';
 import Import from './pages/Import';
 import Config from './pages/Config';
 import Forecast from './pages/Forecast';
+import Reports from './pages/Reports';
 import ErrorBoundary from './components/ErrorBoundary';
 
 // Create a client
@@ -33,6 +34,7 @@ function App() {
                 <Route path="/opportunities" element={<Opportunities />} />
                 <Route path="/opportunity/:id" element={<OpportunityDetail />} />
                 <Route path="/forecast" element={<Forecast />} />
+                <Route path="/reports" element={<Reports />} />
                 <Route path="/import" element={<Import />} />
                 <Route path="/config" element={<Config />} />
                 <Route path="*" element={<div className="p-6 text-center"><h2 className="text-dxc-slide mb-4">Page Not Found</h2><p>The requested page could not be found.</p></div>} />

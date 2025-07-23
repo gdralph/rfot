@@ -6,6 +6,7 @@ import { useResourceTimeline, useCalculateResourceTimeline, useUpdateResourceTim
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { OpportunityFormData, Opportunity, OpportunityCategory, OpportunityEffortPrediction, StageTimelineData } from '../types/index';
 import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES } from '../types/index';
+import { getSecurityClearanceColorClass } from '../utils/securityClearance';
 import { ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, AreaChart, Area, CartesianGrid, Legend } from 'recharts';
 import { TrendingUp, BarChart3, Layers, Calendar, Users, FileText, DollarSign } from 'lucide-react';
 
@@ -648,7 +649,7 @@ const OpportunityDetail: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-6 mb-4">
                 <div>
                   <span className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Account</span>
-                  <h2 className="text-xl font-bold text-dxc-purple">{opportunity.account_name || 'No Account'}</h2>
+                  <h2 className={`text-xl font-bold ${getSecurityClearanceColorClass(opportunity.security_clearance) || 'text-dxc-purple'}`}>{opportunity.account_name || 'No Account'}</h2>
                 </div>
                 <div>
                   <span className="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1">Opportunity ID</span>

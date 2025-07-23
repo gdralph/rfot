@@ -371,6 +371,23 @@ class ApiClient {
       body: JSON.stringify(options),
     });
   }
+
+  // Reports API methods
+  async getAvailableReports(): Promise<any> {
+    return this.request('/api/reports/available-reports');
+  }
+
+  async generateReport(reportId: string, filters?: Record<string, any>): Promise<any> {
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== '' && value !== null && value !== undefined) {
+          params.append(key, value.toString());
+        }
+      });
+    }
+    return this.request(`/api/reports/${reportId}?${params.toString()}`);
+  }
 }
 
 // Export singleton instance

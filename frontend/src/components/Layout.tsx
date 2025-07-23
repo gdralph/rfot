@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, Database, Settings, Upload, Home } from 'lucide-react';
+import { BarChart3, Database, Settings, Upload, Home, FileText } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,6 +13,7 @@ const Navigation = () => {
     { path: '/', label: 'Dashboard', icon: Home },
     { path: '/opportunities', label: 'Opportunities', icon: Database },
     { path: '/forecast', label: 'Forecast', icon: BarChart3 },
+    { path: '/reports', label: 'Reports', icon: FileText },
     { path: '/import', label: 'Import', icon: Upload },
     { path: '/config', label: 'Config', icon: Settings },
   ];
