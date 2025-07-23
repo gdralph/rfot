@@ -423,6 +423,59 @@ class ApiClient {
     return this.request(`/api/resources/portfolio/resource-forecast${query}`);
   }
 
+  async getStageResourceTimeline(options: {
+    startDate?: Date;
+    endDate?: Date;
+    timePeriod?: string;
+    filters?: {
+      stage?: string | string[];
+      category?: string | string[];
+      service_line?: string | string[];
+      lead_offering?: string | string[];
+    };
+  } = {}): Promise<any> {
+    const params = new URLSearchParams();
+    
+    if (options.startDate) params.append('start_date', options.startDate.toISOString());
+    if (options.endDate) params.append('end_date', options.endDate.toISOString());
+    if (options.timePeriod) params.append('time_period', options.timePeriod);
+    
+    // Add filters from the filters object
+    if (options.filters) {
+      if (options.filters.stage) {
+        if (Array.isArray(options.filters.stage)) {
+          options.filters.stage.forEach(s => params.append('stage', s));
+        } else {
+          params.append('stage', options.filters.stage);
+        }
+      }
+      if (options.filters.category) {
+        if (Array.isArray(options.filters.category)) {
+          options.filters.category.forEach(c => params.append('category', c));
+        } else {
+          params.append('category', options.filters.category);
+        }
+      }
+      if (options.filters.service_line) {
+        if (Array.isArray(options.filters.service_line)) {
+          options.filters.service_line.forEach(sl => params.append('service_line', sl));
+        } else {
+          params.append('service_line', options.filters.service_line);
+        }
+      }
+      if (options.filters.lead_offering) {
+        if (Array.isArray(options.filters.lead_offering)) {
+          options.filters.lead_offering.forEach(lo => params.append('lead_offering', lo));
+        } else {
+          params.append('lead_offering', options.filters.lead_offering);
+        }
+      }
+    }
+    
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/api/resources/portfolio/stage-resource-timeline${query}`);
+  }
+
   // Timeline Generation APIs
   async getTimelineGenerationStats() {
     return this.request('/api/resources/timeline-generation/stats');
@@ -440,6 +493,12 @@ class ApiClient {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(options),
+    });
+  }
+
+  async clearPredictedTimelines() {
+    return this.request('/api/resources/timeline-generation/clear-predicted', {
+      method: 'DELETE',
     });
   }
 

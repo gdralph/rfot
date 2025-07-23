@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Settings, Save, Loader2, Users, Plus, X, AlertCircle, Edit2, Trash2, Check, DollarSign } from 'lucide-react';
+import { Save, Loader2, Users, Plus, X, AlertCircle, Edit2, Trash2, Check, DollarSign } from 'lucide-react';
 import {
   useServiceLineCategories,
   useCreateServiceLineCategory,

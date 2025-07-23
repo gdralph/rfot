@@ -127,9 +127,10 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
         task.total_rows = len(df)
         task.message = f"Processing {task.total_rows} opportunities"
         
-        with Session(engine) as session:
-            skipped_rows = 0
-            for idx, (_, row) in enumerate(df.iterrows()):
+        skipped_rows = 0
+        for idx, (_, row) in enumerate(df.iterrows()):
+            # Process each row in its own transaction to prevent rollback issues
+            with Session(engine) as session:
                 try:
                     # Skip summary rows and invalid data
                     opportunity_id = str(row["Opportunity Id"])
@@ -151,11 +152,31 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                         skipped_rows += 1
                         continue
                     
-                    # Skip rows with missing critical data
-                    if pd.isna(row["Opportunity Name"]) or pd.isna(row[tcv_column]):
-                        task.errors.append(f"Row {idx + 1}: Missing critical data (name or TCV)")
-                        task.failed_rows += 1
+                    # Simple validation: if row has mostly empty fields, skip it
+                    non_null_count = row.notna().sum()
+                    total_fields = len(row)
+                    
+                    # If less than 10% of fields have data, treat as empty row
+                    if non_null_count < (total_fields * 0.1):
+                        skipped_rows += 1
                         continue
+                    
+                    # Only require Opportunity Name for processing - make TCV optional but warn
+                    name_missing = pd.isna(row["Opportunity Name"])
+                    if not name_missing:
+                        name_str = str(row["Opportunity Name"]).strip()
+                        name_missing = not name_str or name_str.lower() in ["nan", "none", "", "null"]
+                    
+                    if name_missing:
+                        # Still skip rows without names, but don't count as error
+                        skipped_rows += 1
+                        continue
+                    
+                    # Warn about missing TCV but continue processing
+                    tcv_missing = pd.isna(row[tcv_column])
+                    if tcv_missing:
+                        task.errors.append(f"Row {idx + 1}: Warning - Missing TCV data for '{row['Opportunity Name']}'")
+                        task.warnings_count += 1
                     
                     # Parse close date with validation
                     try:
@@ -165,27 +186,22 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                         task.failed_rows += 1
                         continue
                     
-                    # Parse amount with validation
+                    # Parse amount with validation - allow null TCV
+                    amount = None
                     try:
                         tcv_value = row[tcv_column]
-                        if pd.isna(tcv_value):
-                            task.errors.append(f"Row {idx + 1}: Missing TCV amount")
-                            task.failed_rows += 1
-                            continue
-                        
-                        amount = float(tcv_value) * 1_000_000  # Convert from millions
-                        
-                        # Allow negative amounts (they might be valid business cases like refunds/adjustments)
-                        # Just warn about zero amounts
-                        if amount == 0:
-                            task.errors.append(f"Row {idx + 1}: Warning - TCV amount is zero")
-                            task.warnings_count += 1
-                            # Continue processing instead of skipping
+                        if not pd.isna(tcv_value):
+                            amount = float(tcv_value) * 1_000_000  # Convert from millions
+                            
+                            # Just warn about zero amounts
+                            if amount == 0:
+                                task.errors.append(f"Row {idx + 1}: Warning - TCV amount is zero")
+                                task.warnings_count += 1
                         
                     except (ValueError, TypeError) as e:
-                        task.errors.append(f"Row {idx + 1}: Could not parse TCV amount: {str(e)}")
-                        task.failed_rows += 1
-                        continue
+                        task.errors.append(f"Row {idx + 1}: Warning - Could not parse TCV amount: {str(e)}")
+                        task.warnings_count += 1
+                        amount = None
                     
                     # Clean string fields
                     name = str(row["Opportunity Name"]).strip()
@@ -308,7 +324,22 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                         session.add(opp)
                         logger.info("Created new opportunity", opportunity_id=opp.opportunity_id)
                     
-                    task.successful_rows += 1
+                    # Commit this row's transaction
+                    try:
+                        session.commit()
+                        task.successful_rows += 1
+                        logger.info("Row committed successfully", 
+                                  opportunity_id=opp.opportunity_id,
+                                  opportunity_name=opp.opportunity_name,
+                                  tcv_millions=opp.tcv_millions,
+                                  action="updated" if existing else "created")
+                    except Exception as commit_error:
+                        session.rollback()
+                        error_msg = f"Row {idx + 1}: Database commit failed - {str(commit_error)}"
+                        task.errors.append(error_msg)
+                        task.failed_rows += 1
+                        logger.error("Row commit failed", row_idx=idx, error=str(commit_error), opportunity_id=opp.opportunity_id)
+                    
                     task.processed_rows = idx + 1
                     task.progress = int((idx + 1) / task.total_rows * 100)
                     task.message = f"Processing row {idx + 1} of {task.total_rows}"
@@ -317,45 +348,37 @@ async def import_excel_background(file_path: str, task_id: str, import_tasks: Di
                     error_msg = f"Row {idx + 1}: {str(e)}"
                     task.errors.append(error_msg)
                     task.failed_rows += 1
-                    logger.error("Row processing error", row_idx=idx, error=str(e), opportunity_id=opportunity_id)
-                    # Rollback any partial transaction and continue
-                    session.rollback()
+                    logger.error("Row processing error", row_idx=idx, error=str(e))
+                    # Session will auto-rollback when context exits
                     continue
+        
+        # Clean up temporary file
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+        
+        task.status = "completed"
+        task.progress = 100
+        task.end_time = datetime.now().isoformat()
+        
+        # Create detailed completion message
+        success_msg = f"Import completed: {task.successful_rows} successful"
+        if task.failed_rows > 0:
+            success_msg += f", {task.failed_rows} failed"
+        if task.warnings_count > 0:
+            success_msg += f", {task.warnings_count} warnings"
+        if skipped_rows > 0:
+            success_msg += f" ({skipped_rows} summary rows skipped)"
             
-            try:
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                logger.error("Database commit failed", error=str(e))
-                raise RuntimeError(f"Failed to commit import data to database: {str(e)}") from e
-            
-            # Clean up temporary file
-            try:
-                os.remove(file_path)
-            except OSError:
-                pass
-            
-            task.status = "completed"
-            task.progress = 100
-            task.end_time = datetime.now().isoformat()
-            
-            # Create detailed completion message
-            success_msg = f"Import completed: {task.successful_rows} successful"
-            if task.failed_rows > 0:
-                success_msg += f", {task.failed_rows} failed"
-            if task.warnings_count > 0:
-                success_msg += f", {task.warnings_count} warnings"
-            if skipped_rows > 0:
-                success_msg += f" ({skipped_rows} summary rows skipped)"
-                
-            task.message = success_msg
-            
-            logger.info("Excel import completed", 
-                       task_id=task_id, 
-                       successful=task.successful_rows,
-                       failed=task.failed_rows,
-                       warnings=task.warnings_count,
-                       total_errors=len(task.errors))
+        task.message = success_msg
+        
+        logger.info("Excel import completed", 
+                   task_id=task_id, 
+                   successful=task.successful_rows,
+                   failed=task.failed_rows,
+                   warnings=task.warnings_count,
+                   total_errors=len(task.errors))
                        
     except Exception as e:
         task.status = "failed"

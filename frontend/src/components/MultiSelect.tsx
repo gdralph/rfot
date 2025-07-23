@@ -136,7 +136,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      handleRemoveSelected(value, e);
+                      handleRemoveSelected(value, e as any);
                     }
                   }}
                 >
@@ -163,7 +163,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                handleClearAll(e);
+                handleClearAll(e as any);
               }
             }}
           >
@@ -200,7 +200,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  handleClearAll(e);
+                  handleClearAll(e as any);
                 }
               }}
             >

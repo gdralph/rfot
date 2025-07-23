@@ -121,19 +121,19 @@ def seed_service_line_stage_efforts():
     
     with Session(engine) as session:
         # First, clear any existing service line stage effort data
-        print("Clearing existing ServiceLineStageEffort data...")
+        # print("Clearing existing ServiceLineStageEffort data...")
         existing_efforts = session.exec(select(ServiceLineStageEffort)).all()
         for effort in existing_efforts:
             session.delete(effort)
         session.commit()
-        print(f"Removed {len(existing_efforts)} existing entries")
+        # print(f"Removed {len(existing_efforts)} existing entries")
         # Get all service line categories
         categories = session.exec(select(ServiceLineCategory)).all()
         category_by_service_line_and_name = {(cat.service_line, cat.name): cat for cat in categories}
         
-        print(f"Found {len(categories)} service line categories:")
+        # print(f"Found {len(categories)} service line categories:")
         for cat in categories:
-            print(f"  - {cat.service_line}/{cat.name} (ID: {cat.id})")
+            # print(f"  - {cat.service_line}/{cat.name} (ID: {cat.id})")
         
         # Process MW templates
         logger.info("Seeding MW (Modern Workplace) templates")

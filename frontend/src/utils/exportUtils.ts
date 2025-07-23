@@ -1477,7 +1477,7 @@ const generateConfigurationHTML = (reportData: any): string => {
             <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.875rem;">Examples using actual opportunity data to demonstrate how configurations are applied</p>
             <div style="display: flex; flex-direction: column; gap: 16px;">`;
     
-    reportData.calculation_examples.forEach((example: any, index: number) => {
+    reportData.calculation_examples.forEach((example: any, _index: number) => {
       html += `
                 <div style="border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; background: #F9FAFB;">
                     <!-- Header with opportunity info and calculation method -->

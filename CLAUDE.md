@@ -119,6 +119,8 @@ npm run lint            # ESLint (using flat config format)
 - **ServiceLineAllocationTab** (`components/config/ServiceLineAllocationTab.tsx`): Advanced resource allocation interface with integrated charts
 
 ### Data Visualization Components
+- **Active Charts**: ResourceForecastChart, ServiceLineAnalysisChart, StageResourceTimelineChart, TCVServiceLineTimelineChart
+- **Archive Components**: Legacy chart components moved to `components/charts/archive/` for reference
 - **Recharts Integration**: Bar charts, pie charts, and responsive containers with DXC color schemes
 - **Custom Chart Styling**: DXC purple-first color palette with accent colors for data series
 - **Interactive Dashboards**: Real-time data updates with TanStack Query integration
@@ -137,7 +139,8 @@ npm run lint            # ESLint (using flat config format)
 - **API Client**: Centralized API client in `services/api.ts` with comprehensive error handling
 - **Types**: Comprehensive TypeScript definitions in `types/index.ts` with constants for sales stages, service lines, DXC colors, and ordering systems
 - **Visualization**: Recharts integration with custom DXC-themed charts and responsive containers
-- **Configuration UI**: Advanced admin interface with tabs for categories, SLA resource planning (MW/ITOC), and service line allocation
+- **Configuration UI**: Advanced admin interface with tabs for categories, service line resource planning (MW/ITOC), service line allocation, and timeline generation
+- **Build System**: Vite 7.0+ with TypeScript 5.8+ compilation, production builds generate optimized bundles
 
 ### DXC Branding Integration
 - **Colors**: Complete DXC color palette integrated into TailwindCSS config with primary purple (#5F249F), accent colors (teal, blue, green, orange, gold), and neutral grays
@@ -217,17 +220,21 @@ The core business logic revolves around resource timeline calculations:
 3. **Dashboard Updates**: TanStack Query invalidation → Automatic refetch → Real-time UI updates
 
 ### Code Quality Standards
-- **Logging**: Uses `structlog` for structured logging, no `print()` statements in production code
+- **Logging**: Uses `structlog` for structured logging, no `print()` statements in production code (debug prints commented out with `#`)
+- **Frontend Debug**: All `console.log`, `console.warn`, `console.debug` statements commented out (using `//`), `console.error` preserved for error handling
 - **Error Handling**: Specific error messages with `raise ... from e` pattern, avoid generic `raise e`
 - **Type Safety**: Modern Pydantic validators, proper TypeScript types, `any` type used sparingly for complex chart data
+- **Build Quality**: Frontend builds successfully with TypeScript strict mode, unused variables prefixed with `_`
 - **Database Migrations**: Alembic migrations manage schema changes, use `python3 -m alembic` prefix
 
 ## Memories
 - Always use the opportunitycategory in the database for category definitions
 - Always use the servicelinestageeffort for resource/fte calculations against opportunities
 - When working with resource timelines, check eligibility first using `_is_opportunity_eligible_for_generation()`
-- Frontend builds require resolving TypeScript unused variable/import issues - comment out unused code rather than delete
+- Frontend builds cleanly with TypeScript strict mode, unused variables prefixed with `_`, debug statements commented out
 - Backend uses modern FastAPI lifespan events, not deprecated `@app.on_event` handlers
+- Debug scripts (debug_excel.py, update_from_csv.py) removed from codebase
+- Chart components reorganized: active charts in main directory, legacy components in archive/ folder
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.

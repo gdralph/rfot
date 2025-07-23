@@ -70,6 +70,16 @@ def calculate_and_store_timeline(
         # Calculate timeline using service
         timeline_data = calculate_opportunity_resource_timeline(opportunity_id, session)
         
+        # Calculate total FTE across all stages and service lines
+        total_fte = 0
+        for service_line, stages in timeline_data["service_line_timelines"].items():
+            for stage_data in stages:
+                total_fte += stage_data["fte_required"]
+        
+        # Skip creating timeline if total FTE is 0
+        if total_fte == 0:
+            raise ValueError("Cannot create timeline with zero FTE requirements across all stages")
+        
         # Clear existing timeline data for this opportunity (using string opportunity_id from timeline_data)
         session.exec(
             delete(OpportunityResourceTimeline).where(
@@ -818,6 +828,33 @@ def get_timeline_generation_stats(session: Session = Depends(get_session)):
     )
 
 
+@router.delete("/timeline-generation/clear-predicted")
+def clear_all_predicted_timelines(session: Session = Depends(get_session)):
+    """
+    Clear all timeline records with 'Predicted' status across all opportunities.
+    """
+    try:
+        # Delete all timeline records with Predicted status
+        result = session.exec(
+            delete(OpportunityResourceTimeline).where(
+                OpportunityResourceTimeline.resource_status == "Predicted"
+            )
+        )
+        
+        session.commit()
+        deleted_count = result.rowcount
+        
+        return {
+            "success": True,
+            "message": f"Successfully cleared {deleted_count} predicted timeline records",
+            "deleted_count": deleted_count
+        }
+        
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Error clearing predicted timelines: {str(e)}")
+
+
 @router.post("/timeline-generation/bulk", response_model=TimelineGenerationResult)
 def generate_bulk_timelines(
     request_data: dict = {},
@@ -872,15 +909,40 @@ def generate_bulk_timelines(
                     stats.predicted_timelines += 1
                     
                     if regenerate_all and is_eligible:
-                        # Regenerate timeline
-                        _generate_timeline_for_opportunity(opp, session)
-                        stats.updated += 1
-                        processed_opportunities.append(ProcessedOpportunity(
-                            id=opp.opportunity_id,
-                            name=opp.opportunity_name,
-                            action="updated",
-                            reason="Regenerated Predicted timeline"
-                        ))
+                        # Regenerate timeline - check if it actually creates records
+                        try:
+                            _generate_timeline_for_opportunity(opp, session)
+                            # Check if timeline was actually created (not skipped due to zero FTE)
+                            updated_timeline = session.exec(
+                                select(OpportunityResourceTimeline).where(
+                                    OpportunityResourceTimeline.opportunity_id == opp.opportunity_id
+                                ).limit(1)
+                            ).first()
+                            
+                            if updated_timeline:
+                                stats.updated += 1
+                                processed_opportunities.append(ProcessedOpportunity(
+                                    id=opp.opportunity_id,
+                                    name=opp.opportunity_name,
+                                    action="updated",
+                                    reason="Regenerated Predicted timeline"
+                                ))
+                            else:
+                                stats.skipped += 1
+                                processed_opportunities.append(ProcessedOpportunity(
+                                    id=opp.opportunity_id,
+                                    name=opp.opportunity_name,
+                                    action="skipped",
+                                    reason="Timeline regeneration skipped due to zero FTE requirements"
+                                ))
+                        except Exception as e:
+                            stats.errors += 1
+                            processed_opportunities.append(ProcessedOpportunity(
+                                id=opp.opportunity_id,
+                                name=opp.opportunity_name,
+                                action="error",
+                                reason=f"Regeneration error: {str(e)}"
+                            ))
                     else:
                         stats.skipped += 1
                         processed_opportunities.append(ProcessedOpportunity(
@@ -901,15 +963,40 @@ def generate_bulk_timelines(
             else:
                 # No existing timeline
                 if is_eligible:
-                    # Generate new timeline
-                    _generate_timeline_for_opportunity(opp, session)
-                    stats.generated += 1
-                    processed_opportunities.append(ProcessedOpportunity(
-                        id=opp.opportunity_id,
-                        name=opp.opportunity_name,
-                        action="generated",
-                        reason="Created new timeline"
-                    ))
+                    # Generate new timeline - check if it actually creates records
+                    try:
+                        _generate_timeline_for_opportunity(opp, session)
+                        # Check if timeline was actually created (not skipped due to zero FTE)
+                        created_timeline = session.exec(
+                            select(OpportunityResourceTimeline).where(
+                                OpportunityResourceTimeline.opportunity_id == opp.opportunity_id
+                            ).limit(1)
+                        ).first()
+                        
+                        if created_timeline:
+                            stats.generated += 1
+                            processed_opportunities.append(ProcessedOpportunity(
+                                id=opp.opportunity_id,
+                                name=opp.opportunity_name,
+                                action="generated",
+                                reason="Created new timeline"
+                            ))
+                        else:
+                            stats.skipped += 1
+                            processed_opportunities.append(ProcessedOpportunity(
+                                id=opp.opportunity_id,
+                                name=opp.opportunity_name,
+                                action="skipped",
+                                reason="Timeline skipped due to zero FTE requirements"
+                            ))
+                    except Exception as e:
+                        stats.errors += 1
+                        processed_opportunities.append(ProcessedOpportunity(
+                            id=opp.opportunity_id,
+                            name=opp.opportunity_name,
+                            action="error",
+                            reason=f"Generation error: {str(e)}"
+                        ))
                 else:
                     stats.skipped += 1
                     processed_opportunities.append(ProcessedOpportunity(
@@ -1089,6 +1176,16 @@ def _generate_timeline_for_opportunity(opportunity: Opportunity, session: Sessio
         # Use the existing calculate_opportunity_resource_timeline service
         timeline_data = calculate_opportunity_resource_timeline(opportunity.id, session)
         
+        # Calculate total FTE across all stages and service lines
+        total_fte = 0
+        for service_line, stages in timeline_data["service_line_timelines"].items():
+            for stage_data in stages:
+                total_fte += stage_data["fte_required"]
+        
+        # Skip creating timeline if total FTE is 0
+        if total_fte == 0:
+            return
+        
         # Clear existing timeline data
         session.exec(
             delete(OpportunityResourceTimeline).where(
@@ -1126,3 +1223,176 @@ def _generate_timeline_for_opportunity(opportunity: Opportunity, session: Sessio
     except Exception as e:
         # Re-raise with more context for debugging
         raise RuntimeError(f"Failed to generate timeline for opportunity: {str(e)}") from e
+
+
+@router.get("/portfolio/stage-resource-timeline")
+def get_stage_resource_timeline(
+    start_date: Optional[datetime] = Query(None, description="Start date for forecast period"),
+    end_date: Optional[datetime] = Query(None, description="End date for forecast period"),
+    time_period: str = Query("month", description="Time period aggregation: week, month, quarter"),
+    service_line: List[str] = Query(default=[], description="Filter by service lines"),
+    category: List[str] = Query(default=[], description="Filter by categories"), 
+    stage: List[str] = Query(default=[], description="Filter by stages"),
+    limit: int = Query(100, description="Maximum opportunities to process"),
+    session: Session = Depends(get_session)
+):
+    """
+    Get stage-based resource timeline showing FTE requirements by time period,
+    broken down by service line and current opportunity stage.
+    
+    Returns data structured for stacked charts where each service line has its own
+    stack showing FTE requirements from opportunities currently in different stages.
+    """
+    from collections import defaultdict
+    from datetime import timedelta
+    
+    # Build query for timeline records with opportunity data
+    query = select(OpportunityResourceTimeline, Opportunity).join(
+        Opportunity, OpportunityResourceTimeline.opportunity_id == Opportunity.opportunity_id
+    )
+    
+    # Apply date filters
+    if start_date:
+        start_date_naive = start_date.replace(tzinfo=None) if start_date.tzinfo else start_date
+        query = query.where(OpportunityResourceTimeline.stage_end_date >= start_date_naive)
+    if end_date:
+        end_date_naive = end_date.replace(tzinfo=None) if end_date.tzinfo else end_date
+        query = query.where(OpportunityResourceTimeline.stage_start_date <= end_date_naive)
+    
+    # Apply filters
+    if service_line:
+        query = query.where(OpportunityResourceTimeline.service_line.in_(service_line))
+    if category:
+        query = query.where(OpportunityResourceTimeline.category.in_(category))
+    if stage:
+        query = query.where(Opportunity.sales_stage.in_(stage))
+    
+    # Get timeline records with opportunity data
+    results = session.exec(query.limit(limit * 10)).all()
+    
+    # Set default date range if not provided
+    if not start_date or not end_date:
+        from datetime import datetime
+        if not start_date:
+            start_date = datetime(2024, 1, 1)
+        if not end_date:
+            end_date = datetime(2027, 12, 31)
+    
+    # Generate time periods
+    period_data = {}
+    current_date = start_date.replace(day=1) if time_period == "month" else start_date
+    
+    while current_date <= end_date:
+        if time_period == "week":
+            # Align to Monday
+            current_date = current_date - timedelta(days=current_date.weekday())
+            period_key = current_date.strftime("%Y-W%U")
+            display_period = current_date.strftime("%m/%d")
+            next_date = current_date + timedelta(weeks=1)
+        elif time_period == "quarter":
+            quarter_month = ((current_date.month - 1) // 3) * 3 + 1
+            current_date = current_date.replace(month=quarter_month, day=1)
+            quarter_num = ((current_date.month - 1) // 3) + 1
+            period_key = f"{current_date.year}-Q{quarter_num}"
+            display_period = period_key
+            # Move to next quarter
+            next_quarter_month = current_date.month + 3
+            if next_quarter_month > 12:
+                next_date = current_date.replace(year=current_date.year + 1, month=next_quarter_month - 12)
+            else:
+                next_date = current_date.replace(month=next_quarter_month)
+        else:  # month
+            period_key = current_date.strftime("%Y-%m")
+            display_period = current_date.strftime("%b %y")
+            next_month = current_date.month + 1
+            next_year = current_date.year
+            if next_month > 12:
+                next_month = 1
+                next_year += 1
+            next_date = current_date.replace(year=next_year, month=next_month)
+        
+        period_data[period_key] = {
+            "period": display_period,
+            "period_start": current_date,
+            "period_end": next_date - timedelta(days=1),
+            "service_line_stage_breakdown": defaultdict(float),
+            "total_fte": 0,
+        }
+        current_date = next_date
+    
+    # Process timeline records
+    total_opportunities_processed = set()
+    total_effort_weeks = 0
+    service_line_breakdown = defaultdict(float)
+    stage_breakdown = defaultdict(float)
+    category_breakdown = defaultdict(float)
+    
+    for timeline_record, opportunity in results:
+        # Get current opportunity stage
+        current_stage = opportunity.sales_stage or "01"
+        
+        # Check if timeline record overlaps with any period
+        for period_key, period_info in period_data.items():
+            period_start = period_info["period_start"]
+            period_end = period_info["period_end"]
+            
+            # Make sure all dates are timezone-naive for comparison
+            period_start = period_start.replace(tzinfo=None) if period_start.tzinfo else period_start
+            period_end = period_end.replace(tzinfo=None) if period_end.tzinfo else period_end
+            record_start = timeline_record.stage_start_date.replace(tzinfo=None) if timeline_record.stage_start_date.tzinfo else timeline_record.stage_start_date
+            record_end = timeline_record.stage_end_date.replace(tzinfo=None) if timeline_record.stage_end_date.tzinfo else timeline_record.stage_end_date
+            
+            # Check if timeline record overlaps with this period
+            if (record_start <= period_end and record_end >= period_start):
+                
+                # Calculate overlap using timezone-naive dates
+                overlap_start = max(record_start, period_start)
+                overlap_end = min(record_end, period_end)
+                overlap_days = (overlap_end - overlap_start).days + 1
+                stage_days = (record_end - record_start).days + 1
+                
+                if overlap_days > 0 and stage_days > 0:
+                    # Calculate proportional FTE for this period
+                    overlap_ratio = overlap_days / stage_days
+                    period_fte = timeline_record.fte_required * overlap_ratio
+                    
+                    # Create key for service line + current stage combination
+                    service_stage_key = f"{timeline_record.service_line}_{current_stage}"
+                    
+                    period_info["service_line_stage_breakdown"][service_stage_key] += period_fte
+                    period_info["total_fte"] += period_fte
+        
+        # Track overall statistics
+        total_opportunities_processed.add(timeline_record.opportunity_id)
+        total_effort_weeks += timeline_record.total_effort_weeks
+        service_line_breakdown[timeline_record.service_line] += timeline_record.total_effort_weeks
+        stage_breakdown[current_stage] += timeline_record.total_effort_weeks
+        category_breakdown[timeline_record.category] += timeline_record.total_effort_weeks
+    
+    # Convert defaultdicts to regular dicts for JSON serialization
+    monthly_forecast = []
+    for period_key in sorted(period_data.keys()):
+        period_info = period_data[period_key]
+        monthly_forecast.append({
+            "period": period_info["period"],
+            "total_fte": round(period_info["total_fte"], 2),
+            "service_line_stage_breakdown": dict(period_info["service_line_stage_breakdown"])
+        })
+    
+    # Calculate missing timelines (opportunities eligible but without timelines)
+    missing_timelines = _calculate_missing_timelines_count(session, service_line, category)
+    
+    return {
+        "monthly_forecast": monthly_forecast,
+        "total_opportunities_processed": len(total_opportunities_processed),
+        "total_effort_weeks": round(total_effort_weeks, 2),
+        "service_line_breakdown": dict(service_line_breakdown),
+        "stage_breakdown": dict(stage_breakdown),
+        "category_breakdown": dict(category_breakdown),
+        "forecast_period": {
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "timeline_opportunities": len(total_opportunities_processed),
+            "missing_timelines": missing_timelines
+        }
+    }

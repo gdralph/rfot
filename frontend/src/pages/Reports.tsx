@@ -136,7 +136,7 @@ const Reports: React.FC = () => {
             'Report Data'
           );
         } else {
-          console.warn('No data available for Excel export');
+          // console.warn('No data available for Excel export');
         }
       } else if (format === 'pdf') {
         // Use custom timeline PDF generation for chart view
@@ -170,8 +170,7 @@ const Reports: React.FC = () => {
         // Export as static HTML file
         const htmlContent = exportToHTML(
           reportData,
-          selectedReport,
-          timelineViewMode
+          selectedReport
         );
         
         // Create and download the HTML file
@@ -1347,7 +1346,7 @@ const Reports: React.FC = () => {
 
         {/* Timeline Rows with consistent styling */}
         <div className="timeline-rows" style={{ minWidth: '1000px' }}>
-          {data.timeline_data.slice(0, 12).map((opportunity: any, oppIndex: number) => (
+          {data.timeline_data.slice(0, 12).map((opportunity: any, _oppIndex: number) => (
             <div 
               key={opportunity.opportunity_id} 
               className="timeline-row"
@@ -1436,7 +1435,7 @@ const Reports: React.FC = () => {
               {/* Timeline Column - Flexible Width */}
               <div style={{ flex: 1, position: 'relative', minWidth: '700px', marginLeft: '16px' }}>
                 {/* Service Line Timeline Tracks */}
-                {Object.entries(opportunity.service_lines).map(([serviceLine, slData]: [string, any], slIndex) => (
+                {Object.entries(opportunity.service_lines).map(([serviceLine, slData]: [string, any], _slIndex) => (
                   <div key={serviceLine} style={{ position: 'relative', marginBottom: '8px' }}>
                     {/* Service Line Label */}
                     <div style={{
@@ -1638,7 +1637,7 @@ const Reports: React.FC = () => {
           
           {timelineViewMode === 'list' ? (
             <div className="space-y-4">
-              {data.timeline_data.slice(0, 10).map((opportunity: any, index: number) => (
+              {data.timeline_data.slice(0, 10).map((opportunity: any, _index: number) => (
               <div key={opportunity.opportunity_id} className="border border-gray-200 rounded-lg p-4">
                 {/* Opportunity Header */}
                 <div className="flex justify-between items-start mb-3">

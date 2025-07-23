@@ -221,7 +221,7 @@ const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
                     navigator.clipboard.writeText(errorText).then(() => {
                       alert('Errors copied to clipboard');
                     }).catch(() => {
-                      console.log('Could not copy errors');
+                      // console.log('Could not copy errors');
                     });
                   }
                 }} 

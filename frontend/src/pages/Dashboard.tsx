@@ -5,16 +5,15 @@ import { useForecastSummary, useServiceLineForecast, useLeadOfferingForecast, us
 import { useCategories } from '../hooks/useConfig';
 import { DXC_COLORS, SERVICE_LINES, SALES_STAGES, OPPORTUNITY_CATEGORIES, type ServiceLine } from '../types/index.js';
 import LoadingSpinner from '../components/LoadingSpinner';
-import InteractiveForecastChart from '../components/charts/InteractiveForecastChart';
-import ServiceLineDistribution from '../components/charts/ServiceLineDistribution';
-import LeadOfferingDistribution from '../components/charts/LeadOfferingDistribution';
-import TimelineView from '../components/charts/TimelineView';
-import ResourceTimelineCard from '../components/ResourceTimelineCard';
+import TCVServiceLineTimelineChart from '../components/charts/TCVServiceLineTimelineChart';
+import ServiceLineAnalysisChart from '../components/charts/ServiceLineAnalysisChart';
+import ResourceForecastChart from '../components/charts/ResourceForecastChart';
+import StageResourceTimelineChart from '../components/charts/StageResourceTimelineChart';
 import MultiSelect, { type MultiSelectOption } from '../components/MultiSelect';
 
 const Dashboard: React.FC = () => {
   const [activeView, setActiveView] = useState<'overview' | 'forecast' | 'resources' | 'timeline'>('overview');
-  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('quarter');
+  // const [timeRange, setTimeRange] = useState<'week' | 'month' | 'quarter' | 'year'>('quarter');
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<{ stage?: string[]; category?: string[]; service_line?: string[]; lead_offering?: string[] }>({});
   
@@ -90,22 +89,6 @@ const Dashboard: React.FC = () => {
     return new Intl.NumberFormat('en-US').format(value);
   };
 
-  // Generate forecast data for advanced charts
-  const generateForecastData = () => {
-    const periods = timeRange === 'week' ? 12 : timeRange === 'month' ? 12 : timeRange === 'quarter' ? 4 : 3;
-    const baseValue = (forecastSummary?.total_value || 0) / periods;
-    
-    return Array.from({ length: periods }, (_, i) => ({
-      period: timeRange === 'week' ? `Week ${i + 1}` :
-              timeRange === 'month' ? `Month ${i + 1}` :
-              timeRange === 'quarter' ? `Q${i + 1}` : `Year ${2024 + i}`,
-      forecast: Math.round(baseValue * (0.8 + Math.random() * 0.4)),
-      actual: i < periods - 2 ? Math.round(baseValue * (0.8 + Math.random() * 0.4) * 0.95) : undefined,
-      target: Math.round(baseValue * 1.1),
-      confidence: 0.6 + Math.random() * 0.4,
-      scenario: 'realistic' as const
-    }));
-  };
 
 
   const generateServiceLineData = () => {
@@ -138,30 +121,29 @@ const Dashboard: React.FC = () => {
     }));
   };
 
-  const generateTimelineData = () => {
-    const periods = timeRange === 'week' ? 12 : timeRange === 'month' ? 12 : timeRange === 'quarter' ? 4 : 3;
-    const baseValue = (forecastSummary?.total_value || 0) / periods;
-    
-    return Array.from({ length: periods }, (_, i) => ({
-      date: new Date(2024, i, 1).toISOString(),
-      period: timeRange === 'week' ? `Week ${i + 1}` :
-              timeRange === 'month' ? `Month ${i + 1}` :
-              timeRange === 'quarter' ? `Q${i + 1}` : `Year ${2024 + i}`,
-      revenue: Math.round(baseValue * (0.8 + Math.random() * 0.4)),
-      opportunities: Math.round((forecastSummary?.total_opportunities || 0) / periods * (0.8 + Math.random() * 0.4)),
-      won: 0, // No mock data
-      lost: 0, // No mock data  
-      pipeline: Math.round(baseValue * 1.2 * (0.8 + Math.random() * 0.4)),
-      forecast: Math.round(baseValue * 1.1 * (0.8 + Math.random() * 0.4)),
-      target: Math.round(baseValue * 1.15)
-    }));
-  };
+  // const generateTimelineData = () => {
+  //   const periods = timeRange === 'week' ? 12 : timeRange === 'month' ? 12 : timeRange === 'quarter' ? 4 : 3;
+  //   const baseValue = (forecastSummary?.total_value || 0) / periods;
+  //   
+  //   return Array.from({ length: periods }, (_, i) => ({
+  //     date: new Date(2024, i, 1).toISOString(),
+  //     period: timeRange === 'week' ? `Week ${i + 1}` :
+  //             timeRange === 'month' ? `Month ${i + 1}` :
+  //             timeRange === 'quarter' ? `Q${i + 1}` : `Year ${2024 + i}`,
+  //     revenue: Math.round(baseValue * (0.8 + Math.random() * 0.4)),
+  //     opportunities: Math.round((forecastSummary?.total_opportunities || 0) / periods * (0.8 + Math.random() * 0.4)),
+  //     won: 0, // No mock data
+  //     lost: 0, // No mock data  
+  //     pipeline: Math.round(baseValue * 1.2 * (0.8 + Math.random() * 0.4)),
+  //     forecast: Math.round(baseValue * 1.1 * (0.8 + Math.random() * 0.4)),
+  //     target: Math.round(baseValue * 1.15)
+  //   }));
+  // };
 
 
-  const forecastData = generateForecastData();
   const serviceLineData = generateServiceLineData();
   const leadOfferingData = generateLeadOfferingData();
-  const timelineData = generateTimelineData();
+  // const timelineData = generateTimelineData();
 
 
   const renderActiveView = () => {
@@ -312,49 +294,77 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Enhanced Service Line Analysis */}
-            <ServiceLineDistribution 
-              data={serviceLineData.filter(item => item.revenue > 0)} 
-              title="Service Line Performance"
+            {/* Service Line & Lead Offering Analysis */}
+            <ServiceLineAnalysisChart 
+              serviceLineData={serviceLineData.filter(item => item.revenue > 0)}
+              leadOfferingData={leadOfferingData.filter(item => item.revenue > 0)} 
+              title="Service Line & Lead Offering Analysis"
             />
 
-            {/* Lead Offering Analysis */}
-            <LeadOfferingDistribution 
-              data={leadOfferingData.filter(item => item.revenue > 0)} 
-              title="Lead Offering Performance"
-            />
+            {/* Explainer Section */}
+            <div className="bg-gradient-to-r from-dxc-bright-purple/5 to-transparent border-l-4 border-dxc-bright-purple rounded-dxc p-6">
+              <h4 className="text-lg font-semibold text-dxc-bright-purple mb-3">About This Dashboard</h4>
+              <p className="text-dxc-body text-dxc-dark-gray leading-relaxed">
+                The Portfolio Overview shows comprehensive opportunity metrics and distribution patterns across sales stages, categories, and service lines. 
+                Key metrics include total opportunities, revenue values, and service line performance. The analysis chart provides multiple visualization 
+                modes and can toggle between Service Line (revenue by DXC service areas) and Lead Offering (primary service driving each opportunity) views. 
+                Data is calculated from active opportunities in the system and updates based on your selected filters.
+              </p>
+            </div>
           </div>
         );
 
       case 'forecast':
         return (
           <div className="space-y-8">
-            <InteractiveForecastChart
-              data={forecastData}
-              height={500}
-              showConfidenceInterval={true}
-              showScenarios={true}
-            />
+            <TCVServiceLineTimelineChart filters={filters} />
+            
+            {/* Explainer Section */}
+            <div className="bg-gradient-to-r from-dxc-bright-teal/5 to-transparent border-l-4 border-dxc-bright-teal rounded-dxc p-6">
+              <h4 className="text-lg font-semibold text-dxc-bright-teal mb-3">About Revenue Timeline</h4>
+              <p className="text-dxc-body text-dxc-dark-gray leading-relaxed">
+                The Revenue Timeline displays total contract value (TCV) trends over time, broken down by service line for accurate forecasting. 
+                Charts show historical and projected revenue patterns across DXC's six service lines (CES, INS, BPS, SEC, ITOC, MW). 
+                Data is based on opportunity decision dates and can be viewed in different time periods (weekly, monthly, quarterly) and chart types (line, bar, area). 
+                Use filters to focus on specific stages, categories, or service lines to refine your revenue forecasting analysis.
+              </p>
+            </div>
           </div>
         );
 
       case 'resources':
         return (
           <div className="space-y-8">
-            <ResourceTimelineCard filters={filters} />
+            <ResourceForecastChart filters={filters} />
+            
+            {/* Explainer Section */}
+            <div className="bg-gradient-to-r from-dxc-green/5 to-transparent border-l-4 border-dxc-green rounded-dxc p-6">
+              <h4 className="text-lg font-semibold text-dxc-green mb-3">About Resource Forecast</h4>
+              <p className="text-dxc-body text-dxc-dark-gray leading-relaxed">
+                The Resource Forecast projects FTE (Full-Time Equivalent) resource requirements across time periods based on opportunity stages and service line templates. 
+                This analysis helps identify capacity needs and resource allocation patterns for successful opportunity delivery. 
+                Charts display resource demand by service line over time, calculated from opportunity timelines and effort estimates configured in the system. 
+                Resource projections are particularly detailed for MW (Modern Workplace) and ITOC (Infrastructure & Cloud) service lines with established effort templates.
+              </p>
+            </div>
           </div>
         );
 
       case 'timeline':
         return (
           <div className="space-y-8">
-            <TimelineView
-              data={timelineData}
-              timeRange={timeRange}
-              onTimeRangeChange={setTimeRange}
-              showFilters={true}
-              height={500}
-            />
+            <StageResourceTimelineChart filters={filters} />
+            
+            {/* Explainer Section */}
+            <div className="bg-gradient-to-r from-dxc-orange/5 to-transparent border-l-4 border-dxc-orange rounded-dxc p-6">
+              <h4 className="text-lg font-semibold text-dxc-orange mb-3">About Stage Planning</h4>
+              <p className="text-dxc-body text-dxc-dark-gray leading-relaxed">
+                Stage Planning shows resource allocation needs by sales stage, helping identify capacity requirements during different deal phases. 
+                This view displays FTE resource demand across the eight-stage DXC sales process (01: Understand Customer through 06: Deploy & Extend). 
+                Charts break down resource needs by service line and sales stage, enabling better capacity planning and resource scheduling. 
+                Data is calculated from opportunities with established timelines and helps optimize resource allocation during peak demand periods in the sales cycle.
+              </p>
+            </div>
           </div>
         );
 
@@ -559,10 +569,10 @@ const Dashboard: React.FC = () => {
       {/* Navigation Tabs */}
       <div className="tabs flex">
         {[
-          { key: 'overview', label: 'Overview', icon: BarChart3 },
-          { key: 'forecast', label: 'Interactive Forecast', icon: TrendingUp },
-          { key: 'resources', label: 'Resource Heatmap', icon: Users },
-          { key: 'timeline', label: 'Timeline Analysis', icon: Calendar }
+          { key: 'overview', label: 'Portfolio Overview', icon: BarChart3 },
+          { key: 'forecast', label: 'Revenue Timeline', icon: TrendingUp },
+          { key: 'resources', label: 'Resource Forecast', icon: Users },
+          { key: 'timeline', label: 'Stage Planning', icon: Calendar }
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}

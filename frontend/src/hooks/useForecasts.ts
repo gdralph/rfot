@@ -4,18 +4,18 @@ import { api } from '../services/api';
 // Query keys
 const FORECAST_KEYS = {
   all: ['forecasts'] as const,
-  summary: (filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }) => 
+  summary: (filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }) => 
     [...FORECAST_KEYS.all, 'summary', filters] as const,
-  serviceLines: (filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }) => 
+  serviceLines: (filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }) => 
     [...FORECAST_KEYS.all, 'service-lines', filters] as const,
-  leadOfferings: (filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }) => 
+  leadOfferings: (filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }) => 
     [...FORECAST_KEYS.all, 'lead-offerings', filters] as const,
   activeServiceLines: () => 
     [...FORECAST_KEYS.all, 'active-service-lines'] as const,
 };
 
 // Get forecast summary
-export function useForecastSummary(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }) {
+export function useForecastSummary(filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }) {
   return useQuery({
     queryKey: FORECAST_KEYS.summary(filters),
     queryFn: () => api.getForecastSummary(filters),
@@ -25,7 +25,7 @@ export function useForecastSummary(filters?: { stage?: string; category?: string
 }
 
 // Get service line forecast
-export function useServiceLineForecast(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }) {
+export function useServiceLineForecast(filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }) {
   return useQuery({
     queryKey: FORECAST_KEYS.serviceLines(filters),
     queryFn: () => api.getServiceLineForecast(filters),
@@ -35,7 +35,7 @@ export function useServiceLineForecast(filters?: { stage?: string; category?: st
 }
 
 // Get lead offering forecast
-export function useLeadOfferingForecast(filters?: { stage?: string; category?: string; service_line?: string; lead_offering?: string }) {
+export function useLeadOfferingForecast(filters?: { stage?: string | string[]; category?: string | string[]; service_line?: string | string[]; lead_offering?: string | string[] }) {
   return useQuery({
     queryKey: FORECAST_KEYS.leadOfferings(filters),
     queryFn: () => api.getLeadOfferingForecast(filters),

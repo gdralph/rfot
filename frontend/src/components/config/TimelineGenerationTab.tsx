@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Clock, Play, RefreshCw, CheckCircle, AlertCircle, Info, BarChart3 } from 'lucide-react';
+import { Clock, Play, RefreshCw, CheckCircle, AlertCircle, Info, BarChart3, Trash2 } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
@@ -71,8 +71,58 @@ const TimelineGenerationTab: React.FC = () => {
     }
   });
 
+  // Clear predicted timelines mutation
+  const clearPredictedTimelinesMutation = useMutation({
+    mutationFn: async () => {
+      const result = await api.clearPredictedTimelines();
+      return result;
+    },
+    onSuccess: (result: any) => {
+      setLastResult({
+        success: true,
+        message: result.message,
+        stats: {
+          total_opportunities: currentStats?.total_opportunities || 0,
+          eligible_for_generation: currentStats?.eligible_for_generation || 0,
+          existing_timelines: currentStats?.existing_timelines || 0,
+          predicted_timelines: 0, // Will be 0 after clearing
+          generated: 0,
+          updated: 0,
+          skipped: 0,
+          errors: 0
+        },
+        processed_opportunities: []
+      });
+      refetchStats(); // Refresh stats after clearing
+    },
+    onError: (error) => {
+      console.error('Clear predicted timelines failed:', error);
+      setLastResult({
+        success: false,
+        message: 'Failed to clear predicted timelines. Please try again.',
+        stats: currentStats || {
+          total_opportunities: 0,
+          eligible_for_generation: 0,
+          existing_timelines: 0,
+          predicted_timelines: 0,
+          generated: 0,
+          updated: 0,
+          skipped: 0,
+          errors: 0
+        },
+        processed_opportunities: []
+      });
+    }
+  });
+
   const handleGenerateTimelines = (regenerateAll: boolean = false) => {
     generateTimelinesMutation.mutate(regenerateAll);
+  };
+
+  const handleClearPredictedTimelines = () => {
+    if (window.confirm('Are you sure you want to clear all predicted timeline records? This action cannot be undone.')) {
+      clearPredictedTimelinesMutation.mutate();
+    }
   };
 
   if (statsLoading) {
@@ -80,6 +130,7 @@ const TimelineGenerationTab: React.FC = () => {
   }
 
   const isGenerating = generateTimelinesMutation.isPending;
+  const isClearing = clearPredictedTimelinesMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -170,10 +221,10 @@ const TimelineGenerationTab: React.FC = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <button
               onClick={() => handleGenerateTimelines(false)}
-              disabled={isGenerating}
+              disabled={isGenerating || isClearing}
               className="btn-primary flex items-center gap-2"
             >
               {isGenerating ? (
@@ -186,7 +237,7 @@ const TimelineGenerationTab: React.FC = () => {
 
             <button
               onClick={() => handleGenerateTimelines(true)}
-              disabled={isGenerating}
+              disabled={isGenerating || isClearing}
               className="btn-secondary flex items-center gap-2"
             >
               {isGenerating ? (
@@ -196,6 +247,19 @@ const TimelineGenerationTab: React.FC = () => {
               )}
               Regenerate All Eligible
             </button>
+
+            <button
+              onClick={handleClearPredictedTimelines}
+              disabled={isGenerating || isClearing || !currentStats?.predicted_timelines}
+              className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-dxc font-medium flex items-center gap-2 transition-colors"
+            >
+              {isClearing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              Clear All Predicted
+            </button>
           </div>
 
           {isGenerating && (
@@ -204,6 +268,17 @@ const TimelineGenerationTab: React.FC = () => {
                 <RefreshCw className="w-5 h-5 text-dxc-bright-purple animate-spin" />
                 <span className="text-dxc-bright-purple font-medium">
                   Generating timelines... This may take a few moments.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {isClearing && (
+            <div className="bg-red-50 border border-red-200 rounded-dxc p-4">
+              <div className="flex items-center gap-3">
+                <RefreshCw className="w-5 h-5 text-red-600 animate-spin" />
+                <span className="text-red-600 font-medium">
+                  Clearing predicted timelines... This may take a few moments.
                 </span>
               </div>
             </div>

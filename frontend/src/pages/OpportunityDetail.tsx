@@ -197,9 +197,9 @@ const OpportunityDetail: React.FC = () => {
   // Resource timeline calculation logic
   const handleCalculateTimeline = async () => {
     try {
-      const result = await calculateTimelineMutation.mutateAsync(opportunityId);
+      await calculateTimelineMutation.mutateAsync(opportunityId);
       // Timeline calculation success - data will automatically refresh via React Query
-      console.log('Resource timeline calculated successfully:', result.total_remaining_effort_weeks, 'weeks');
+      // console.log('Resource timeline calculated successfully:', result.total_remaining_effort_weeks, 'weeks');
     } catch (error) {
       console.error('Failed to calculate resource timeline:', error);
     }
@@ -1199,8 +1199,8 @@ const OpportunityDetail: React.FC = () => {
             const tableData = getTimelineTableData(resourceTimeline!);
             
             // Debug: log the actual data structure
-            console.log('Resource Timeline Data:', resourceTimeline);
-            console.log('Table Data:', tableData);
+            // console.log('Resource Timeline Data:', resourceTimeline);
+            // console.log('Table Data:', tableData);
             
             if (!tableData.length) {
               return (
