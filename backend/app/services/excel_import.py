@@ -517,9 +517,13 @@ async def import_line_items_background(file_path: str, task_id: str, import_task
                         fy_rev_beyond_yr2=fy_rev_beyond_yr2
                     )
                     
-                    # Check if line item already exists
+                    # Check if this specific line item already exists (match on opportunity_id + product_name + lead_offering_l2)
                     existing_item = session.exec(
-                        select(OpportunityLineItem).where(OpportunityLineItem.opportunity_id == opportunity_id)
+                        select(OpportunityLineItem).where(
+                            (OpportunityLineItem.opportunity_id == opportunity_id) &
+                            (OpportunityLineItem.product_name == product_name) &
+                            (OpportunityLineItem.lead_offering_l2 == lead_offering_l2)
+                        )
                     ).first()
                     
                     if existing_item:
@@ -527,18 +531,18 @@ async def import_line_items_background(file_path: str, task_id: str, import_task
                         update_fields = [
                             "offering_tcv", "offering_abr", "offering_iyr", "offering_iqr",
                             "offering_margin", "offering_margin_percentage", "decision_date", "master_period",
-                            "lead_offering_l2", "internal_service", "simplified_offering", "product_name",
+                            "internal_service", "simplified_offering",
                             "first_year_q1_rev", "first_year_q2_rev", "first_year_q3_rev", "first_year_q4_rev",
                             "first_year_fy_rev", "second_year_q1_rev", "second_year_q2_rev", "second_year_q3_rev",
                             "second_year_q4_rev", "second_year_fy_rev", "fy_rev_beyond_yr2"
                         ]
                         for field in update_fields:
                             setattr(existing_item, field, getattr(line_item, field))
-                        logger.info("Updated existing line item", opportunity_id=opportunity_id)
+                        logger.info("Updated existing line item", opportunity_id=opportunity_id, product_name=product_name)
                     else:
                         # Add new line item
                         session.add(line_item)
-                        logger.info("Created new line item", opportunity_id=opportunity_id)
+                        logger.info("Created new line item", opportunity_id=opportunity_id, product_name=product_name)
                     
                     task.processed_rows = idx + 1
                     task.progress = int((idx + 1) / task.total_rows * 100)

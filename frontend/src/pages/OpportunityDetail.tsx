@@ -1441,9 +1441,6 @@ const OpportunityDetail: React.FC = () => {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Lead Offering
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Internal Service
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1467,9 +1464,6 @@ const OpportunityDetail: React.FC = () => {
                           
                           return (
                             <tr key={item.id || index} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {item.lead_offering_l2 || 'N/A'}
-                              </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 {item.internal_service || 'N/A'}
                               </td>
