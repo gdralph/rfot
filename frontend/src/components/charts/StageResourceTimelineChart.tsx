@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -54,12 +54,16 @@ const useStageResourceTimeline = (options: {
   filters?: any;
 }) => {
   return useQuery({
-    queryKey: ['stage-resource-timeline', options.startDate?.toISOString(), options.endDate?.toISOString(), options.timePeriod, options.filters],
-    queryFn: () => api.getStageResourceTimeline(options),
+    queryKey: ['stage-resource-timeline', options.startDate?.toISOString(), options.endDate?.toISOString(), options.timePeriod, JSON.stringify(options.filters)],
+    queryFn: () => {
+      console.log('🌐 API Call: getStageResourceTimeline with options:', options);
+      return api.getStageResourceTimeline(options);
+    },
     enabled: true,
-    staleTime: 300000, // 5 minutes
-    gcTime: 600000, // 10 minutes
+    staleTime: 0, // Force fresh data on every call
+    gcTime: 10000, // 10 seconds - very short cache
     refetchOnWindowFocus: false,
+    retry: false, // Don't retry on error to see failures quickly
   });
 };
 
@@ -97,12 +101,33 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
     return { startDate: start, endDate: end };
   }, [dateRange]);
 
-  const { data, isLoading, error } = useStageResourceTimeline({
+  const { data, isLoading, error, refetch } = useStageResourceTimeline({
     startDate,
     endDate,
     timePeriod,
     filters,
   });
+
+  // Debug effect to see when time period changes
+  useEffect(() => {
+    console.log('📊 StageResourceTimelineChart: Time period changed to:', timePeriod);
+    console.log('📊 StageResourceTimelineChart: Date range:', dateRange);
+    console.log('📊 StageResourceTimelineChart: External filters from dashboard:', filters);
+    console.log('📊 StageResourceTimelineChart: API call params:', { startDate, endDate, timePeriod, filters });
+  }, [timePeriod, dateRange, startDate, endDate, filters]);
+
+  // Debug effect to see when data changes
+  useEffect(() => {
+    if (data) {
+      console.log('📈 StageResourceTimelineChart: Data received for timePeriod:', timePeriod);
+      console.log('📈 StageResourceTimelineChart: Total periods in forecast:', data.monthly_forecast?.length);
+      console.log('📈 StageResourceTimelineChart: Total opportunities processed:', data.total_opportunities_processed);
+      if (data.monthly_forecast?.length > 0) {
+        // console.log('📈 StageResourceTimelineChart: First few periods:', data.monthly_forecast.slice(0, 3).map((p: any) => p.period));
+        console.log('📈 StageResourceTimelineChart: First period example:', data.monthly_forecast[0]);
+      }
+    }
+  }, [data, timePeriod]);
 
   // Create color mapping for service line + stage combinations
   // const getStageColor = (stage: SalesStage): string => {
@@ -233,7 +258,14 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
                     margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#D9D9D6" />
-                    <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+                    <XAxis 
+                      dataKey="period" 
+                      tick={{ fontSize: 12 }} 
+                      interval="preserveStartEnd"
+                      angle={timePeriod === 'week' ? -45 : 0}
+                      textAnchor={timePeriod === 'week' ? 'end' : 'middle'}
+                      height={timePeriod === 'week' ? 80 : 60}
+                    />
                     <YAxis 
                       tick={{ fontSize: 12 }} 
                       label={{ value: 'FTE', angle: -90, position: 'insideLeft' }} 
@@ -253,7 +285,7 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
                           `${stageInfo?.label || `Stage ${name}`}`
                         ];
                       }}
-                      labelFormatter={(label) => `Period: ${label}`}
+                      labelFormatter={(label) => `${label} (${timePeriod}ly view)`}
                     />
                     <Legend 
                       wrapperStyle={{ paddingTop: '20px' }}
@@ -315,41 +347,61 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
         <div className="flex items-center gap-3 mb-4 sm:mb-0">
           <Calendar className="w-6 h-6 text-dxc-bright-purple" />
-          <h3 className="text-xl font-semibold text-dxc-dark-gray">
-            Resource Timeline by Current Opportunity Stage
-          </h3>
+          <div>
+            <h3 className="text-xl font-semibold text-dxc-dark-gray flex items-center gap-2">
+              Resource Timeline by Current Opportunity Stage
+              {isLoading && (
+                <div className="w-4 h-4 border-2 border-dxc-bright-purple border-t-transparent rounded-full animate-spin"></div>
+              )}
+            </h3>
+            <p className="text-sm text-dxc-gray mt-1">
+              Viewing by <span className="font-medium capitalize">{timePeriod}</span>s • 
+              Range: {dateRange === 'all' ? 'All data' : dateRange.toUpperCase()}
+            </p>
+          </div>
         </div>
         
         {/* Controls */}
         <div className="flex flex-wrap gap-2">
           {/* Time Period Selector */}
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
             {(['week', 'month', 'quarter'] as const).map(period => (
               <button
                 key={period}
                 onClick={() => setTimePeriod(period)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                disabled={isLoading}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
                   timePeriod === period
-                    ? 'bg-white text-dxc-bright-purple shadow-sm'
-                    : 'text-dxc-gray hover:text-dxc-dark-gray'
-                }`}
+                    ? 'bg-dxc-bright-purple text-white shadow-md'
+                    : 'text-dxc-gray hover:text-dxc-dark-gray hover:bg-gray-200'
+                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {period.charAt(0).toUpperCase() + period.slice(1)}s
               </button>
             ))}
           </div>
+          
+          {/* Debug Manual Refetch Button */}
+          <button
+            onClick={() => refetch()}
+            className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+            title="Manual refetch for debugging"
+          >
+            🔄 Refetch
+          </button>
 
           {/* Date Range Selector */}
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
             {(['3m', '6m', '12m', 'all'] as const).map(range => (
               <button
                 key={range}
                 onClick={() => setDateRange(range)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                disabled={isLoading}
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
                   dateRange === range
-                    ? 'bg-white text-dxc-bright-purple shadow-sm'
-                    : 'text-dxc-gray hover:text-dxc-dark-gray'
-                }`}
+                    ? 'bg-dxc-bright-teal text-white shadow-md'
+                    : 'text-dxc-gray hover:text-dxc-dark-gray hover:bg-gray-200'
+                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {range === 'all' ? 'All' : range.toUpperCase()}
               </button>

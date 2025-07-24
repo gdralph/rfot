@@ -254,29 +254,38 @@ const ServiceLineResourceTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Service Line Tabs */}
-      <div className="flex justify-center">
-        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
-          <button
-            onClick={() => setActiveServiceLine('MW')}
-            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-              activeServiceLine === 'MW'
-                ? 'bg-dxc-purple text-white shadow-sm'
-                : 'text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            MW (Modern Workplace)
-          </button>
-          <button
-            onClick={() => setActiveServiceLine('ITOC')}
-            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-              activeServiceLine === 'ITOC'
-                ? 'bg-dxc-purple text-white shadow-sm'
-                : 'text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            ITOC (Infrastructure & Cloud)
-          </button>
+      {/* Service Line Tabs - Compact V2 Style */}
+      <div className="bg-white rounded-lg border p-3 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-dxc-bright-purple" />
+            <span className="text-sm font-medium text-gray-700">Service Line Configuration</span>
+          </div>
+          <div className="flex bg-gray-100 rounded p-1">
+            <button
+              onClick={() => setActiveServiceLine('MW')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                activeServiceLine === 'MW'
+                  ? 'bg-dxc-bright-purple text-white shadow-sm'
+                  : 'text-gray-600 hover:text-dxc-bright-purple hover:bg-gray-50'
+              }`}
+            >
+              MW
+            </button>
+            <button
+              onClick={() => setActiveServiceLine('ITOC')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                activeServiceLine === 'ITOC'
+                  ? 'bg-dxc-bright-purple text-white shadow-sm'
+                  : 'text-gray-600 hover:text-dxc-bright-purple hover:bg-gray-50'
+              }`}
+            >
+              ITOC
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-gray-500">
+          Configure TCV categories and FTE requirements for {activeServiceLine === 'MW' ? 'Modern Workplace' : 'Infrastructure & Cloud'} service line
         </div>
       </div>
 

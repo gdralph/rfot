@@ -497,7 +497,7 @@ const OpportunitiesV2: React.FC = () => {
               { key: 'close_date', label: 'Decision Date' },
               { key: 'assigned_resource', label: 'Owner' }
             ]}
-            onRowClick={(opportunity) => navigate(`/opportunity/${opportunity.id}`)}
+            onRowClick={(opportunity) => navigate(`/v2/opportunity/${opportunity.id}`)}
             maxHeight="600px"
           />
         </div>
@@ -509,7 +509,7 @@ const OpportunitiesV2: React.FC = () => {
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
                   <Link 
-                    to={`/opportunities/${opportunity.id || 0}`}
+                    to={`/v2/opportunity/${opportunity.id || 0}`}
                     className="font-medium text-dxc-bright-purple hover:text-dxc-dark-purple text-sm"
                   >
                     {opportunity.name}
@@ -562,7 +562,7 @@ const OpportunitiesV2: React.FC = () => {
                 </span>
                 <div className="flex items-center gap-1">
                   <Link 
-                    to={`/opportunities/${opportunity.id || 0}`}
+                    to={`/v2/opportunity/${opportunity.id || 0}`}
                     className="p-1 text-dxc-bright-purple hover:text-dxc-dark-purple"
                   >
                     <Eye className="w-3 h-3" />

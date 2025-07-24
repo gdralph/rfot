@@ -6,25 +6,42 @@ const UISwitcher: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   
-  const isV2 = location.pathname.startsWith('/v2') || location.pathname.startsWith('/mockup');
+  const isV1 = location.pathname.startsWith('/v1');
+  const isV2 = !isV1; // Default is now V2
   
   const toggleVersion = () => {
     if (isV2) {
-      // Switch to V1 (original)
-      if (location.pathname.includes('dashboard') || location.pathname === '/v2') {
-        navigate('/');
-      } else if (location.pathname.includes('opportunities')) {
-        navigate('/opportunities');
+      // Switch to V1 (legacy)
+      if (location.pathname === '/' || location.pathname.includes('dashboard') || location.pathname === '/v2') {
+        navigate('/v1/dashboard');
+      } else if (location.pathname.includes('opportunities') && !location.pathname.includes('opportunity/')) {
+        navigate('/v1/opportunities');
+      } else if (location.pathname.includes('opportunity/')) {
+        const id = location.pathname.split('/').pop();
+        navigate(`/v1/opportunity/${id}`);
+      } else if (location.pathname.includes('config')) {
+        navigate('/v1/config');
+      } else if (location.pathname.includes('reports')) {
+        navigate('/v1/reports');
+      } else if (location.pathname.includes('import')) {
+        navigate('/v1/import');
       }
-      // Add more mappings as we build V2 pages
     } else {
-      // Switch to V2 (enhanced)
-      if (location.pathname === '/') {
-        navigate('/v2/dashboard');
-      } else if (location.pathname === '/opportunities') {
-        navigate('/v2/opportunities');
+      // Switch to V2 (current default)
+      if (location.pathname.includes('dashboard') || location.pathname === '/v1') {
+        navigate('/');
+      } else if (location.pathname.includes('opportunities') && !location.pathname.includes('opportunity/')) {
+        navigate('/opportunities');
+      } else if (location.pathname.includes('opportunity/')) {
+        const id = location.pathname.split('/').pop();
+        navigate(`/opportunity/${id}`);
+      } else if (location.pathname.includes('config')) {
+        navigate('/config');
+      } else if (location.pathname.includes('reports')) {
+        navigate('/reports');
+      } else if (location.pathname.includes('import')) {
+        navigate('/import');
       }
-      // Add more mappings as we build V2 pages
     }
   };
 
@@ -40,18 +57,18 @@ const UISwitcher: React.FC = () => {
             {isV2 ? (
               <>
                 <ToggleRight className="w-4 h-4 text-dxc-bright-purple" />
-                <span className="text-dxc-bright-purple">Enhanced V2</span>
+                <span className="text-dxc-bright-purple">Current UI</span>
               </>
             ) : (
               <>
                 <ToggleLeft className="w-4 h-4 text-gray-500" />
-                <span className="text-gray-600">Original V1</span>
+                <span className="text-gray-600">Legacy V1</span>
               </>
             )}
           </button>
         </div>
         <div className="text-xs text-gray-500 mt-1">
-          {isV2 ? 'Condensed UI with enhanced data density' : 'Original UI with standard layout'}
+          {isV2 ? 'Enhanced data density and condensed layout' : 'Original UI with standard layout'}
         </div>
       </div>
     </div>

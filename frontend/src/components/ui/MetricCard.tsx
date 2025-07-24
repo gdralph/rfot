@@ -11,6 +11,7 @@ interface MetricCardProps {
   };
   subtitle?: string;
   onClick?: () => void;
+  className?: string;
 }
 
 const MetricCard: React.FC<MetricCardProps> = ({
@@ -20,11 +21,12 @@ const MetricCard: React.FC<MetricCardProps> = ({
   iconColor = 'text-dxc-bright-purple',
   trend,
   subtitle,
-  onClick
+  onClick,
+  className = ''
 }) => {
   return (
     <div 
-      className={`metric-card-compact ${onClick ? 'cursor-pointer hover:scale-105 transition-transform' : ''}`}
+      className={`metric-card-compact ${onClick ? 'cursor-pointer hover:scale-105 transition-transform' : ''} ${className}`}
       onClick={onClick}
     >
       <div className="flex items-center gap-2 mb-1">

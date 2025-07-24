@@ -7,18 +7,17 @@ import Opportunities from './pages/Opportunities';
 import OpportunityDetail from './pages/OpportunityDetail';
 import Import from './pages/Import';
 import Config from './pages/Config';
-import Forecast from './pages/Forecast';
 import Reports from './pages/Reports';
 import ErrorBoundary from './components/ErrorBoundary';
 
-// Mockup imports
-import DashboardMockup from './pages/DashboardMockup';
-import OpportunitiesMockup from './pages/OpportunitiesMockup';
-import OpportunityDetailMockup from './pages/OpportunityDetailMockup';
 
 // V2 Enhanced Components
 import DashboardV2 from './pages/DashboardV2';
 import OpportunitiesV2 from './pages/OpportunitiesV2';
+import OpportunityDetailV2 from './pages/OpportunityDetailV2';
+import ConfigV2 from './pages/ConfigV2';
+import ReportsV2 from './pages/ReportsV2';
+import ImportV2 from './pages/ImportV2';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -39,24 +38,31 @@ function App() {
           <Layout>
             <ErrorBoundary>
               <Routes>
-                {/* Enhanced V2 Routes - New UI */}
+                {/* Main Routes - Now V2 Enhanced UI (Default) */}
+                <Route path="/" element={<DashboardV2 />} />
+                <Route path="/opportunities" element={<OpportunitiesV2 />} />
+                <Route path="/opportunity/:id" element={<OpportunityDetailV2 />} />
+                <Route path="/reports" element={<ReportsV2 />} />
+                <Route path="/import" element={<ImportV2 />} />
+                <Route path="/config" element={<ConfigV2 />} />
+                
+                {/* V2 Routes - Backward Compatibility */}
                 <Route path="/v2" element={<DashboardV2 />} />
                 <Route path="/v2/dashboard" element={<DashboardV2 />} />
                 <Route path="/v2/opportunities" element={<OpportunitiesV2 />} />
+                <Route path="/v2/opportunity/:id" element={<OpportunityDetailV2 />} />
+                <Route path="/v2/config" element={<ConfigV2 />} />
+                <Route path="/v2/reports" element={<ReportsV2 />} />
+                <Route path="/v2/import" element={<ImportV2 />} />
                 
-                {/* Original Routes - Current UI */}
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/opportunities" element={<Opportunities />} />
-                <Route path="/opportunity/:id" element={<OpportunityDetail />} />
-                <Route path="/forecast" element={<Forecast />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/import" element={<Import />} />
-                <Route path="/config" element={<Config />} />
-                
-                {/* Mockup Routes - For Reference */}
-                <Route path="/mockup/dashboard" element={<DashboardMockup />} />
-                <Route path="/mockup/opportunities" element={<OpportunitiesMockup />} />
-                <Route path="/mockup/opportunity-detail" element={<OpportunityDetailMockup />} />
+                {/* Legacy V1 Routes - Original UI */}
+                <Route path="/v1" element={<Dashboard />} />
+                <Route path="/v1/dashboard" element={<Dashboard />} />
+                <Route path="/v1/opportunities" element={<Opportunities />} />
+                <Route path="/v1/opportunity/:id" element={<OpportunityDetail />} />
+                <Route path="/v1/reports" element={<Reports />} />
+                <Route path="/v1/import" element={<Import />} />
+                <Route path="/v1/config" element={<Config />} />
                 
                 <Route path="*" element={<div className="p-6 text-center"><h2 className="text-dxc-slide mb-4">Page Not Found</h2><p>The requested page could not be found.</p></div>} />
               </Routes>

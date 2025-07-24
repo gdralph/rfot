@@ -42,6 +42,7 @@ const TCVServiceLineTimelineChart: React.FC<TCVServiceLineTimelineChartProps> = 
   const [dateRange, setDateRange] = useState<'3m' | '6m' | '12m' | 'all'>('all');
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('month');
 
+
   // Get ALL opportunities data with current filters (no pagination limits)
   const { data: opportunities, isLoading, error } = useAllOpportunities(filters);
 
@@ -101,10 +102,12 @@ const TCVServiceLineTimelineChart: React.FC<TCVServiceLineTimelineChartProps> = 
       let includeInRange = true;
       
       if (dateRange !== 'all') {
-        const monthsBack = dateRange === '3m' ? 3 : dateRange === '6m' ? 6 : 12;
+        const monthsForward = dateRange === '3m' ? 3 : dateRange === '6m' ? 6 : 12;
         const cutoffDate = new Date();
-        cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
-        includeInRange = decisionDate >= cutoffDate;
+        cutoffDate.setMonth(cutoffDate.getMonth() + monthsForward);
+        
+        // Include opportunities with decision dates within the next X months from today
+        includeInRange = decisionDate <= cutoffDate;
       }
 
       if (!includeInRange) return;
@@ -386,6 +389,9 @@ const TCVServiceLineTimelineChart: React.FC<TCVServiceLineTimelineChartProps> = 
         <div className="flex items-center gap-3 mb-4 sm:mb-0">
           <DollarSign className="w-6 h-6 text-dxc-bright-purple" />
           <h3 className="text-xl font-semibold text-dxc-dark-gray">TCV Service Line Timeline</h3>
+          <span className="text-sm px-2 py-1 bg-dxc-bright-purple text-white rounded-full">
+            {dateRange === 'all' ? 'All Time' : `Last ${dateRange.toUpperCase()}`}
+          </span>
         </div>
         
         {/* Controls */}
@@ -396,11 +402,12 @@ const TCVServiceLineTimelineChart: React.FC<TCVServiceLineTimelineChartProps> = 
               <button
                 key={period}
                 onClick={() => setTimePeriod(period)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors cursor-pointer ${
                   timePeriod === period
-                    ? 'bg-white text-dxc-bright-purple shadow-sm'
-                    : 'text-dxc-gray hover:text-dxc-dark-gray'
+                    ? 'bg-dxc-bright-purple text-white shadow-sm font-semibold'
+                    : 'text-gray-600 hover:text-dxc-bright-purple hover:bg-gray-50'
                 }`}
+                type="button"
               >
                 {period.charAt(0).toUpperCase() + period.slice(1)}s
               </button>
@@ -413,11 +420,12 @@ const TCVServiceLineTimelineChart: React.FC<TCVServiceLineTimelineChartProps> = 
               <button
                 key={range}
                 onClick={() => setDateRange(range)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors cursor-pointer ${
                   dateRange === range
-                    ? 'bg-white text-dxc-bright-purple shadow-sm'
-                    : 'text-dxc-gray hover:text-dxc-dark-gray'
+                    ? 'bg-dxc-bright-purple text-white shadow-sm font-semibold'
+                    : 'text-gray-600 hover:text-dxc-bright-purple hover:bg-gray-50'
                 }`}
+                type="button"
               >
                 {range === 'all' ? 'All' : range.toUpperCase()}
               </button>

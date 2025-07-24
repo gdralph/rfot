@@ -440,6 +440,9 @@ class ApiClient {
     if (options.endDate) params.append('end_date', options.endDate.toISOString());
     if (options.timePeriod) params.append('time_period', options.timePeriod);
     
+    console.log('🔧 API getStageResourceTimeline - timePeriod:', options.timePeriod);
+    console.log('🔧 API getStageResourceTimeline - full params:', params.toString());
+    
     // Add filters from the filters object
     if (options.filters) {
       if (options.filters.stage) {
@@ -473,7 +476,9 @@ class ApiClient {
     }
     
     const query = params.toString() ? `?${params.toString()}` : '';
-    return this.request(`/api/resources/portfolio/stage-resource-timeline${query}`);
+    const finalUrl = `/api/resources/portfolio/stage-resource-timeline${query}`;
+    console.log('🚀 Final API URL:', finalUrl);
+    return this.request(finalUrl);
   }
 
   // Timeline Generation APIs

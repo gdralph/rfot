@@ -13,7 +13,6 @@ const Navigation = () => {
   const navItems = [
     { path: '/', label: 'Dashboard', icon: Home },
     { path: '/opportunities', label: 'Opportunities', icon: Database },
-    { path: '/forecast', label: 'Forecast', icon: BarChart3 },
     { path: '/reports', label: 'Reports', icon: FileText },
     { path: '/import', label: 'Import', icon: Upload },
     { path: '/config', label: 'Config', icon: Settings },

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is the **Resource Forecasting & Opportunity Tracker**, a DXC Technology internal tool for managing Salesforce opportunity data, resource allocation, and forecasting across service lines (CES, INS, BPS, SEC, ITOC, MW). The application features Excel import capabilities, interactive dashboards, and follows DXC's corporate branding standards.
+This is the **Resource Forecasting & Opportunity Tracker**, a DXC Technology internal tool for managing Salesforce opportunity data, resource allocation, and analytics across service lines (CES, INS, BPS, SEC, ITOC, MW). The application features Excel import capabilities, interactive dashboards, and follows DXC's corporate branding standards with an enhanced V2 UI as the default experience.
 
 Remember this an app that is looking at effort required by service lines to support the opportunity through it's sales stages so dashboards should recognise that is the main persona
 
@@ -16,7 +16,7 @@ Remember this an app that is looking at effort required by service lines to supp
 
 **Key Architectural Patterns:**
 - **Backend**: Uses SQLModel for type-safe ORM with Pydantic validation, background task processing for Excel imports, and structured logging with structlog
-- **Frontend**: TanStack Query for server state management, custom hooks for API interactions, comprehensive DXC-branded component system with custom Tailwind utilities, Recharts for data visualization, advanced configuration management UI
+- **Frontend**: TanStack Query for server state management, custom hooks for API interactions, comprehensive DXC-branded component system with custom Tailwind utilities, Recharts for data visualization, advanced configuration management UI, enhanced V2 UI components as default with legacy V1 fallback
 - **Data Flow**: Excel files → Background processing → SQLite → REST API → React Query → UI components
 
 ## Initial Setup Instructions
@@ -179,7 +179,7 @@ Excel import uses background tasks with progress tracking:
 ## Frontend State Management
 
 - **TanStack Query**: All server state, automatic caching, background updates
-- **Custom Hooks**: Domain-specific hooks (`useOpportunities`, `useForecasts`) encapsulate query logic
+- **Custom Hooks**: Domain-specific hooks (`useOpportunities`, `useResourceTimeline`) encapsulate query logic
 - **Optimistic Updates**: Opportunity edits update cache immediately
 - **Error Boundaries**: Global error handling for API failures
 
@@ -227,14 +227,95 @@ The core business logic revolves around resource timeline calculations:
 - **Build Quality**: Frontend builds successfully with TypeScript strict mode, unused variables prefixed with `_`
 - **Database Migrations**: Alembic migrations manage schema changes, use `python3 -m alembic` prefix
 
+## UI Architecture: V2 Enhanced as Default
+
+**IMPORTANT**: The application now uses **V2 Enhanced UI as the default experience** with legacy V1 pages available for fallback during transition.
+
+### Current UI System (December 2024)
+- **Default Experience**: V2 Enhanced UI serves all main routes (`/`, `/opportunities`, `/config`, etc.)
+- **Legacy Fallback**: Original V1 pages accessible via `/v1/` prefix routes for temporary compatibility
+- **Backward Compatibility**: `/v2/` prefix routes still work for existing bookmarks
+- **UI Switcher**: Bottom-right toggle allows switching between current (V2) and legacy (V1) versions
+
+### V2 Enhanced UI Design Principles (Now Default)
+- **Condensed UI**: Higher information density with compact layouts and smaller text
+- **Enhanced Components**: Specialized MetricCard, CompactTable, and StatusIndicator components
+- **Grid-based Metrics**: Standardized grid layouts (grid-metrics-4, grid-metrics-6) for consistent metric displays
+- **Feature Parity**: Maintains 100% functionality of original pages while improving usability
+- **Data Density**: Optimized for business users who need to see more information quickly
+
+### V2 Component Architecture (Current Default)
+- **Enhanced UI Components**: Located in `components/ui/` directory
+  - `MetricCard`: Condensed metric display with icons, trends, and subtitles
+  - `CompactTable`: Data-dense table with sorting, filtering, and row click handling
+  - `StatusIndicator`: Compact status badges with color coding
+- **V2 Pages**: Located in `pages/` directory with "V2" suffix (but serve main routes)
+  - `DashboardV2`: Condensed dashboard with metric cards and compact charts → serves `/`
+  - `OpportunitiesV2`: Enhanced opportunities list with advanced filtering → serves `/opportunities`
+  - `OpportunityDetailV2`: Comprehensive detail view with tabbed resource analysis → serves `/opportunity/:id`
+  - `ConfigV2`: Streamlined configuration interface with card-based navigation → serves `/config`
+  - `ReportsV2`: Condensed report generation with enhanced export options → serves `/reports`
+  - `ImportV2`: Compact data import interface with enhanced file upload → serves `/import`
+
+### Current Routing Architecture
+**Main Routes (V2 Enhanced - Default):**
+- `/` → DashboardV2 (enhanced dashboard)
+- `/opportunities` → OpportunitiesV2 (enhanced opportunities list)
+- `/opportunity/:id` → OpportunityDetailV2 (enhanced detail view)
+- `/config` → ConfigV2 (enhanced configuration)
+- `/reports` → ReportsV2 (enhanced reports)
+- `/import` → ImportV2 (enhanced import)
+
+**Legacy Routes (V1 Original - Fallback):**
+- `/v1/dashboard` → Dashboard (original)
+- `/v1/opportunities` → Opportunities (original)
+- `/v1/opportunity/:id` → OpportunityDetail (original)
+- `/v1/config` → Config (original)
+- `/v1/reports` → Reports (original)
+- `/v1/import` → Import (original)
+
+**Backward Compatibility Routes:**
+- `/v2/*` routes still work and serve the same V2 components
+
+### UI Switcher Behavior
+- **Current UI**: Shows when on main routes (V2), allows switching to legacy V1
+- **Legacy V1**: Shows when on `/v1/` routes, allows switching back to current (V2)
+- **Navigation**: Main navigation bar always points to current routes (V2)
+- **Future**: UI switcher can be removed once V2 is fully validated
+
+### Development Guidelines for V2 (Current Default)
+1. **All new features** should be built for V2 components first
+2. **Bug fixes** should prioritize V2 components
+3. **Testing** should focus on V2 user experience as primary
+4. **Legacy V1** components are for fallback only, not active development
+5. **Feature Parity**: Any changes to V1 should be reflected in V2
+
+### V2 Styling Guidelines (Current Standard)
+- **Compact Headers**: Smaller text sizes, reduced padding, inline status indicators
+- **Dense Tables**: Smaller font sizes, reduced row height, hover effects for interactivity
+- **Metric Cards**: Consistent icon placement, trend indicators, color-coded values
+- **Responsive Design**: Grid layouts that adapt to screen size with appropriate breakpoints
+- **DXC Branding**: Maintain color palette and typography while increasing density
+
+### Migration Status
+- ✅ **Complete**: V2 is now the default experience
+- ✅ **Navigation**: All main navigation serves V2 pages
+- ✅ **URLs**: Existing bookmarks work the same, just serve enhanced UI
+- ✅ **Fallback**: Legacy V1 pages remain available during transition
+- 🔄 **Future**: Can remove V1 pages and UI switcher when V2 is fully validated
+
 ## Memories
-- Always use the opportunitycategory in the database for category definitions
-- Always use the servicelinestageeffort for resource/fte calculations against opportunities
-- When working with resource timelines, check eligibility first using `_is_opportunity_eligible_for_generation()`
-- Frontend builds cleanly with TypeScript strict mode, unused variables prefixed with `_`, debug statements commented out
-- Backend uses modern FastAPI lifespan events, not deprecated `@app.on_event` handlers
-- Debug scripts (debug_excel.py, update_from_csv.py) removed from codebase
-- Chart components reorganized: active charts in main directory, legacy components in archive/ folder
+- **UI Architecture**: V2 Enhanced UI is now the DEFAULT experience (December 2024)
+  - Main routes (`/`, `/opportunities`, etc.) serve V2 components
+  - Legacy V1 available at `/v1/` prefix routes during transition
+  - UI Switcher allows temporary access to legacy pages
+- **Removed Features**: Forecast pages (both V1 and V2) completely removed from application
+- **Database**: Always use opportunitycategory for category definitions and servicelinestageeffort for resource/FTE calculations
+- **Resource Timelines**: Check eligibility first using `_is_opportunity_eligible_for_generation()`
+- **Code Quality**: Frontend builds cleanly with TypeScript strict mode, unused variables prefixed with `_`, debug statements commented out
+- **Backend**: Uses modern FastAPI lifespan events, not deprecated `@app.on_event` handlers
+- **Components**: Chart components reorganized with active charts in main directory, legacy in archive/ folder
+- **Development Focus**: All new development should target V2 components as they are now the primary user experience
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.
