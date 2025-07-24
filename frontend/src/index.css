@@ -267,6 +267,126 @@
   .dxc-callout {
     @apply bg-purple-50 border-l-4 border-dxc-bright-purple p-4 my-4;
   }
+
+  /* Condensed UI Components for Enhanced Dashboard */
+  .metric-card-compact {
+    @apply bg-white rounded-lg border p-3 shadow-sm hover:shadow-md transition-shadow;
+  }
+
+  .table-compact {
+    @apply w-full text-xs;
+  }
+
+  .table-compact th {
+    @apply px-3 py-2 text-left font-medium text-gray-600 bg-gray-50 border-b;
+  }
+
+  .table-compact td {
+    @apply px-3 py-2 border-b border-gray-100;
+  }
+
+  .table-compact tr:hover {
+    @apply bg-gray-50;
+  }
+
+  .filter-chip {
+    @apply px-2 py-1 text-xs rounded-full font-medium cursor-pointer transition-colors;
+  }
+
+  .filter-chip-active {
+    @apply bg-dxc-bright-purple text-white;
+  }
+
+  .filter-chip-inactive {
+    @apply bg-gray-100 text-gray-700 hover:bg-gray-200;
+  }
+
+  .status-indicator {
+    @apply w-2 h-2 rounded-full flex-shrink-0;
+  }
+
+  .progress-bar-compact {
+    @apply bg-gray-200 rounded-full h-1.5 overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-300;
+  }
+
+  /* Enhanced Tab System */
+  .tab-container-v2 {
+    @apply flex bg-white rounded-lg border shadow-sm overflow-hidden;
+  }
+
+  .tab-button-v2 {
+    @apply flex-1 flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-medium transition-colors border-r border-gray-100 last:border-r-0;
+  }
+
+  .tab-active-v2 {
+    @apply bg-dxc-bright-purple text-white;
+  }
+
+  .tab-inactive-v2 {
+    @apply text-gray-600 hover:text-dxc-bright-purple hover:bg-gray-50;
+  }
+
+  /* Compact Cards for Lists */
+  .compact-card {
+    @apply bg-white rounded-lg border shadow-sm p-4 hover:shadow-md transition-shadow;
+  }
+
+  /* Quick Action Buttons */
+  .quick-action {
+    @apply flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-lg hover:bg-gray-50 transition-colors;
+  }
+
+  .quick-action-primary {
+    @apply bg-dxc-bright-purple text-white hover:bg-dxc-dark-purple;
+  }
+
+  /* Enhanced Chart Containers */
+  .chart-container-compact {
+    @apply bg-white rounded-lg border p-3 shadow-sm;
+  }
+
+  .chart-title-compact {
+    @apply text-sm font-semibold mb-2 text-gray-800;
+  }
+
+  /* Status and Risk Indicators */
+  .risk-low {
+    @apply text-green-600 bg-green-100;
+  }
+
+  .risk-medium {
+    @apply text-yellow-600 bg-yellow-100;
+  }
+
+  .risk-high {
+    @apply text-red-600 bg-red-100;
+  }
+
+  /* Responsive Grid Utilities */
+  .grid-metrics-6 {
+    @apply grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3;
+  }
+
+  .grid-charts-2 {
+    @apply grid grid-cols-1 lg:grid-cols-2 gap-4;
+  }
+
+  /* Loading States */
+  .skeleton {
+    @apply bg-gray-200 rounded animate-pulse;
+  }
+
+  .skeleton-text {
+    @apply skeleton h-4 w-full mb-2;
+  }
+
+  .skeleton-header {
+    @apply skeleton h-6 w-3/4 mb-3;
+  }
 }
 
 /* Custom scrollbar */

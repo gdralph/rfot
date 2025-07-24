@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { BarChart3, Database, Settings, Upload, Home, FileText } from 'lucide-react';
+import UISwitcher from './UISwitcher';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -68,6 +69,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
         </div>
       </main>
+      
+      {/* UI Version Switcher */}
+      <UISwitcher />
       
       <footer className="bg-dxc-dark-gray text-white py-4 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

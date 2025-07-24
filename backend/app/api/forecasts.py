@@ -313,13 +313,28 @@ async def get_service_line_forecast(
     }
     
     if service_line:
-        forecast["filtered_service_line"] = {
-            "name": service_line,
-            "revenue": service_line_totals.get(service_line, 0),
-            "percentage": service_line_percentages.get(service_line, 0),
-            "opportunities": service_line_counts.get(service_line, 0),
-            "avg_deal_size": service_line_avg_deal_size.get(service_line, 0)
-        }
+        # Handle both single service line and list of service lines
+        if isinstance(service_line, list):
+            # For multiple service lines, aggregate the data
+            filtered_data = []
+            for sl in service_line:
+                filtered_data.append({
+                    "name": sl,
+                    "revenue": service_line_totals.get(sl, 0),
+                    "percentage": service_line_percentages.get(sl, 0),
+                    "opportunities": service_line_counts.get(sl, 0),
+                    "avg_deal_size": service_line_avg_deal_size.get(sl, 0)
+                })
+            forecast["filtered_service_lines"] = filtered_data
+        else:
+            # Single service line (backward compatibility)
+            forecast["filtered_service_line"] = {
+                "name": service_line,
+                "revenue": service_line_totals.get(service_line, 0),
+                "percentage": service_line_percentages.get(service_line, 0),
+                "opportunities": service_line_counts.get(service_line, 0),
+                "avg_deal_size": service_line_avg_deal_size.get(service_line, 0)
+            }
     
     logger.info("Generated service line forecast", forecast=forecast)
     return forecast

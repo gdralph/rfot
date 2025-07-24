@@ -34,7 +34,7 @@ def parse_multi_param(param: Optional[Union[str, List[str]]]) -> List[str]:
 async def get_opportunities(
     session: Session = Depends(get_session),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: Optional[int] = Query(None, ge=1, le=50000),
     stage: Optional[Union[str, List[str]]] = Query(None),
     status: Optional[Union[str, List[str]]] = Query(None),
     category: Optional[Union[str, List[str]]] = Query(None),
@@ -126,7 +126,9 @@ async def get_opportunities(
             (Opportunity.sales_org_l1.contains(search))
         )
     
-    statement = statement.offset(skip).limit(limit)
+    statement = statement.offset(skip)
+    if limit is not None:
+        statement = statement.limit(limit)
     opportunities = session.exec(statement).all()
     
     logger.info("Retrieved opportunities", count=len(opportunities))
