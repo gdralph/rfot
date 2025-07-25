@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOpportunity, useOpportunityLineItems, useUpdateOpportunity } from '../hooks/useOpportunities';
 import { useCategories } from '../hooks/useConfig';
@@ -248,6 +248,341 @@ const OpportunityDetailV2: React.FC = () => {
 
   // Tab state for Resource Analysis section
   const [activeResourceTab, setActiveResourceTab] = useState<'timeline' | 'profile' | 'line-items' | 'revenue'>('timeline');
+
+  // Table data calculation - extracted to component level
+  const tableData = useMemo(() => {
+    if (!resourceTimeline?.service_line_timelines) return [];
+
+    const result: any[] = [];
+    
+    Object.entries(resourceTimeline.service_line_timelines).forEach(([serviceLine, stages]) => {
+      stages.forEach((stage: any) => {
+        result.push({
+          service_line: serviceLine,
+          stage_name: stage.stage_name,
+          duration_weeks: stage.duration_weeks,
+          fte_required: stage.fte_required,
+          total_effort_weeks: stage.total_effort_weeks,
+          stage_start_date: stage.stage_start_date,
+          stage_end_date: stage.stage_end_date,
+          resource_status: stage.resource_status || 'Predicted'
+        });
+      });
+    });
+    
+    return result;
+  }, [resourceTimeline]);
+
+  // Chart data calculation - extracted to component level
+  const chartData = useMemo(() => {
+    if (!tableData.length) return [];
+    
+    let result = [];
+    if (timePeriod === 'stage') {
+      // Group by stage and service line (stacked view)
+      const stageMap = new Map<string, Record<string, number>>();
+      
+      tableData.forEach(item => {
+        const stage = item.stage_name;
+        const serviceLine = item.service_line;
+        
+        if (!stageMap.has(stage)) {
+          stageMap.set(stage, {});
+        }
+        
+        const stageData = stageMap.get(stage)!;
+        stageData[serviceLine] = (stageData[serviceLine] || 0) + item.fte_required;
+      });
+      
+      // Convert to chart data format
+      result = Array.from(stageMap.entries()).map(([stage, serviceLineData]) => ({
+        stage,
+        ...serviceLineData
+      }));
+    } else {
+      // Time-based view: create concurrent timeline
+      const timelineMap = new Map<string, Record<string, any>>();
+      const serviceLines = new Set<string>();
+      
+      // Collect all service lines
+      tableData.forEach(item => {
+        serviceLines.add(item.service_line);
+      });
+      
+      // Determine interval and date formatting based on time period
+      let intervalDays: number;
+      let formatOptions: Intl.DateTimeFormatOptions;
+      
+      switch (timePeriod) {
+        case 'week':
+          intervalDays = 7;
+          formatOptions = { month: 'short', day: 'numeric' };
+          break;
+        case 'month':
+          intervalDays = 30;
+          formatOptions = { month: 'short', year: '2-digit' };
+          break;
+        case 'quarter':
+          intervalDays = 90;
+          formatOptions = { year: 'numeric' };
+          break;
+        default:
+          intervalDays = 7;
+          formatOptions = { month: 'short', day: 'numeric' };
+      }
+      
+      tableData.forEach(item => {
+        const serviceLine = item.service_line;
+        const startDate = new Date(item.stage_start_date || Date.now());
+        const endDate = new Date(item.stage_end_date || Date.now());
+        
+        // Create time interval points between start and end date
+        const currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+          let dateKey: string;
+          let periodLabel: string;
+          
+          if (timePeriod === 'quarter') {
+            // For quarterly, group by quarter
+            const year = currentDate.getFullYear();
+            const quarter = Math.floor(currentDate.getMonth() / 3) + 1;
+            dateKey = `${year}-Q${quarter}`;
+            periodLabel = `Q${quarter} ${year.toString().slice(-2)}`;
+          } else if (timePeriod === 'month') {
+            // For monthly, group by month
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            dateKey = `${year}-${month.toString().padStart(2, '0')}`;
+            periodLabel = currentDate.toLocaleDateString('en-US', formatOptions);
+          } else {
+            // For weekly, group by week
+            const weekStart = new Date(currentDate);
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week
+            dateKey = weekStart.toISOString().split('T')[0];
+            // Make weekly labels more compact: use M/D format
+            periodLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
+          }
+          
+          if (!timelineMap.has(dateKey)) {
+            const entry: Record<string, any> = { 
+              date: dateKey, 
+              period: periodLabel,
+              dateKey: dateKey  // Store the date key for stage mapping
+            };
+            // Initialize all service lines to 0
+            Array.from(serviceLines).forEach(sl => {
+              entry[sl] = 0;
+            });
+            timelineMap.set(dateKey, entry);
+          }
+          
+          const entry = timelineMap.get(dateKey)!;
+          entry[serviceLine] = (entry[serviceLine] || 0) + Number(item.fte_required);
+          
+          currentDate.setDate(currentDate.getDate() + intervalDays);
+        }
+      });
+      
+      // Convert to array and sort by date
+      result = Array.from(timelineMap.values())
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+        .map(item => ({
+          ...item,
+          period: item.period
+        }));
+    }
+    
+    return result;
+  }, [tableData, timePeriod]);
+
+  // Date markers calculation - moved to top level to follow Rules of Hooks
+  const dateMarkers = useMemo(() => {
+    if (timePeriod === 'stage' || !chartData.length || !resourceTimeline) return null;
+
+    const calculateDatePosition = (targetDate: Date) => {
+      if (!chartData.length) return null;
+      
+      // Use the chart's actual visible time range based on the current time period
+      // This changes when you switch between week/month/quarter
+      
+      let chartStartDate: Date, chartEndDate: Date;
+      
+      // Get the date range that corresponds to what's actually shown in the chart
+      // First, let's log what periods we're actually getting
+      console.log('📊 Chart periods for', timePeriod + ':', chartData.map(d => d.period));
+      
+      if (timePeriod === 'quarter') {
+        // Parse quarter periods - try multiple formats
+        const parseQuarterPeriod = (periodStr: string) => {
+          // Try "Q1 25" format
+          let match = periodStr.match(/Q(\d)\s+(\d{2})/);
+          if (match) {
+            const quarter = parseInt(match[1]);
+            const year = 2000 + parseInt(match[2]);
+            return new Date(year, (quarter - 1) * 3, 1);
+          }
+          
+          // Try "Q1 2025" format  
+          match = periodStr.match(/Q(\d)\s+(\d{4})/);
+          if (match) {
+            const quarter = parseInt(match[1]);
+            const year = parseInt(match[2]);
+            return new Date(year, (quarter - 1) * 3, 1);
+          }
+          
+          // Try other potential formats
+          console.log('⚠️ Could not parse quarter period:', periodStr);
+          return null;
+        };
+        
+        const firstQuarter = parseQuarterPeriod(chartData[0].period);
+        const lastQuarter = parseQuarterPeriod(chartData[chartData.length - 1].period);
+        
+        if (!firstQuarter || !lastQuarter) {
+          console.log('❌ Failed to parse quarter periods');
+          return null;
+        }
+        
+        chartStartDate = firstQuarter;
+        chartEndDate = new Date(lastQuarter.getFullYear(), lastQuarter.getMonth() + 3, 0);
+        
+      } else if (timePeriod === 'month') {
+        // Parse month periods like "Jan 25"
+        const parseMonthPeriod = (periodStr: string) => {
+          try {
+            // Add "1, " to make it "Jan 1, 25" which Date can parse
+            const dateStr = periodStr.replace(/(\w{3})\s+(\d{2})/, '$1 1, 20$2');
+            const date = new Date(dateStr);
+            return new Date(date.getFullYear(), date.getMonth(), 1);
+          } catch {
+            console.log('⚠️ Could not parse month period:', periodStr);
+            return null;
+          }
+        };
+        
+        const firstMonth = parseMonthPeriod(chartData[0].period);
+        const lastMonth = parseMonthPeriod(chartData[chartData.length - 1].period);
+        
+        if (!firstMonth || !lastMonth) {
+          console.log('❌ Failed to parse month periods');
+          return null;
+        }
+        
+        chartStartDate = firstMonth;
+        chartEndDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0);
+        
+      } else {
+        // Week periods like "7/21" (month/day) or other formats
+        const parseWeekPeriod = (periodStr: string, isFirst: boolean = false) => {
+          try {
+            // Try M/D format like "7/21"
+            if (periodStr.includes('/')) {
+              const [month, day] = periodStr.split('/').map(n => parseInt(n));
+              if (!isNaN(month) && !isNaN(day)) {
+                // Smart year handling: 
+                // If it's the first period, start with current year
+                // If month goes backwards, we've crossed into next year
+                let year = new Date().getFullYear();
+                
+                if (!isFirst && chartData.length > 0) {
+                  // Check if we need to handle year transition
+                  const firstPeriod = chartData[0].period;
+                  if (firstPeriod.includes('/')) {
+                    const [firstMonth] = firstPeriod.split('/').map(n => parseInt(n));
+                    // If current month is less than first month, we've wrapped to next year
+                    if (month < firstMonth) {
+                      year = new Date().getFullYear() + 1;
+                    }
+                  }
+                }
+                
+                return new Date(year, month - 1, day);
+              }
+            }
+            
+            // Try other formats if needed
+            console.log('⚠️ Could not parse week period:', periodStr);
+            return null;
+          } catch (e) {
+            console.log('⚠️ Error parsing week period:', periodStr, e);
+            return null;
+          }
+        };
+        
+        const firstWeek = parseWeekPeriod(chartData[0].period, true);
+        const lastWeek = parseWeekPeriod(chartData[chartData.length - 1].period, false);
+        
+        console.log('📅 Week parsing results:', {
+          firstPeriod: chartData[0].period,
+          lastPeriod: chartData[chartData.length - 1].period,
+          firstWeek,
+          lastWeek,
+          currentYear: new Date().getFullYear()
+        });
+        
+        if (!firstWeek || !lastWeek) {
+          console.log('❌ Failed to parse week periods - using fallback');
+          // Fallback: use current date +/- some weeks
+          const now = new Date();
+          chartStartDate = new Date(now);
+          chartStartDate.setDate(chartStartDate.getDate() - (chartData.length * 3.5)); // Rough estimate
+          chartEndDate = new Date(now);
+          chartEndDate.setDate(chartEndDate.getDate() + (chartData.length * 3.5));
+        } else {
+          chartStartDate = firstWeek;
+          chartEndDate = new Date(lastWeek);
+          chartEndDate.setDate(chartEndDate.getDate() + 6); // Add 6 days for end of week
+        }
+        
+        console.log('📅 Final week date range:', {
+          chartStartDate,
+          chartEndDate,
+          spanDays: (chartEndDate.getTime() - chartStartDate.getTime()) / (1000 * 60 * 60 * 24)
+        });
+      }
+      
+      // Now calculate where the target date falls within this visible chart range
+      const totalTimeSpan = chartEndDate.getTime() - chartStartDate.getTime();
+      if (totalTimeSpan <= 0) return null;
+      
+      const targetPosition = targetDate.getTime() - chartStartDate.getTime();
+      const percentage = (targetPosition / totalTimeSpan) * 100;
+      
+      // Keep percentage within bounds and determine visibility
+      const clampedPercentage = Math.max(0, Math.min(100, percentage));
+      const isWithinRange = targetDate >= chartStartDate && targetDate <= chartEndDate;
+      const isNearRange = percentage >= -20 && percentage <= 120; // Show if close to visible range
+      
+      return {
+        percentage: clampedPercentage,
+        isVisible: isWithinRange || isNearRange,
+        chartStartDate,
+        chartEndDate,
+        rawPercentage: percentage
+      };
+    };
+    
+    const currentDate = new Date();
+    const closeDate = opportunity?.decision_date ? new Date(opportunity.decision_date) : null;
+    
+    const currentDatePos = calculateDatePosition(currentDate);
+    const closeDatePos = closeDate ? calculateDatePosition(closeDate) : null;
+    
+    // Debug logging
+    console.log('📅 Date Markers Debug:', {
+      timePeriod,
+      currentDate: currentDate.toISOString(),
+      closeDate: closeDate?.toISOString(),
+      currentDatePos,
+      closeDatePos,
+      chartDataLength: chartData.length
+    });
+    
+    return {
+      currentDatePos,
+      closeDatePos
+    };
+  }, [timePeriod, chartData, opportunity?.decision_date, resourceTimeline]);
 
   // Resource status modal state
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -1097,126 +1432,8 @@ const OpportunityDetailV2: React.FC = () => {
                 );
               }
 
-              // Prepare chart data based on time period
-              console.log('📊 OpportunityDetailV2: Preparing chart data for timePeriod:', timePeriod);
-              console.log('📊 OpportunityDetailV2: Raw tableData:', tableData);
-              
-              let chartData = [];
-              if (timePeriod === 'stage') {
-                // Group by stage and service line (stacked view)
-                const stageMap = new Map<string, Record<string, number>>();
-                
-                tableData.forEach(item => {
-                  const stage = item.stage_name;
-                  const serviceLine = item.service_line;
-                  
-                  if (!stageMap.has(stage)) {
-                    stageMap.set(stage, {});
-                  }
-                  
-                  const stageData = stageMap.get(stage)!;
-                  stageData[serviceLine] = (stageData[serviceLine] || 0) + item.fte_required;
-                });
-                
-                // Convert to chart data format
-                chartData = Array.from(stageMap.entries()).map(([stage, serviceLineData]) => ({
-                  stage,
-                  ...serviceLineData
-                }));
-              } else {
-                // Time-based view: create concurrent timeline (like original)
-                const timelineMap = new Map<string, Record<string, any>>();
-                const serviceLines = new Set<string>();
-                
-                // Collect all service lines
-                tableData.forEach(item => {
-                  serviceLines.add(item.service_line);
-                });
-                
-                // Determine interval and date formatting based on time period
-                let intervalDays: number;
-                let formatOptions: Intl.DateTimeFormatOptions;
-                
-                switch (timePeriod) {
-                  case 'week':
-                    intervalDays = 7;
-                    formatOptions = { month: 'short', day: 'numeric' };
-                    break;
-                  case 'month':
-                    intervalDays = 30;
-                    formatOptions = { month: 'short', year: '2-digit' };
-                    break;
-                  case 'quarter':
-                    intervalDays = 90;
-                    formatOptions = { year: 'numeric' };
-                    break;
-                  default:
-                    intervalDays = 7;
-                    formatOptions = { month: 'short', day: 'numeric' };
-                }
-                
-                tableData.forEach(item => {
-                  const serviceLine = item.service_line;
-                  const startDate = new Date(item.stage_start_date || Date.now());
-                  const endDate = new Date(item.stage_end_date || Date.now());
-                  
-                  // Create time interval points between start and end date
-                  const currentDate = new Date(startDate);
-                  while (currentDate <= endDate) {
-                    let dateKey: string;
-                    let periodLabel: string;
-                    
-                    if (timePeriod === 'quarter') {
-                      // For quarterly, group by quarter
-                      const year = currentDate.getFullYear();
-                      const quarter = Math.floor(currentDate.getMonth() / 3) + 1;
-                      dateKey = `${year}-Q${quarter}`;
-                      periodLabel = `Q${quarter} ${year.toString().slice(-2)}`;
-                    } else if (timePeriod === 'month') {
-                      // For monthly, group by month
-                      const year = currentDate.getFullYear();
-                      const month = currentDate.getMonth();
-                      dateKey = `${year}-${month.toString().padStart(2, '0')}`;
-                      periodLabel = currentDate.toLocaleDateString('en-US', formatOptions);
-                    } else {
-                      // For weekly, group by week
-                      const weekStart = new Date(currentDate);
-                      weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week
-                      dateKey = weekStart.toISOString().split('T')[0];
-                      // Make weekly labels more compact: use M/D format
-                      periodLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
-                    }
-                    
-                    if (!timelineMap.has(dateKey)) {
-                      const entry: Record<string, any> = { 
-                        date: dateKey, 
-                        period: periodLabel,
-                        dateKey: dateKey  // Store the date key for stage mapping
-                      };
-                      // Initialize all service lines to 0
-                      Array.from(serviceLines).forEach(sl => {
-                        entry[sl] = 0;
-                      });
-                      timelineMap.set(dateKey, entry);
-                    }
-                    
-                    const entry = timelineMap.get(dateKey)!;
-                    entry[serviceLine] = (entry[serviceLine] || 0) + Number(item.fte_required);
-                    
-                    currentDate.setDate(currentDate.getDate() + intervalDays);
-                  }
-                });
-                
-                // Convert to array and sort by date
-                chartData = Array.from(timelineMap.values())
-                  .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-                  .map(item => ({
-                    ...item,
-                    period: item.period
-                  }));
-              }
-              
-              console.log('📊 OpportunityDetailV2: Processed chartData:', chartData);
+              // Chart data is now calculated at component level via useMemo
+              console.log('📊 OpportunityDetailV2: Using chartData from useMemo, length:', chartData.length);
 
               return (
                 <div className="space-y-4">
@@ -1264,44 +1481,6 @@ const OpportunityDetailV2: React.FC = () => {
                             name
                           ]}
                         />
-                        {/* Close Date Reference Line - only for time-based views */}
-                        {timePeriod !== 'stage' && opportunity.decision_date && (() => {
-                          // Find the close date in the chart data
-                          const closeDate = new Date(opportunity.decision_date);
-                          let closeDateKey = '';
-                          
-                          if (timePeriod === 'quarter') {
-                            const year = closeDate.getFullYear();
-                            const quarter = Math.floor(closeDate.getMonth() / 3) + 1;
-                            closeDateKey = `Q${quarter} ${year.toString().slice(-2)}`;
-                          } else if (timePeriod === 'month') {
-                            closeDateKey = closeDate.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-                          } else {
-                            // For weekly, find the closest week
-                            const weekStart = new Date(closeDate);
-                            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-                            closeDateKey = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-                          }
-                          
-                          // Find if this close date key exists in chart data
-                          const closeDateIndex = chartData.findIndex((item: any) => item.period === closeDateKey);
-                          
-                          return closeDateIndex >= 0 ? (
-                            <ReferenceLine 
-                              x={closeDateKey}
-                              stroke="#EF4444" 
-                              strokeDasharray="5 5"
-                              strokeWidth={2}
-                              label={{
-                                value: "Close Date",
-                                position: "top",
-                                fill: "#EF4444",
-                                fontSize: 10,
-                                fontWeight: "bold"
-                              }}
-                            />
-                          ) : null;
-                        })()}
                         {timePeriod === 'stage' ? (
                           // Show stacked bars by service line
                           Array.from(new Set(tableData.map(item => item.service_line))).map((serviceLine, index) => (
@@ -1328,6 +1507,40 @@ const OpportunityDetailV2: React.FC = () => {
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
+                  
+                  {/* Date Markers - positioned just below chart */}
+                  {dateMarkers && (
+                    <div className="relative" style={{ marginTop: '-10px' }}>
+                      <div className="h-8 relative" style={{ marginLeft: '65px', marginRight: '30px' }}>
+                        {/* Current Date Marker */}
+                        {dateMarkers.currentDatePos?.isVisible && (
+                          <div 
+                            className="absolute top-0 transform -translate-x-1/2"
+                            style={{ left: `${dateMarkers.currentDatePos.percentage}%` }}
+                          >
+                            <div className="flex flex-col items-center">
+                              <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-green-500"></div>
+                              <div className="text-xs font-bold text-green-600 mt-1 whitespace-nowrap">Today</div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Close Date Marker */}
+                        {dateMarkers.closeDatePos?.isVisible && opportunity?.decision_date && (
+                          <div 
+                            className="absolute top-0 transform -translate-x-1/2"
+                            style={{ left: `${dateMarkers.closeDatePos.percentage}%` }}
+                          >
+                            <div className="flex flex-col items-center">
+                              <div className="w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-red-600"></div>
+                              <div className="text-xs font-bold text-red-600 mt-1 whitespace-nowrap">Close Date</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   
                   {/* Sales Stage Gantt Chart */}
                   <SalesStageGantt 
