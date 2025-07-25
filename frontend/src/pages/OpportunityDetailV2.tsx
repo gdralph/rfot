@@ -313,7 +313,7 @@ const OpportunityDetailV2: React.FC = () => {
   // Status modal functions
   const handleOpenStatusModal = () => {
     // Initialize statusUpdates and timelineUpdates with current values
-    if (resourceTimeline) {
+    if (resourceTimeline && opportunity) {
       const tableData = getTimelineTableData(resourceTimeline);
       const initialStatusUpdates: Record<string, ResourceStatus> = {};
       const initialTimelineUpdates: Record<string, {
@@ -323,15 +323,43 @@ const OpportunityDetailV2: React.FC = () => {
         fte_required: number;
       }> = {};
       
-      tableData.forEach((item: any) => {
+      // Use opportunity close date as the baseline for date calculations
+      const closeDate = opportunity.decision_date ? new Date(opportunity.decision_date) : new Date();
+      
+      // Calculate dates working backwards from close date
+      let currentEndDate = new Date(closeDate);
+      
+      // Sort stages by their original order (we'll work backwards from close date)
+      const sortedTableData = [...tableData].reverse();
+      
+      sortedTableData.forEach((item: any) => {
         const key = `${item.service_line}|${item.stage_name}`;
-        initialStatusUpdates[key] = item.status || 'Predicted';
+        
+        // Default all statuses to 'Forecast' for the modal (not persisted until saved)
+        initialStatusUpdates[key] = 'Forecast';
+        
+        // Calculate start and end dates based on duration
+        const durationWeeks = item.duration_weeks || 0;
+        const durationDays = Math.round(durationWeeks * 7); // Convert weeks to days
+        
+        const stageEndDate = new Date(currentEndDate);
+        const stageStartDate = new Date(currentEndDate);
+        stageStartDate.setDate(stageStartDate.getDate() - durationDays);
+        
+        // Format dates for date input fields (YYYY-MM-DD format)
+        const formatDateForInput = (date: Date) => {
+          return date.toISOString().split('T')[0];
+        };
+        
         initialTimelineUpdates[key] = {
-          stage_start_date: item.stage_start_date || '',
-          stage_end_date: item.stage_end_date || '',
-          duration_weeks: item.duration_weeks || 0,
+          stage_start_date: formatDateForInput(stageStartDate),
+          stage_end_date: formatDateForInput(stageEndDate),
+          duration_weeks: durationWeeks,
           fte_required: item.fte_required || 0,
         };
+        
+        // Move to the next stage (working backwards)
+        currentEndDate = new Date(stageStartDate);
       });
       
       setStatusUpdates(initialStatusUpdates);
@@ -356,13 +384,67 @@ const OpportunityDetailV2: React.FC = () => {
 
   const handleTimelineFieldChange = (serviceLine: string, stageName: string, field: string, value: any) => {
     const key = `${serviceLine}|${stageName}`;
-    setTimelineUpdates(prev => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        [field]: value
-      }
-    }));
+    
+    if (field === 'duration_weeks' && opportunity) {
+      // When duration changes, recalculate dates working backwards from close date
+      const closeDate = opportunity.decision_date ? new Date(opportunity.decision_date) : new Date();
+      const newDurationWeeks = parseFloat(value) || 0;
+      const durationDays = Math.round(newDurationWeeks * 7);
+      
+      // Get all timeline data to maintain proper sequencing
+      const tableData = getTimelineTableData(resourceTimeline!);
+      
+      // Update this specific item's duration first
+      setTimelineUpdates(prev => {
+        const updatedTimelines = { ...prev };
+        
+        // Update the duration for the changed item
+        updatedTimelines[key] = {
+          ...updatedTimelines[key],
+          duration_weeks: newDurationWeeks
+        };
+        
+        // Recalculate all dates working backwards from close date
+        let currentEndDate = new Date(closeDate);
+        const sortedTableData = [...tableData].reverse();
+        
+        sortedTableData.forEach((item: any) => {
+          const itemKey = `${item.service_line}|${item.stage_name}`;
+          const itemDuration = itemKey === key ? newDurationWeeks : (updatedTimelines[itemKey]?.duration_weeks || item.duration_weeks || 0);
+          const itemDurationDays = Math.round(itemDuration * 7);
+          
+          const stageEndDate = new Date(currentEndDate);
+          const stageStartDate = new Date(currentEndDate);
+          stageStartDate.setDate(stageStartDate.getDate() - itemDurationDays);
+          
+          // Format dates for date input fields
+          const formatDateForInput = (date: Date) => {
+            return date.toISOString().split('T')[0];
+          };
+          
+          updatedTimelines[itemKey] = {
+            ...updatedTimelines[itemKey],
+            stage_start_date: formatDateForInput(stageStartDate),
+            stage_end_date: formatDateForInput(stageEndDate),
+            duration_weeks: itemDuration
+          };
+          
+          // Move to the next stage (working backwards)
+          currentEndDate = new Date(stageStartDate);
+        });
+        
+        return updatedTimelines;
+      });
+    } else {
+      // For non-duration fields, update normally
+      setTimelineUpdates(prev => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          [field]: value
+        }
+      }));
+    }
   };
 
   const handleBulkStatusUpdate = (status: ResourceStatus) => {
@@ -1033,27 +1115,6 @@ const OpportunityDetailV2: React.FC = () => {
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-
-                  {/* Table */}
-                  <CompactTable
-                    data={tableData.map(item => ({
-                      service_line: item.service_line,
-                      stage_name: item.stage_name,
-                      duration_weeks: `${item.duration_weeks} weeks`,
-                      fte_required: item.fte_required.toFixed(1),
-                      total_effort: `${item.total_effort_weeks} weeks`,
-                      status: item.resource_status || 'Predicted'
-                    }))}
-                    columns={[
-                      { key: 'service_line', label: 'Service Line', sortable: true },
-                      { key: 'stage_name', label: 'Stage', sortable: true },
-                      { key: 'duration_weeks', label: 'Duration', sortable: true },
-                      { key: 'fte_required', label: 'FTE Required', sortable: true },
-                      { key: 'total_effort', label: 'Total Effort', sortable: true },
-                      { key: 'status', label: 'Status', sortable: true }
-                    ]}
-                    maxHeight="400px"
-                  />
                 </div>
               );
             })()}
@@ -1077,12 +1138,32 @@ const OpportunityDetailV2: React.FC = () => {
               const peakFTE = Math.max(...tableData.map(item => item.fte_required));
               const serviceLines = [...new Set(tableData.map(item => item.service_line))];
 
+              // Group data by service line for better organization
+              const serviceLineData = tableData.reduce((acc, item) => {
+                const serviceLine = item.service_line;
+                if (!acc[serviceLine]) {
+                  acc[serviceLine] = [];
+                }
+                acc[serviceLine].push(item);
+                return acc;
+              }, {} as Record<string, typeof tableData>);
+
+              const serviceLineColors: Record<string, string> = {
+                'CES': DXC_COLORS[0],
+                'INS': DXC_COLORS[1], 
+                'BPS': DXC_COLORS[2],
+                'SEC': DXC_COLORS[6],
+                'ITOC': DXC_COLORS[4],
+                'MW': DXC_COLORS[5],
+              };
+
               return (
                 <div className="space-y-4">
+                  {/* Summary Cards */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <MetricCard
                       title="Total Effort"
-                      value={`${totalEffort} weeks`}
+                      value={`${totalEffort.toFixed(1)} weeks`}
                       icon={Calendar}
                       iconColor="text-dxc-bright-teal"
                     />
@@ -1106,29 +1187,134 @@ const OpportunityDetailV2: React.FC = () => {
                     />
                   </div>
 
-                  <CompactTable
-                    data={serviceLines.map(serviceLine => {
-                      const serviceData = tableData.filter(item => item.service_line === serviceLine);
-                      const totalServiceEffort = serviceData.reduce((sum, item) => sum + item.total_effort_weeks, 0);
-                      const avgServiceFTE = serviceData.reduce((sum, item) => sum + item.fte_required, 0) / serviceData.length;
-                      
-                      return {
-                        service_line: serviceLine,
-                        stages: serviceData.length,
-                        total_effort: `${totalServiceEffort} weeks`,
-                        avg_fte: avgServiceFTE.toFixed(1),
-                        peak_fte: Math.max(...serviceData.map(item => item.fte_required)).toFixed(1)
-                      };
-                    })}
-                    columns={[
-                      { key: 'service_line', label: 'Service Line', sortable: true },
-                      { key: 'stages', label: 'Stages', sortable: true },
-                      { key: 'total_effort', label: 'Total Effort', sortable: true },
-                      { key: 'avg_fte', label: 'Avg FTE', sortable: true },
-                      { key: 'peak_fte', label: 'Peak FTE', sortable: true }
-                    ]}
-                    maxHeight="300px"
-                  />
+                  {/* Detailed Resource Profile Table */}
+                  <div className="overflow-hidden rounded-lg border border-gray-200">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Service Line
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Stage
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Start Date
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              End Date
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Duration
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              FTE Required
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Total Effort
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {Object.entries(serviceLineData).map(([serviceLine, stages]) =>
+                            (stages as any[]).map((item: any, stageIndex: number) => (
+                              <tr key={`${serviceLine}-${stageIndex}`} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                                        style={{ 
+                                          backgroundColor: `${serviceLineColors[serviceLine]}20`, 
+                                          color: serviceLineColors[serviceLine] 
+                                        }}>
+                                    {serviceLine}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
+                                  {item.stage_name}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
+                                  {item.stage_start_date ? new Date(item.stage_start_date).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  }) : 'TBD'}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
+                                  {item.stage_end_date ? new Date(item.stage_end_date).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  }) : 'TBD'}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
+                                  {(item.duration_weeks || 0).toFixed(1)} weeks
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-dxc-bright-purple">
+                                  {(item.fte_required || 0).toFixed(1)}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-xs font-medium">
+                                  {(item.total_effort_weeks || 0).toFixed(1)} weeks
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-xs">
+                                  <span 
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      item.resource_status === 'Predicted' ? 'bg-blue-100 text-blue-800' :
+                                      item.resource_status === 'Forecast' ? 'bg-yellow-100 text-yellow-800' :
+                                      item.resource_status === 'Planned' ? 'bg-green-100 text-green-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}
+                                  >
+                                    {item.resource_status || 'Predicted'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Service Line Breakdown */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {Object.entries(serviceLineData).map(([serviceLine, stages]) => (
+                      <div key={serviceLine} className="bg-white border rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-3 h-3 rounded-full" 
+                               style={{ backgroundColor: serviceLineColors[serviceLine] }}>
+                          </div>
+                          <h4 className="text-sm font-medium text-gray-800">{serviceLine} Service Line</h4>
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Stages:</span>
+                            <span className="font-medium">{(stages as any[]).length}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Total Effort:</span>
+                            <span className="font-medium">
+                              {(stages as any[]).reduce((sum: number, stage: any) => sum + (stage.total_effort_weeks || 0), 0).toFixed(1)} weeks
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Peak FTE:</span>
+                            <span className="font-medium">
+                              {(stages as any[]).length > 0 ? Math.max(...(stages as any[]).map((stage: any) => stage.fte_required || 0)).toFixed(1) : '0.0'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Duration:</span>
+                            <span className="font-medium">
+                              {(stages as any[]).reduce((sum: number, stage: any) => sum + (stage.duration_weeks || 0), 0).toFixed(1)} weeks
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
                   {/* Action Buttons - Bottom Right */}
                   <div className="flex justify-end gap-3">
@@ -1389,9 +1575,15 @@ const OpportunityDetailV2: React.FC = () => {
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-lg font-semibold text-gray-900">Edit Resource Timeline</h2>
-                    <p className="text-xs text-gray-600 mt-1">Update dates, duration, FTE requirements, and status for resource timeline entries</p>
+                    <p className="text-xs text-gray-600 mt-1">Adjust duration and FTE requirements. Dates are calculated automatically from the opportunity close date. All items default to 'Forecast' status.</p>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => handleBulkStatusUpdate('Predicted')}
+                      className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full hover:bg-blue-200 transition-colors"
+                    >
+                      Set All to Predicted
+                    </button>
                     <button
                       onClick={() => handleBulkStatusUpdate('Forecast')}
                       className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full hover:bg-yellow-200 transition-colors"
@@ -1445,10 +1637,10 @@ const OpportunityDetailV2: React.FC = () => {
                       <div className="space-y-2">
                         {(stages as any[]).map((stage: any) => {
                           const key = `${serviceLine}|${stage.stage_name}`;
-                          const currentStatus = statusUpdates[key] || 'Predicted';
+                          const currentStatus = statusUpdates[key] || 'Forecast';
                           const currentTimeline = timelineUpdates[key] || {
-                            stage_start_date: stage.stage_start_date.split('T')[0],
-                            stage_end_date: stage.stage_end_date.split('T')[0],
+                            stage_start_date: '',
+                            stage_end_date: '',
                             duration_weeks: stage.duration_weeks || 0,
                             fte_required: stage.fte_required || 0,
                           };
@@ -1465,9 +1657,9 @@ const OpportunityDetailV2: React.FC = () => {
                                 <input
                                   type="date"
                                   value={currentTimeline.stage_start_date}
-                                  onChange={(e) => handleTimelineFieldChange(serviceLine, stage.stage_name, 'stage_start_date', e.target.value)}
-                                  className="w-full border border-gray-300 rounded px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-dxc-bright-purple"
-                                  title="Start Date"
+                                  readOnly
+                                  className="w-full border border-gray-200 bg-gray-50 rounded px-1 py-1 text-xs text-gray-600 cursor-not-allowed"
+                                  title="Start Date (Auto-calculated)"
                                 />
                               </div>
                               
@@ -1475,9 +1667,9 @@ const OpportunityDetailV2: React.FC = () => {
                                 <input
                                   type="date"
                                   value={currentTimeline.stage_end_date}
-                                  onChange={(e) => handleTimelineFieldChange(serviceLine, stage.stage_name, 'stage_end_date', e.target.value)}
-                                  className="w-full border border-gray-300 rounded px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-dxc-bright-purple"
-                                  title="End Date"
+                                  readOnly
+                                  className="w-full border border-gray-200 bg-gray-50 rounded px-1 py-1 text-xs text-gray-600 cursor-not-allowed"
+                                  title="End Date (Auto-calculated)"
                                 />
                               </div>
                               
@@ -1531,20 +1723,27 @@ const OpportunityDetailV2: React.FC = () => {
                 </div>
               </div>
               
-              <div className="p-4 border-t border-gray-200 flex justify-end gap-3">
-                <button
-                  onClick={handleCloseStatusModal}
-                  className="btn-secondary text-xs px-3 py-1.5"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveBulkStatus}
-                  disabled={updateTimelineDataMutation.isPending}
-                  className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
-                >
-                  {updateTimelineDataMutation.isPending ? 'Saving...' : 'Save Changes'}
-                </button>
+              <div className="p-4 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-gray-500 italic">
+                    💡 Changes are only saved to the database when you click "Save Changes"
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleCloseStatusModal}
+                      className="btn-secondary text-xs px-3 py-1.5"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveBulkStatus}
+                      disabled={updateTimelineDataMutation.isPending}
+                      className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
+                    >
+                      {updateTimelineDataMutation.isPending ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
