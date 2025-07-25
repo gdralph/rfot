@@ -831,6 +831,24 @@ async def get_configuration_summary_report(
             )
         ).all()
         
+        # Get offering thresholds (NEW)
+        from app.models.config import ServiceLineOfferingThreshold
+        offering_thresholds = session.exec(
+            select(ServiceLineOfferingThreshold).order_by(
+                ServiceLineOfferingThreshold.service_line,
+                ServiceLineOfferingThreshold.stage_name
+            )
+        ).all()
+        
+        # Get internal service mappings (NEW)
+        from app.models.config import ServiceLineInternalServiceMapping
+        internal_service_mappings = session.exec(
+            select(ServiceLineInternalServiceMapping).order_by(
+                ServiceLineInternalServiceMapping.service_line,
+                ServiceLineInternalServiceMapping.internal_service
+            )
+        ).all()
+        
         # Get diverse sample opportunities for calculation examples
         # Get opportunities across different categories and scenarios
         
@@ -985,6 +1003,23 @@ async def get_configuration_summary_report(
                 "fte_required": effort.fte_required
             }
         
+        # Format offering thresholds (NEW)
+        offering_thresholds_data = {}
+        for threshold in offering_thresholds:
+            if threshold.service_line not in offering_thresholds_data:
+                offering_thresholds_data[threshold.service_line] = {}
+            offering_thresholds_data[threshold.service_line][threshold.stage_name] = {
+                "threshold_count": threshold.threshold_count,
+                "increment_multiplier": threshold.increment_multiplier
+            }
+        
+        # Format internal service mappings (NEW)
+        internal_service_mappings_data = {}
+        for mapping in internal_service_mappings:
+            if mapping.service_line not in internal_service_mappings_data:
+                internal_service_mappings_data[mapping.service_line] = []
+            internal_service_mappings_data[mapping.service_line].append(mapping.internal_service)
+        
         # Create calculation examples using sample opportunities
         calculation_examples = []
         from app.services.resource_calculation import calculate_opportunity_resource_timeline
@@ -1098,7 +1133,11 @@ async def get_configuration_summary_report(
             "stage_efforts_configured": len(stage_efforts),
             "service_lines_configured": len(set(effort.service_line for effort in stage_efforts)),
             "total_fte_configured": sum(effort.fte_required for effort in stage_efforts),
-            "calculation_examples_generated": len(calculation_examples)
+            "calculation_examples_generated": len(calculation_examples),
+            "offering_thresholds_configured": len(offering_thresholds),
+            "internal_service_mappings_count": len(internal_service_mappings),
+            "service_lines_with_thresholds": len(set(t.service_line for t in offering_thresholds)),
+            "service_lines_with_mappings": len(set(m.service_line for m in internal_service_mappings))
         }
         
         return {
@@ -1106,12 +1145,17 @@ async def get_configuration_summary_report(
             "opportunity_categories": opportunity_categories_data,
             "service_line_categories": service_line_categories_data,
             "stage_efforts": stage_efforts_data,
+            "offering_thresholds": offering_thresholds_data,
+            "internal_service_mappings": internal_service_mappings_data,
             "calculation_examples": calculation_examples,
             "configuration_statistics": config_stats,
             "generated_at": datetime.utcnow().isoformat(),
             "notes": [
                 "Opportunity Categories determine timeline durations based on total TCV",
                 "Service Line Categories determine FTE requirements based on service line TCV",
+                "Offering Thresholds apply dynamic multipliers to FTE based on unique offering counts",
+                "Internal Service Mappings filter which opportunity line items count for offering thresholds",
+                "Final FTE = Base FTE × Offering Multiplier (where multiplier = 1.0 + excess offerings × increment)",
                 "Timeline calculations work backwards from decision date using current sales stage",
                 "FTE requirements are multiplied by stage durations to calculate total effort weeks",
                 "Total effort hours = effort weeks × 40 hours per week"

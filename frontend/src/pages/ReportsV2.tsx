@@ -514,7 +514,7 @@ const ReportsV2: React.FC = () => {
   const renderConfigurationReport = (data: any) => (
     <div className="mt-6 space-y-6">
       {/* Configuration Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         <div className="card p-4">
           <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Opportunity Categories</h4>
           <p className="text-2xl font-bold text-dxc-bright-purple">
@@ -531,6 +531,24 @@ const ReportsV2: React.FC = () => {
           <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Stage Efforts Configured</h4>
           <p className="text-2xl font-bold text-dxc-bright-purple">
             {data.configuration_statistics.stage_efforts_configured}
+          </p>
+        </div>
+        <div className="card p-4">
+          <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Offering Thresholds</h4>
+          <p className="text-2xl font-bold text-dxc-bright-purple">
+            {data.configuration_statistics.offering_thresholds_configured}
+          </p>
+          <p className="text-xs text-gray-600 mt-1">
+            {data.configuration_statistics.service_lines_with_thresholds} service lines
+          </p>
+        </div>
+        <div className="card p-4">
+          <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Internal Service Mappings</h4>
+          <p className="text-2xl font-bold text-dxc-bright-purple">
+            {data.configuration_statistics.internal_service_mappings_count}
+          </p>
+          <p className="text-xs text-gray-600 mt-1">
+            {data.configuration_statistics.service_lines_with_mappings} service lines
           </p>
         </div>
       </div>
@@ -662,6 +680,84 @@ const ReportsV2: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Offering Thresholds */}
+      {data.offering_thresholds && Object.keys(data.offering_thresholds).length > 0 && (
+        <div className="card">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Offering-Based Multipliers</h3>
+            <p className="text-sm text-gray-600 mb-4">Dynamic FTE scaling based on unique offering counts per service line and stage</p>
+            <div className="space-y-6">
+              {Object.entries(data.offering_thresholds).map(([serviceLine, stages]: [string, any]) => (
+                <div key={serviceLine} className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-semibold text-dxc-bright-purple mb-3">{serviceLine} Offering Thresholds</h4>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-300">
+                          <th className="text-left py-2">Sales Stage</th>
+                          <th className="text-center py-2">Threshold Count</th>
+                          <th className="text-center py-2">Increment Multiplier</th>
+                          <th className="text-left py-2">Example Calculation</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(stages).map(([stage, thresholdData]: [string, any]) => (
+                          <tr key={stage} className="border-b border-gray-200">
+                            <td className="py-2 font-medium">Stage {stage}</td>
+                            <td className="text-center py-2">{thresholdData.threshold_count}</td>
+                            <td className="text-center py-2">{thresholdData.increment_multiplier}</td>
+                            <td className="py-2 text-xs text-gray-600">
+                              If {thresholdData.threshold_count + 3} offerings: 
+                              Base FTE × (1.0 + 3 × {thresholdData.increment_multiplier}) = 
+                              Base FTE × {(1.0 + 3 * thresholdData.increment_multiplier).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Internal Service Mappings */}
+      {data.internal_service_mappings && Object.keys(data.internal_service_mappings).length > 0 && (
+        <div className="card">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Internal Service Mappings</h3>
+            <p className="text-sm text-gray-600 mb-4">Which opportunity line item internal services count for offering threshold calculations</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {Object.entries(data.internal_service_mappings).map(([serviceLine, mappings]: [string, any]) => (
+                <div key={serviceLine} className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-semibold text-dxc-bright-purple mb-3">{serviceLine} Internal Services</h4>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Only opportunity line items with these internal service values are counted for offering thresholds:
+                  </p>
+                  <div className="space-y-2">
+                    {mappings.map((mapping: string, index: number) => (
+                      <div key={index} className="flex items-center">
+                        <div className="w-2 h-2 bg-dxc-bright-purple rounded-full mr-3"></div>
+                        <span className="text-sm font-mono bg-white px-2 py-1 rounded border">
+                          {mapping}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-2 bg-blue-50 rounded border-l-4 border-blue-400">
+                    <p className="text-xs text-blue-800">
+                      <strong>Total mappings:</strong> {mappings.length} internal service values
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Calculation Examples */}
       {data.calculation_examples && data.calculation_examples.length > 0 && (
@@ -834,16 +930,66 @@ const ReportsV2: React.FC = () => {
       {/* Configuration Notes */}
       <div className="card">
         <div className="p-6">
-          <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Configuration Notes</h3>
-          <div className="bg-blue-50 rounded-lg p-4">
-            <ul className="space-y-2 text-sm text-blue-800">
-              {data.notes.map((note: string, index: number) => (
-                <li key={index} className="flex items-start">
-                  <span className="text-blue-600 mr-2">•</span>
-                  {note}
+          <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Key Configuration Concepts</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Core Configuration Flow */}
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h4 className="font-semibold text-blue-900 mb-3">Configuration Flow</h4>
+              <ul className="space-y-2 text-sm text-blue-800">
+                {data.notes.slice(0, 4).map((note: string, index: number) => (
+                  <li key={index} className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            
+            {/* Advanced Features */}
+            <div className="bg-green-50 rounded-lg p-4">
+              <h4 className="font-semibold text-green-900 mb-3">Advanced Features</h4>
+              <ul className="space-y-2 text-sm text-green-800">
+                <li className="flex items-start">
+                  <span className="text-green-600 mr-2">•</span>
+                  <strong>Offering-Based Multipliers:</strong> FTE scales dynamically based on unique offering counts
                 </li>
-              ))}
-            </ul>
+                <li className="flex items-start">
+                  <span className="text-green-600 mr-2">•</span>
+                  <strong>Internal Service Filtering:</strong> Only mapped internal services count for threshold calculations
+                </li>
+                <li className="flex items-start">
+                  <span className="text-green-600 mr-2">•</span>
+                  <strong>Dual Category System:</strong> Timeline categories (total TCV) vs Resource categories (service line TCV)
+                </li>
+                <li className="flex items-start">
+                  <span className="text-green-600 mr-2">•</span>
+                  <strong>Backward Timeline Calculation:</strong> Works backwards from decision date through remaining stages
+                </li>
+              </ul>
+            </div>
+          </div>
+          
+          {/* Calculation Formula */}
+          <div className="mt-6 bg-gray-50 rounded-lg p-4 border-l-4 border-dxc-bright-purple">
+            <h4 className="font-semibold text-dxc-bright-purple mb-3">Core Calculation Formula</h4>
+            <div className="space-y-3 text-sm">
+              <div className="font-mono bg-white p-3 rounded border">
+                <div className="text-gray-700">
+                  <strong>Final FTE</strong> = Base FTE × Offering Multiplier
+                </div>
+                <div className="text-gray-600 mt-1">
+                  Where: <strong>Offering Multiplier</strong> = 1.0 + (excess_offerings × increment_multiplier)
+                </div>
+              </div>
+              <div className="font-mono bg-white p-3 rounded border">
+                <div className="text-gray-700">
+                  <strong>Total Effort</strong> = Final FTE × Stage Duration (weeks)
+                </div>
+                <div className="text-gray-600 mt-1">
+                  <strong>Total Hours</strong> = Total Effort × 40 hours/week
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

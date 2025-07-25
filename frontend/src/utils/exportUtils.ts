@@ -1314,6 +1314,24 @@ const generateConfigurationHTML = (reportData: any): string => {
                 ${reportData.configuration_statistics?.stage_efforts_configured || 0}
             </p>
         </div>
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #4B5563; font-size: 0.875rem;">Offering Thresholds</h4>
+            <p style="margin: 0; color: #5F249F; font-size: 2rem; font-weight: bold;">
+                ${reportData.configuration_statistics?.offering_thresholds_configured || 0}
+            </p>
+            <p style="margin: 4px 0 0 0; color: #6B7280; font-size: 0.75rem;">
+                ${reportData.configuration_statistics?.service_lines_with_thresholds || 0} service lines
+            </p>
+        </div>
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #4B5563; font-size: 0.875rem;">Internal Service Mappings</h4>
+            <p style="margin: 0; color: #5F249F; font-size: 2rem; font-weight: bold;">
+                ${reportData.configuration_statistics?.internal_service_mappings_count || 0}
+            </p>
+            <p style="margin: 4px 0 0 0; color: #6B7280; font-size: 0.75rem;">
+                ${reportData.configuration_statistics?.service_lines_with_mappings || 0} service lines
+            </p>
+        </div>
     </div>
 
     <!-- Opportunity Categories -->
@@ -1466,6 +1484,103 @@ const generateConfigurationHTML = (reportData: any): string => {
             </div>
         </div>
     </div>`;
+
+  // Offering Thresholds section
+  if (reportData.offering_thresholds && Object.keys(reportData.offering_thresholds).length > 0) {
+    html += `
+    <!-- Offering Thresholds -->
+    <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #4B5563; font-size: 1.125rem; font-weight: 600;">Offering-Based Multipliers</h3>
+            <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.875rem;">Dynamic FTE scaling based on unique offering counts per service line and stage</p>
+            <div style="display: flex; flex-direction: column; gap: 24px;">`;
+
+    Object.entries(reportData.offering_thresholds).forEach(([serviceLine, stages]: [string, any]) => {
+      html += `
+                <div style="background: #F9FAFB; border-radius: 8px; padding: 16px;">
+                    <h4 style="margin: 0 0 12px 0; color: #5F249F; font-size: 1rem; font-weight: 600;">${serviceLine} Offering Thresholds</h4>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; font-size: 0.875rem;">
+                            <thead>
+                                <tr style="border-bottom: 2px solid #D1D5DB;">
+                                    <th style="padding: 8px; text-align: left; font-weight: 600; color: #374151;">Sales Stage</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">Threshold Count</th>
+                                    <th style="padding: 8px; text-align: center; font-weight: 600; color: #374151;">Increment Multiplier</th>
+                                    <th style="padding: 8px; text-align: left; font-weight: 600; color: #374151;">Example Calculation</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+      
+      Object.entries(stages).forEach(([stage, thresholdData]: [string, any]) => {
+        const exampleMultiplier = (1.0 + 3 * thresholdData.increment_multiplier).toFixed(2);
+        html += `
+                                <tr style="border-bottom: 1px solid #E5E7EB;">
+                                    <td style="padding: 8px; font-weight: 500; color: #111827;">Stage ${stage}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${thresholdData.threshold_count}</td>
+                                    <td style="padding: 8px; text-align: center; color: #374151;">${thresholdData.increment_multiplier}</td>
+                                    <td style="padding: 8px; color: #6B7280; font-size: 0.75rem;">
+                                        If ${thresholdData.threshold_count + 3} offerings: Base FTE × (1.0 + 3 × ${thresholdData.increment_multiplier}) = Base FTE × ${exampleMultiplier}
+                                    </td>
+                                </tr>`;
+      });
+      
+      html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+    });
+    
+    html += `
+            </div>
+        </div>
+    </div>`;
+  }
+
+  // Internal Service Mappings section
+  if (reportData.internal_service_mappings && Object.keys(reportData.internal_service_mappings).length > 0) {
+    html += `
+    <!-- Internal Service Mappings -->
+    <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
+        <div style="padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; color: #4B5563; font-size: 1.125rem; font-weight: 600;">Internal Service Mappings</h3>
+            <p style="margin: 0 0 16px 0; color: #6B7280; font-size: 0.875rem;">Which opportunity line item internal services count for offering threshold calculations</p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px;">`;
+
+    Object.entries(reportData.internal_service_mappings).forEach(([serviceLine, mappings]: [string, any]) => {
+      html += `
+                <div style="background: #F9FAFB; border-radius: 8px; padding: 16px;">
+                    <h4 style="margin: 0 0 12px 0; color: #5F249F; font-size: 1rem; font-weight: 600;">${serviceLine} Internal Services</h4>
+                    <p style="margin: 0 0 12px 0; color: #6B7280; font-size: 0.75rem;">
+                        Only opportunity line items with these internal service values are counted for offering thresholds:
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">`;
+      
+      mappings.forEach((mapping: string, _index: number) => {
+        html += `
+                        <div style="display: flex; align-items: center;">
+                            <div style="width: 8px; height: 8px; background: #5F249F; border-radius: 50%; margin-right: 12px;"></div>
+                            <span style="font-size: 0.875rem; font-family: monospace; background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #E5E7EB;">
+                                ${mapping}
+                            </span>
+                        </div>`;
+      });
+      
+      html += `
+                    </div>
+                    <div style="margin-top: 12px; padding: 8px; background: #DBEAFE; border-radius: 4px; border-left: 4px solid #3B82F6;">
+                        <p style="margin: 0; color: #1E40AF; font-size: 0.75rem;">
+                            <strong>Total mappings:</strong> ${mappings.length} internal service values
+                        </p>
+                    </div>
+                </div>`;
+    });
+    
+    html += `
+            </div>
+        </div>
+    </div>`;
+  }
 
   // Real Calculation Examples
   if (reportData.calculation_examples?.length > 0) {
@@ -1685,6 +1800,42 @@ const generateConfigurationHTML = (reportData: any): string => {
 
     html += `
                 </ul>
+            </div>
+            
+            <!-- Enhanced Features Section -->
+            <div style="margin-top: 24px;">
+                <h4 style="margin: 0 0 12px 0; color: #14532D; font-size: 1rem; font-weight: 600;">Advanced Calculation Features</h4>
+                <div style="background: #F0FDF4; border-radius: 8px; padding: 16px;">
+                    <ul style="margin: 0; padding-left: 16px; color: #15803D; font-size: 0.875rem; line-height: 1.6;">
+                        <li style="margin-bottom: 8px;"><strong>Offering-Based Multipliers:</strong> FTE scales dynamically based on unique offering counts</li>
+                        <li style="margin-bottom: 8px;"><strong>Internal Service Filtering:</strong> Only mapped internal services count for threshold calculations</li>
+                        <li style="margin-bottom: 8px;"><strong>Dual Category System:</strong> Timeline categories (total TCV) vs Resource categories (service line TCV)</li>
+                        <li style="margin-bottom: 8px;"><strong>Backward Timeline Calculation:</strong> Works backwards from decision date through remaining stages</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Calculation Formula -->
+            <div style="margin-top: 24px; background: #F9FAFB; border-radius: 8px; padding: 16px; border-left: 4px solid #5F249F;">
+                <h4 style="margin: 0 0 12px 0; color: #5F249F; font-size: 1rem; font-weight: 600;">Core Calculation Formula</h4>
+                <div style="display: flex; flex-direction: column; gap: 12px; font-size: 0.875rem;">
+                    <div style="font-family: monospace; background: white; padding: 12px; border-radius: 4px; border: 1px solid #E5E7EB;">
+                        <div style="color: #374151;">
+                            <strong>Final FTE</strong> = Base FTE × Offering Multiplier
+                        </div>
+                        <div style="color: #6B7280; margin-top: 4px;">
+                            Where: <strong>Offering Multiplier</strong> = 1.0 + (excess_offerings × increment_multiplier)
+                        </div>
+                    </div>
+                    <div style="font-family: monospace; background: white; padding: 12px; border-radius: 4px; border: 1px solid #E5E7EB;">
+                        <div style="color: #374151;">
+                            <strong>Total Effort</strong> = Final FTE × Stage Duration (weeks)
+                        </div>
+                        <div style="color: #6B7280; margin-top: 4px;">
+                            <strong>Total Hours</strong> = Total Effort × 40 hours/week
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>`;
@@ -2080,37 +2231,44 @@ export const exportConfigurationToPDF = (reportData: any, filename?: string) => 
     const stats = [
       { label: 'Opportunity Categories', value: reportData.configuration_statistics?.opportunity_categories_count || 0 },
       { label: 'Service Line Categories', value: reportData.configuration_statistics?.service_line_categories_count || 0 },
-      { label: 'Stage Efforts Configured', value: reportData.configuration_statistics?.stage_efforts_configured || 0 }
+      { label: 'Stage Efforts Configured', value: reportData.configuration_statistics?.stage_efforts_configured || 0 },
+      { label: 'Offering Thresholds', value: reportData.configuration_statistics?.offering_thresholds_configured || 0 },
+      { label: 'Internal Service Mappings', value: reportData.configuration_statistics?.internal_service_mappings_count || 0 }
     ];
 
-    const cardWidth = (usableWidth - 8) / 3;
+    const cardsPerRow = 3;
+    const cardWidth = (usableWidth - ((cardsPerRow - 1) * 4)) / cardsPerRow;
     const cardHeight = 20;
 
     stats.forEach((stat, index) => {
-      const cardX = margin + (index * (cardWidth + 4));
+      const row = Math.floor(index / cardsPerRow);
+      const col = index % cardsPerRow;
+      const cardX = margin + (col * (cardWidth + 4));
+      const cardY = yPosition + (row * (cardHeight + 4));
       
       // Card with border
       pdf.setFillColor(249, 250, 251);
       pdf.setDrawColor(229, 231, 235);
       pdf.setLineWidth(0.5);
-      pdf.rect(cardX, yPosition, cardWidth, cardHeight, 'FD');
+      pdf.rect(cardX, cardY, cardWidth, cardHeight, 'FD');
       
       // Label
       pdf.setFontSize(7);
       pdf.setFont('helvetica', 'normal');
       pdf.setTextColor(75, 85, 99);
       const labelLines = pdf.splitTextToSize(stat.label, cardWidth - 4);
-      pdf.text(labelLines, cardX + 2, yPosition + 6);
+      pdf.text(labelLines, cardX + 2, cardY + 6);
       
       // Value
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(95, 36, 159);
-      pdf.text(String(stat.value), cardX + 2, yPosition + 15);
+      pdf.text(String(stat.value), cardX + 2, cardY + 15);
     });
     
     pdf.setTextColor(0, 0, 0);
-    yPosition += cardHeight + 15;
+    const totalRows = Math.ceil(stats.length / cardsPerRow);
+    yPosition += (totalRows * (cardHeight + 4)) + 15;
 
     // Opportunity Categories Complete Table
     if (reportData.opportunity_categories?.length > 0) {
@@ -2560,6 +2718,122 @@ export const exportConfigurationToPDF = (reportData: any, filename?: string) => 
         });
 
         yPosition += 20;
+      });
+    }
+
+    // Offering Thresholds Section
+    if (reportData.offering_thresholds && Object.keys(reportData.offering_thresholds).length > 0) {
+      addSectionTitle('Offering-Based Multipliers');
+      addSubtitle('Dynamic FTE scaling based on unique offering counts per service line and stage');
+
+      Object.entries(reportData.offering_thresholds).forEach(([serviceLine, stages]: [string, any]) => {
+        addNewPageIfNeeded(40);
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(95, 36, 159);
+        pdf.text(`${serviceLine} Offering Thresholds`, margin, yPosition);
+        yPosition += 8;
+
+        // Table headers
+        const colWidths = [30, 30, 35, 75];
+        const headers = ['Sales Stage', 'Threshold Count', 'Increment Multiplier', 'Example Calculation'];
+        
+        pdf.setFillColor(249, 250, 251);
+        pdf.setDrawColor(229, 231, 235);
+        pdf.rect(margin, yPosition, usableWidth, 8, 'FD');
+        
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(0, 0, 0);
+        
+        let xPos = margin;
+        headers.forEach((header, index) => {
+          pdf.text(header, xPos + 2, yPosition + 5);
+          xPos += colWidths[index];
+        });
+        yPosition += 8;
+
+        // Table rows
+        Object.entries(stages).forEach(([stage, thresholdData]: [string, any]) => {
+          addNewPageIfNeeded(8);
+          
+          pdf.setFillColor(255, 255, 255);
+          pdf.setDrawColor(229, 231, 235);
+          pdf.rect(margin, yPosition, usableWidth, 6, 'FD');
+          
+          pdf.setFontSize(6);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(0, 0, 0);
+          
+          xPos = margin;
+          const rowData = [
+            `Stage ${stage}`,
+            String(thresholdData.threshold_count),
+            String(thresholdData.increment_multiplier),
+            `If ${thresholdData.threshold_count + 3} offerings: Base FTE × ${(1.0 + 3 * thresholdData.increment_multiplier).toFixed(2)}`
+          ];
+          
+          rowData.forEach((data, index) => {
+            const cellText = pdf.splitTextToSize(data, colWidths[index] - 4);
+            pdf.text(cellText, xPos + 2, yPosition + 4);
+            xPos += colWidths[index];
+          });
+          
+          yPosition += 6;
+        });
+        
+        yPosition += 10;
+      });
+    }
+
+    // Internal Service Mappings Section
+    if (reportData.internal_service_mappings && Object.keys(reportData.internal_service_mappings).length > 0) {
+      addSectionTitle('Internal Service Mappings');
+      addSubtitle('Which opportunity line item internal services count for offering threshold calculations');
+
+      Object.entries(reportData.internal_service_mappings).forEach(([serviceLine, mappings]: [string, any]) => {
+        addNewPageIfNeeded(25);
+        
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(95, 36, 159);
+        pdf.text(`${serviceLine} Internal Services`, margin, yPosition);
+        yPosition += 6;
+
+        pdf.setFontSize(6);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(75, 85, 99);
+        pdf.text('Only line items with these internal service values count for offering thresholds:', margin, yPosition);
+        yPosition += 8;
+
+        // List mappings
+        mappings.forEach((mapping: string, _index: number) => {
+          addNewPageIfNeeded(5);
+          
+          pdf.setFillColor(249, 250, 251);
+          pdf.setDrawColor(229, 231, 235);
+          pdf.rect(margin, yPosition, usableWidth, 4, 'FD');
+          
+          pdf.setFontSize(6);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(`• ${mapping}`, margin + 2, yPosition + 3);
+          
+          yPosition += 4;
+        });
+        
+        // Summary box
+        pdf.setFillColor(219, 234, 254);
+        pdf.setDrawColor(59, 130, 246);
+        pdf.rect(margin, yPosition, usableWidth, 6, 'FD');
+        
+        pdf.setFontSize(6);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(30, 64, 175);
+        pdf.text(`Total mappings: ${mappings.length} internal service values`, margin + 2, yPosition + 4);
+        
+        yPosition += 12;
       });
     }
 
