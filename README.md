@@ -28,12 +28,13 @@ A comprehensive DXC Technology internal tool for managing Salesforce opportunity
 - **Background Tasks** - Async processing with pandas/openpyxl for Excel handling
 
 ### Frontend
-- **React 19** - Latest React with concurrent features
+- **React 19.1.0** - Latest React with concurrent features
 - **TypeScript 5.8.3** - Type safety and enhanced developer experience
 - **Vite 7.0.4** - Lightning-fast build tool and development server
-- **TailwindCSS** - Utility-first CSS with custom DXC theming
-- **TanStack Query** - Powerful data synchronization for React
-- **Recharts** - Composable charting library with custom DXC themes
+- **TailwindCSS 3.4.17** - Utility-first CSS with custom DXC theming
+- **TanStack Query 5.83.0** - Powerful data synchronization for React
+- **Recharts 3.1.0** - Composable charting library with custom DXC themes
+- **V2 Enhanced UI** - Modern, condensed interface as default experience
 
 ## 📋 Prerequisites
 
@@ -55,10 +56,7 @@ pip install -r requirements.txt
 python3 -m alembic upgrade head
 
 # Initialize configuration data (REQUIRED)
-python3 seed_data.py
-
-# Initialize MW/ITOC resource templates (REQUIRED)
-python3 seed_service_line_data.py
+python3 seed_config.py
 
 # Optional: Add sample data for testing
 python3 add_sample_data.py
@@ -98,8 +96,7 @@ python3 -m alembic revision --autogenerate -m "Description"
 python3 -m alembic upgrade head
 
 # Data management
-python3 seed_data.py              # Initialize categories and configuration
-python3 seed_service_line_data.py # Initialize MW/ITOC resource templates
+python3 seed_config.py            # Initialize all configuration data (categories, service line templates, thresholds, mappings)
 python3 add_sample_data.py        # Add sample opportunities
 
 # Testing and quality
@@ -152,10 +149,12 @@ rfot/
 
 ### Key Architectural Patterns
 
+- **Database-First Approach**: Current database is source of truth for schema and configuration
+- **Genesis Migration System**: Single baseline migration replaces incremental migration history
 - **Configuration-Driven**: Categories and stage efforts stored in database, not hardcoded
 - **Type-Safe ORM**: SQLModel with Pydantic v2 field validators throughout
 - **Query-First Frontend**: TanStack Query manages all server state with custom hooks
-- **Component Architecture**: Reusable UI components with comprehensive DXC styling
+- **Component Architecture**: V2 Enhanced UI as default with reusable DXC-styled components
 - **Background Processing**: Excel imports handled asynchronously with progress tracking
 
 ## 📈 Core Business Logic
@@ -189,7 +188,10 @@ rfot/
 - **Opportunity** - Main business records with sales stages, TCV data, and service line revenue
 - **OpportunityLineItem** - Detailed service line revenue breakdown
 - **OpportunityCategory** - TCV-based categorization rules (Sub $5M, Cat C, Cat B, Cat A)
+- **ServiceLineCategory** - Service-line-specific TCV thresholds for MW/ITOC
 - **ServiceLineStageEffort** - Resource templates for MW/ITOC planning with duration and FTE
+- **ServiceLineOfferingThreshold** - Offering-based multiplier rules for FTE calculations
+- **ServiceLineInternalServiceMapping** - Maps internal services to service lines for threshold calculations
 - **OpportunityResourceTimeline** - Calculated FTE requirements by service line and stage
 
 ### Key Workflows
@@ -293,9 +295,11 @@ npm run build
 ```
 
 ### Database Considerations
-- Current: SQLite for development and single-user deployments
-- Production: Consider PostgreSQL for multi-user environments
-- Migrations: Fully managed via Alembic
+- **Current**: SQLite with genesis migration baseline for development and single-user deployments
+- **Production**: Consider PostgreSQL for multi-user environments
+- **Migrations**: Genesis migration system (revision `00000000`) provides clean baseline
+- **Configuration**: Consolidated seeding via `seed_config.py` with 117+ configuration records
+- **Setup**: Simple two-step process: `alembic upgrade head` → `python3 seed_config.py`
 
 ## 🏢 Business Context
 
@@ -319,4 +323,4 @@ The application recognizes that the main persona is **resource planning focused 
 
 *Built with ❤️ for DXC Technology resource planning and opportunity management.*
 
-**Version**: 1.0.0 | **Last Updated**: January 2025
+**Version**: 1.1.0 | **Last Updated**: July 2025

@@ -37,7 +37,7 @@ pip install -r requirements.txt
 python3 -m alembic upgrade head  # Run migrations to create database schema
 
 # Initialize configuration data (REQUIRED for first run)
-python3 seed_data.py  # Creates categories and internal service mappings
+python3 seed_config.py  # Creates all configuration data (categories, service line templates, thresholds, mappings)
 
 # Optional: Add sample opportunity data for testing
 python3 add_sample_data.py  # Creates sample opportunities with line items
@@ -75,9 +75,7 @@ python3 -m alembic revision --autogenerate -m "Description"
 python3 -m alembic upgrade head
 
 # Data initialization
-python3 seed_data.py                      # Initialize configuration data and internal service mappings
-python3 seed_service_line_data.py         # Initialize MW/ITOC service line templates
-python3 seed_internal_service_mappings.py # Manage internal service mappings (verify/reset)
+python3 seed_config.py                    # Initialize all configuration data (replaces multiple legacy scripts)
 python3 add_sample_data.py                # Add sample opportunities
 
 # Testing
@@ -129,10 +127,11 @@ npm run lint            # ESLint (using flat config format)
 ### Backend Architecture
 - **Models** (`app/models/`): SQLModel classes with Pydantic validation
   - `opportunity.py` - Core business entities (Opportunity, OpportunityLineItem)
-  - `config.py` - Configuration entities (Categories, ServiceLineStageEffort, legacy StageEffortEstimate, SMEAllocationRule)
+  - `config.py` - Configuration entities (OpportunityCategory, ServiceLineCategory, ServiceLineStageEffort, ServiceLineOfferingThreshold, ServiceLineInternalServiceMapping)
+  - `resources.py` - Resource timeline models (OpportunityResourceTimeline)
 - **API Routes** (`app/api/`): FastAPI routers grouped by domain
 - **Services** (`app/services/`): Business logic, especially `excel_import.py` for background processing
-- **Database**: SQLite with Alembic migrations, models use relationships for data integrity
+- **Database**: SQLite with genesis migration baseline, single configuration seeding script
 
 ### Frontend Architecture
 - **State Management**: TanStack Query handles all server state, custom hooks in `hooks/` encapsulate API logic
@@ -193,16 +192,14 @@ Internal service mappings determine which opportunity line items are counted for
 - **MW (Modern Workplace)**: "Modern Workplace", "MW", "Workplace Services", "Digital Employee Experience", "Collaboration", "Endpoint Services"
 - **ITOC (Infrastructure & Cloud)**: "Infrastructure & Cloud", "ITOC", "Cloud Services", "Infrastructure Services", "Data Center Services", "Network Services", "Platform Services"
 
-**Troubleshooting Commands:**
+**Configuration Management:**
 ```bash
-# Verify all default mappings exist
-python3 seed_internal_service_mappings.py verify
+# Initialize all configuration data (replaces all legacy seed scripts)
+python3 seed_config.py
 
-# Create any missing default mappings
-python3 seed_internal_service_mappings.py
-
-# Reset all mappings to defaults (removes custom mappings)
-python3 seed_internal_service_mappings.py reset
+# Verify database schema and data
+python3 -m alembic current
+sqlite3 database.db "SELECT COUNT(*) FROM servicelineinternalservicemapping;"
 ```
 
 **Common Issues:**
@@ -236,10 +233,13 @@ The core business logic revolves around resource timeline calculations:
 - **Missing Timeline Calculation**: `_calculate_missing_timelines_count()` identifies opportunities eligible for timeline generation but lacking timeline data
 
 ### Database Architecture Patterns
+- **Genesis Migration System**: Single baseline migration (revision `00000000`) replaces 15+ incremental migrations
+- **Database-First Approach**: Current database is source of truth for schema and configuration data
 - **SQLModel + Pydantic**: All models use modern Pydantic v2 field validators (`@field_validator` with `@classmethod`)
 - **Configuration-Driven**: Categories and stage efforts are database-driven, not hardcoded
 - **Resource Timeline**: `OpportunityResourceTimeline` stores calculated FTE requirements by service line and stage
 - **Background Processing**: Excel imports run as background tasks with progress tracking via `ImportTask` model
+- **Consolidated Seeding**: Single `seed_config.py` script handles all configuration data (117+ records)
 
 ### Frontend Architecture Specifics
 - **TanStack Query**: All server state managed through query keys pattern (`OPPORTUNITY_KEYS`, `RESOURCE_TIMELINE_KEYS`)
@@ -339,6 +339,11 @@ The core business logic revolves around resource timeline calculations:
 - 🔄 **Future**: Can remove V1 pages and UI switcher when V2 is fully validated
 
 ## Memories
+- **Database Architecture**: Genesis migration system implemented (July 2025)
+  - Single baseline migration (revision `00000000`) replaces all incremental migrations
+  - Database-first approach: current database is source of truth for schema
+  - Consolidated `seed_config.py` script replaces multiple legacy seed scripts
+  - Clean setup: `alembic upgrade head` → `python3 seed_config.py` → ready
 - **UI Architecture**: V2 Enhanced UI is now the DEFAULT experience (December 2024)
   - Main routes (`/`, `/opportunities`, etc.) serve V2 components
   - Legacy V1 available at `/v1/` prefix routes during transition
