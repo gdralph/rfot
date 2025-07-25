@@ -165,3 +165,98 @@ class ServiceLineStageEffortRead(ServiceLineStageEffortBase):
 class ServiceLineStageEffortUpdate(ServiceLineStageEffortBase):
     """Model for updating service line stage efforts."""
     pass
+
+
+class ServiceLineOfferingThresholdBase(SQLModel):
+    """Base service line offering threshold model."""
+    service_line: str  # MW, ITOC
+    stage_name: str
+    threshold_count: int  # Single threshold count for the service line
+    increment_multiplier: float  # Stage-specific increment multiplier
+
+    @field_validator('service_line')
+    @classmethod
+    def validate_service_line(cls, v):
+        allowed_service_lines = ['MW', 'ITOC']
+        if v not in allowed_service_lines:
+            raise ValueError(f'Service line must be one of: {allowed_service_lines}')
+        return v
+
+    @field_validator('threshold_count')
+    @classmethod
+    def validate_threshold_count(cls, v):
+        if v <= 0:
+            raise ValueError('Threshold count must be positive')
+        return v
+
+    @field_validator('increment_multiplier')
+    @classmethod
+    def validate_increment_multiplier(cls, v):
+        if v < 0:
+            raise ValueError('Increment multiplier must be non-negative')
+        return v
+
+
+class ServiceLineOfferingThreshold(ServiceLineOfferingThresholdBase, table=True):
+    """Service line offering threshold database model."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+
+class ServiceLineOfferingThresholdCreate(ServiceLineOfferingThresholdBase):
+    """Model for creating service line offering thresholds."""
+    pass
+
+
+class ServiceLineOfferingThresholdRead(ServiceLineOfferingThresholdBase):
+    """Model for reading service line offering thresholds."""
+    id: int
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ServiceLineOfferingThresholdUpdate(ServiceLineOfferingThresholdBase):
+    """Model for updating service line offering thresholds."""
+    pass
+
+
+class ServiceLineInternalServiceMappingBase(SQLModel):
+    """Base service line internal service mapping model."""
+    service_line: str  # MW, ITOC
+    internal_service: str  # Internal service value to map to this service line
+
+    @field_validator('service_line')
+    @classmethod
+    def validate_service_line(cls, v):
+        allowed_service_lines = ['MW', 'ITOC']
+        if v not in allowed_service_lines:
+            raise ValueError(f'Service line must be one of: {allowed_service_lines}')
+        return v
+
+    @field_validator('internal_service')
+    @classmethod
+    def validate_internal_service(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Internal service cannot be empty')
+        return v.strip()
+
+
+class ServiceLineInternalServiceMapping(ServiceLineInternalServiceMappingBase, table=True):
+    """Service line internal service mapping database model."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+
+class ServiceLineInternalServiceMappingCreate(ServiceLineInternalServiceMappingBase):
+    """Model for creating service line internal service mappings."""
+    pass
+
+
+class ServiceLineInternalServiceMappingRead(ServiceLineInternalServiceMappingBase):
+    """Model for reading service line internal service mappings."""
+    id: int
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ServiceLineInternalServiceMappingUpdate(ServiceLineInternalServiceMappingBase):
+    """Model for updating service line internal service mappings."""
+    pass

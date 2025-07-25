@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import type { OpportunityCategory, ServiceLineCategory, ServiceLineStageEffort } from '../types/index';
+import type { OpportunityCategory, ServiceLineCategory, ServiceLineStageEffort, ServiceLineInternalServiceMapping } from '../types/index';
 
 // API functions
 const configApi = {
@@ -30,6 +30,28 @@ const configApi = {
   deleteServiceLineStageEffort: (id: number) => api.deleteServiceLineStageEffort(id),
   bulkCreateServiceLineStageEfforts: (data: Array<Omit<ServiceLineStageEffort, 'id' | 'effort_weeks'>>) =>
     api.bulkCreateServiceLineStageEfforts(data),
+  
+  // Service Line Offering Thresholds
+  getServiceLineOfferingThresholds: (serviceLine?: string, stageName?: string) =>
+    api.getServiceLineOfferingThresholds(serviceLine, stageName),
+  createServiceLineOfferingThreshold: (data: any) =>
+    api.createServiceLineOfferingThreshold(data),
+  updateServiceLineOfferingThreshold: (id: number, data: any) =>
+    api.updateServiceLineOfferingThreshold(id, data),
+  deleteServiceLineOfferingThreshold: (id: number) => api.deleteServiceLineOfferingThreshold(id),
+  bulkCreateServiceLineOfferingThresholds: (data: any[]) =>
+    api.bulkCreateServiceLineOfferingThresholds(data),
+    
+  // Service Line Internal Service Mappings
+  getServiceLineInternalServiceMappings: (serviceLine?: string) => 
+    api.getServiceLineInternalServiceMappings(serviceLine),
+  createServiceLineInternalServiceMapping: (data: Omit<ServiceLineInternalServiceMapping, 'id'>) =>
+    api.createServiceLineInternalServiceMapping(data),
+  updateServiceLineInternalServiceMapping: (id: number, data: Omit<ServiceLineInternalServiceMapping, 'id'>) =>
+    api.updateServiceLineInternalServiceMapping(id, data),
+  deleteServiceLineInternalServiceMapping: (id: number) => api.deleteServiceLineInternalServiceMapping(id),
+  bulkCreateServiceLineInternalServiceMappings: (data: Array<Omit<ServiceLineInternalServiceMapping, 'id'>>) =>
+    api.bulkCreateServiceLineInternalServiceMappings(data),
 };
 
 // Hooks for Categories
@@ -168,6 +190,111 @@ export const useBulkCreateServiceLineStageEfforts = () => {
     mutationFn: configApi.bulkCreateServiceLineStageEfforts,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['config', 'service-line-stage-efforts'] });
+    },
+  });
+};
+
+// Service Line Offering Thresholds hooks
+export const useServiceLineOfferingThresholds = (serviceLine?: string, stageName?: string) => {
+  return useQuery({
+    queryKey: ['config', 'service-line-offering-thresholds', serviceLine, stageName],
+    queryFn: () => configApi.getServiceLineOfferingThresholds(serviceLine, stageName),
+  });
+};
+
+export const useCreateServiceLineOfferingThreshold = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: configApi.createServiceLineOfferingThreshold,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-offering-thresholds'] });
+    },
+  });
+};
+
+export const useUpdateServiceLineOfferingThreshold = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => configApi.updateServiceLineOfferingThreshold(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-offering-thresholds'] });
+    },
+  });
+};
+
+export const useDeleteServiceLineOfferingThreshold = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: configApi.deleteServiceLineOfferingThreshold,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-offering-thresholds'] });
+    },
+  });
+};
+
+export const useBulkCreateServiceLineOfferingThresholds = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: configApi.bulkCreateServiceLineOfferingThresholds,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-offering-thresholds'] });
+    },
+  });
+};
+
+// Service Line Internal Service Mappings Hooks
+export const useServiceLineInternalServiceMappings = (serviceLine?: string) => {
+  return useQuery({
+    queryKey: ['config', 'service-line-internal-service-mappings', serviceLine],
+    queryFn: () => configApi.getServiceLineInternalServiceMappings(serviceLine),
+  });
+};
+
+export const useCreateServiceLineInternalServiceMapping = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: configApi.createServiceLineInternalServiceMapping,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-internal-service-mappings'] });
+    },
+  });
+};
+
+export const useUpdateServiceLineInternalServiceMapping = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Omit<ServiceLineInternalServiceMapping, 'id'> }) => 
+      configApi.updateServiceLineInternalServiceMapping(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-internal-service-mappings'] });
+    },
+  });
+};
+
+export const useDeleteServiceLineInternalServiceMapping = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: configApi.deleteServiceLineInternalServiceMapping,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-internal-service-mappings'] });
+    },
+  });
+};
+
+export const useBulkCreateServiceLineInternalServiceMappings = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: configApi.bulkCreateServiceLineInternalServiceMappings,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-internal-service-mappings'] });
     },
   });
 };

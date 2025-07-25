@@ -7,7 +7,9 @@ from app.models.database import engine
 from app.models.config import (
     OpportunityCategory, OpportunityCategoryRead, OpportunityCategoryCreate, OpportunityCategoryUpdate,
     ServiceLineCategory, ServiceLineCategoryRead, ServiceLineCategoryCreate, ServiceLineCategoryUpdate,
-    ServiceLineStageEffort, ServiceLineStageEffortRead, ServiceLineStageEffortCreate, ServiceLineStageEffortUpdate
+    ServiceLineStageEffort, ServiceLineStageEffortRead, ServiceLineStageEffortCreate, ServiceLineStageEffortUpdate,
+    ServiceLineOfferingThreshold, ServiceLineOfferingThresholdRead, ServiceLineOfferingThresholdCreate, ServiceLineOfferingThresholdUpdate,
+    ServiceLineInternalServiceMapping, ServiceLineInternalServiceMappingRead, ServiceLineInternalServiceMappingCreate, ServiceLineInternalServiceMappingUpdate
 )
 
 logger = structlog.get_logger()
@@ -320,3 +322,258 @@ async def bulk_create_service_line_stage_efforts(
     
     logger.info("Bulk created service line stage efforts", count=len(created_efforts))
     return created_efforts
+
+
+# Service Line Offering Thresholds
+@router.get("/service-line-offering-thresholds", response_model=List[ServiceLineOfferingThresholdRead])
+async def get_service_line_offering_thresholds(
+    service_line: str = None,
+    stage_name: str = None,
+    session: Session = Depends(get_session)
+):
+    """Get service line offering thresholds with optional filters."""
+    query = select(ServiceLineOfferingThreshold)
+    
+    if service_line:
+        query = query.where(ServiceLineOfferingThreshold.service_line == service_line)
+    if stage_name:
+        query = query.where(ServiceLineOfferingThreshold.stage_name == stage_name)
+    
+    thresholds = session.exec(query).all()
+    logger.info("Retrieved service line offering thresholds", count=len(thresholds), filters={"service_line": service_line, "stage_name": stage_name})
+    return thresholds
+
+
+@router.post("/service-line-offering-thresholds", response_model=ServiceLineOfferingThresholdRead)
+async def create_service_line_offering_threshold(
+    threshold: ServiceLineOfferingThresholdCreate,
+    session: Session = Depends(get_session)
+):
+    """Create a new service line offering threshold."""
+    # Check if this combination already exists
+    existing = session.exec(
+        select(ServiceLineOfferingThreshold).where(
+            ServiceLineOfferingThreshold.service_line == threshold.service_line,
+            ServiceLineOfferingThreshold.stage_name == threshold.stage_name
+        )
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Threshold for this service line and stage already exists")
+    
+    db_threshold = ServiceLineOfferingThreshold.from_orm(threshold)
+    session.add(db_threshold)
+    session.commit()
+    session.refresh(db_threshold)
+    
+    logger.info("Created service line offering threshold", threshold_id=db_threshold.id, service_line=db_threshold.service_line, stage=db_threshold.stage_name)
+    return db_threshold
+
+
+@router.put("/service-line-offering-thresholds/{threshold_id}", response_model=ServiceLineOfferingThresholdRead)
+async def update_service_line_offering_threshold(
+    threshold_id: int,
+    threshold: ServiceLineOfferingThresholdUpdate,
+    session: Session = Depends(get_session)
+):
+    """Update a service line offering threshold."""
+    db_threshold = session.get(ServiceLineOfferingThreshold, threshold_id)
+    if not db_threshold:
+        raise HTTPException(status_code=404, detail="Threshold not found")
+    
+    # Check if updating would create a duplicate
+    existing = session.exec(
+        select(ServiceLineOfferingThreshold).where(
+            ServiceLineOfferingThreshold.service_line == threshold.service_line,
+            ServiceLineOfferingThreshold.stage_name == threshold.stage_name,
+            ServiceLineOfferingThreshold.id != threshold_id
+        )
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Threshold for this service line and stage already exists")
+    
+    threshold_data = threshold.model_dump(exclude_unset=True)
+    for key, value in threshold_data.items():
+        setattr(db_threshold, key, value)
+    
+    session.add(db_threshold)
+    session.commit()
+    session.refresh(db_threshold)
+    
+    logger.info("Updated service line offering threshold", threshold_id=threshold_id, service_line=db_threshold.service_line, stage=db_threshold.stage_name)
+    return db_threshold
+
+
+@router.delete("/service-line-offering-thresholds/{threshold_id}")
+async def delete_service_line_offering_threshold(
+    threshold_id: int,
+    session: Session = Depends(get_session)
+):
+    """Delete a service line offering threshold."""
+    db_threshold = session.get(ServiceLineOfferingThreshold, threshold_id)
+    if not db_threshold:
+        raise HTTPException(status_code=404, detail="Threshold not found")
+    
+    session.delete(db_threshold)
+    session.commit()
+    
+    logger.info("Deleted service line offering threshold", threshold_id=threshold_id, service_line=db_threshold.service_line, stage=db_threshold.stage_name)
+    return {"message": "Threshold deleted successfully"}
+
+
+@router.post("/service-line-offering-thresholds/bulk", response_model=List[ServiceLineOfferingThresholdRead])
+async def bulk_create_service_line_offering_thresholds(
+    thresholds: List[ServiceLineOfferingThresholdCreate],
+    session: Session = Depends(get_session)
+):
+    """Bulk create service line offering thresholds."""
+    created_thresholds = []
+    
+    for threshold in thresholds:
+        # Check if this combination already exists
+        existing = session.exec(
+            select(ServiceLineOfferingThreshold).where(
+                ServiceLineOfferingThreshold.service_line == threshold.service_line,
+                ServiceLineOfferingThreshold.stage_name == threshold.stage_name
+            )
+        ).first()
+        
+        if not existing:
+            db_threshold = ServiceLineOfferingThreshold.from_orm(threshold)
+            session.add(db_threshold)
+            created_thresholds.append(db_threshold)
+    
+    if created_thresholds:
+        session.commit()
+        for threshold in created_thresholds:
+            session.refresh(threshold)
+    
+    logger.info("Bulk created service line offering thresholds", count=len(created_thresholds))
+    return created_thresholds
+
+
+# Service Line Internal Service Mappings
+@router.get("/service-line-internal-service-mappings", response_model=List[ServiceLineInternalServiceMappingRead])
+async def get_service_line_internal_service_mappings(
+    service_line: str = None,
+    session: Session = Depends(get_session)
+):
+    """Get service line internal service mappings with optional filters."""
+    query = select(ServiceLineInternalServiceMapping)
+    
+    if service_line:
+        query = query.where(ServiceLineInternalServiceMapping.service_line == service_line)
+    
+    mappings = session.exec(query).all()
+    logger.info("Retrieved service line internal service mappings", count=len(mappings), filters={"service_line": service_line})
+    return mappings
+
+
+@router.post("/service-line-internal-service-mappings", response_model=ServiceLineInternalServiceMappingRead)
+async def create_service_line_internal_service_mapping(
+    mapping: ServiceLineInternalServiceMappingCreate,
+    session: Session = Depends(get_session)
+):
+    """Create a new service line internal service mapping."""
+    # Check if this combination already exists
+    existing = session.exec(
+        select(ServiceLineInternalServiceMapping).where(
+            ServiceLineInternalServiceMapping.service_line == mapping.service_line,
+            ServiceLineInternalServiceMapping.internal_service == mapping.internal_service
+        )
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Mapping for this service line and internal service already exists")
+    
+    db_mapping = ServiceLineInternalServiceMapping.from_orm(mapping)
+    session.add(db_mapping)
+    session.commit()
+    session.refresh(db_mapping)
+    
+    logger.info("Created service line internal service mapping", mapping_id=db_mapping.id, service_line=db_mapping.service_line, internal_service=db_mapping.internal_service)
+    return db_mapping
+
+
+@router.put("/service-line-internal-service-mappings/{mapping_id}", response_model=ServiceLineInternalServiceMappingRead)
+async def update_service_line_internal_service_mapping(
+    mapping_id: int,
+    mapping: ServiceLineInternalServiceMappingUpdate,
+    session: Session = Depends(get_session)
+):
+    """Update a service line internal service mapping."""
+    db_mapping = session.get(ServiceLineInternalServiceMapping, mapping_id)
+    if not db_mapping:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    
+    # Check if updating would create a duplicate
+    existing = session.exec(
+        select(ServiceLineInternalServiceMapping).where(
+            ServiceLineInternalServiceMapping.service_line == mapping.service_line,
+            ServiceLineInternalServiceMapping.internal_service == mapping.internal_service,
+            ServiceLineInternalServiceMapping.id != mapping_id
+        )
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Mapping for this service line and internal service already exists")
+    
+    mapping_data = mapping.model_dump(exclude_unset=True)
+    for key, value in mapping_data.items():
+        setattr(db_mapping, key, value)
+    
+    session.add(db_mapping)
+    session.commit()
+    session.refresh(db_mapping)
+    
+    logger.info("Updated service line internal service mapping", mapping_id=mapping_id, service_line=db_mapping.service_line, internal_service=db_mapping.internal_service)
+    return db_mapping
+
+
+@router.delete("/service-line-internal-service-mappings/{mapping_id}")
+async def delete_service_line_internal_service_mapping(
+    mapping_id: int,
+    session: Session = Depends(get_session)
+):
+    """Delete a service line internal service mapping."""
+    db_mapping = session.get(ServiceLineInternalServiceMapping, mapping_id)
+    if not db_mapping:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    
+    session.delete(db_mapping)
+    session.commit()
+    
+    logger.info("Deleted service line internal service mapping", mapping_id=mapping_id, service_line=db_mapping.service_line, internal_service=db_mapping.internal_service)
+    return {"message": "Mapping deleted successfully"}
+
+
+@router.post("/service-line-internal-service-mappings/bulk", response_model=List[ServiceLineInternalServiceMappingRead])
+async def bulk_create_service_line_internal_service_mappings(
+    mappings: List[ServiceLineInternalServiceMappingCreate],
+    session: Session = Depends(get_session)
+):
+    """Bulk create service line internal service mappings."""
+    created_mappings = []
+    
+    for mapping in mappings:
+        # Check if this combination already exists
+        existing = session.exec(
+            select(ServiceLineInternalServiceMapping).where(
+                ServiceLineInternalServiceMapping.service_line == mapping.service_line,
+                ServiceLineInternalServiceMapping.internal_service == mapping.internal_service
+            )
+        ).first()
+        
+        if not existing:
+            db_mapping = ServiceLineInternalServiceMapping.from_orm(mapping)
+            session.add(db_mapping)
+            created_mappings.append(db_mapping)
+    
+    if created_mappings:
+        session.commit()
+        for mapping in created_mappings:
+            session.refresh(mapping)
+    
+    logger.info("Bulk created service line internal service mappings", count=len(created_mappings))
+    return created_mappings

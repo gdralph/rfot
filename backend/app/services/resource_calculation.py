@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 import structlog
 
 from app.models.opportunity import Opportunity, OpportunityLineItem
-from app.models.config import OpportunityCategory, ServiceLineStageEffort
+from app.models.config import OpportunityCategory, ServiceLineStageEffort, ServiceLineOfferingThreshold, ServiceLineInternalServiceMapping
 from app.models.database import engine
 
 logger = structlog.get_logger()
@@ -113,17 +113,103 @@ def get_remaining_stages(current_stage: str) -> List[str]:
     return SALES_STAGES_ORDER[current_index:]
 
 
+def calculate_offering_multiplier(
+    opportunity_id: str,
+    service_line: str,
+    stage_name: str,
+    session: Session
+) -> float:
+    """
+    Calculate the offering-based multiplier for FTE calculations.
+    Only counts offerings that are mapped to the specified service line via internal_service.
+    
+    Args:
+        opportunity_id: Opportunity string ID
+        service_line: Service line (MW, ITOC)
+        stage_name: Sales stage name
+        session: Database session
+        
+    Returns:
+        Multiplier value (1.0 if no threshold configured or count below threshold)
+    """
+    # Get valid internal service values for this service line
+    internal_service_mappings = session.exec(
+        select(ServiceLineInternalServiceMapping).where(
+            ServiceLineInternalServiceMapping.service_line == service_line
+        )
+    ).all()
+    
+    if not internal_service_mappings:
+        # No mappings configured, return default multiplier
+        logger.info("No internal service mappings found for service line", 
+                   service_line=service_line)
+        return 1.0
+    
+    valid_internal_services = {mapping.internal_service for mapping in internal_service_mappings}
+    
+    # Get opportunity line items filtered by valid internal services
+    line_items = session.exec(
+        select(OpportunityLineItem).where(
+            OpportunityLineItem.opportunity_id == opportunity_id,
+            OpportunityLineItem.internal_service.in_(valid_internal_services)
+        )
+    ).all()
+    
+    # Count unique non-null simplified_offering values from mapped line items
+    unique_offerings = set()
+    for item in line_items:
+        if item.simplified_offering and item.simplified_offering.strip():
+            unique_offerings.add(item.simplified_offering.strip())
+    
+    offering_count = len(unique_offerings)
+    
+    # Look up threshold configuration for this service line and stage
+    threshold_config = session.exec(
+        select(ServiceLineOfferingThreshold).where(
+            ServiceLineOfferingThreshold.service_line == service_line,
+            ServiceLineOfferingThreshold.stage_name == stage_name
+        )
+    ).first()
+    
+    if not threshold_config:
+        # No threshold configured, return default multiplier
+        return 1.0
+    
+    # Calculate multiplier based on threshold
+    if offering_count <= threshold_config.threshold_count:
+        # At or below threshold, use base multiplier
+        multiplier = 1.0
+    else:
+        # Above threshold, add increment for each additional offering
+        excess_offerings = offering_count - threshold_config.threshold_count
+        multiplier = 1.0 + (excess_offerings * threshold_config.increment_multiplier)
+    
+    logger.info("Calculated offering multiplier", 
+                opportunity_id=opportunity_id, 
+                service_line=service_line, 
+                stage_name=stage_name,
+                offering_count=offering_count, 
+                mapped_internal_services=list(valid_internal_services),
+                threshold=threshold_config.threshold_count,
+                increment=threshold_config.increment_multiplier,
+                multiplier=multiplier)
+    
+    return multiplier
+
+
 def calculate_stage_timeline(
     decision_date: datetime,
     current_stage: str,
     service_line: str,
     timeline_category: str,
     resource_category: str,
+    opportunity_id: str,
     session: Session
 ) -> List[Dict]:
     """
     Calculate timeline for remaining stages working backwards from decision date.
     Uses timeline_category for stage durations and resource_category for FTE requirements.
+    Applies offering-based multipliers to FTE calculations.
     
     Args:
         decision_date: Target close/decision date
@@ -131,6 +217,7 @@ def calculate_stage_timeline(
         service_line: Service line (MW, ITOC)
         timeline_category: Category for timeline/duration (based on total TCV)
         resource_category: Category for FTE/effort (based on service line TCV)
+        opportunity_id: Opportunity string ID for offering count lookup
         session: Database session
         
     Returns:
@@ -197,7 +284,15 @@ def calculate_stage_timeline(
             continue
             
         duration_weeks = duration_lookup[stage]
-        fte_required = fte_lookup[stage]
+        base_fte_required = fte_lookup[stage]
+        
+        # Calculate offering-based multiplier for this stage
+        offering_multiplier = calculate_offering_multiplier(
+            opportunity_id, service_line, stage, session
+        )
+        
+        # Apply multiplier to base FTE
+        fte_required = base_fte_required * offering_multiplier
         duration_days = duration_weeks * 7
         
         stage_start_date = current_end_date - timedelta(days=duration_days)
@@ -208,6 +303,8 @@ def calculate_stage_timeline(
             "stage_end_date": current_end_date,
             "duration_weeks": duration_weeks,
             "fte_required": fte_required,
+            "base_fte_required": base_fte_required,  # Track original FTE
+            "offering_multiplier": offering_multiplier,  # Track multiplier applied
             "total_effort_weeks": duration_weeks * fte_required,
             "resource_category": resource_category  # Track which category was used for resources
         })
@@ -302,6 +399,7 @@ def calculate_opportunity_resource_timeline(
             service_line,
             timeline_category,
             resource_category,
+            opportunity.opportunity_id,  # Pass the string opportunity_id
             session
         )
         if timeline:

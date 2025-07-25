@@ -7,9 +7,16 @@ import {
   useDeleteServiceLineCategory,
   useServiceLineStageEfforts,
   useUpdateServiceLineStageEffort,
-  useBulkCreateServiceLineStageEfforts
+  useBulkCreateServiceLineStageEfforts,
+  useServiceLineOfferingThresholds,
+  useCreateServiceLineOfferingThreshold,
+  useUpdateServiceLineOfferingThreshold,
+  useServiceLineInternalServiceMappings,
+  useCreateServiceLineInternalServiceMapping,
+  useUpdateServiceLineInternalServiceMapping,
+  useDeleteServiceLineInternalServiceMapping
 } from '../../hooks/useConfig';
-import type { ServiceLineCategory, ServiceLineStageEffort } from '../../types/index';
+import type { ServiceLineCategory, ServiceLineStageEffort, ServiceLineInternalServiceMapping } from '../../types/index';
 import { SALES_STAGES } from '../../types/index';
 
 const ServiceLineResourceTab: React.FC = () => {
@@ -41,12 +48,40 @@ const ServiceLineResourceTab: React.FC = () => {
   const updateEffortMutation = useUpdateServiceLineStageEffort();
   const bulkCreateMutation = useBulkCreateServiceLineStageEfforts();
 
+  // Fetch offering thresholds for active service line
+  const { data: allThresholds = [], isLoading: thresholdsLoading } = useServiceLineOfferingThresholds(activeServiceLine);
+  const createThresholdMutation = useCreateServiceLineOfferingThreshold();
+  const updateThresholdMutation = useUpdateServiceLineOfferingThreshold();
+  // const deleteThresholdMutation = useDeleteServiceLineOfferingThreshold();
+
+  // Fetch internal service mappings for active service line
+  const { data: allInternalServiceMappings = [], isLoading: mappingsLoading } = useServiceLineInternalServiceMappings(activeServiceLine);
+  const createMappingMutation = useCreateServiceLineInternalServiceMapping();
+  const updateMappingMutation = useUpdateServiceLineInternalServiceMapping();
+  const deleteMappingMutation = useDeleteServiceLineInternalServiceMapping();
+  
+  // State for internal service mappings
+  const [isAddingMapping, setIsAddingMapping] = useState(false);
+  const [editingMappingId, setEditingMappingId] = useState<number | null>(null);
+  const [newMapping, setNewMapping] = useState<Partial<ServiceLineInternalServiceMapping>>({
+    service_line: activeServiceLine,
+    internal_service: ''
+  });
+  const [editMapping, setEditMapping] = useState<Partial<ServiceLineInternalServiceMapping>>({
+    service_line: activeServiceLine,
+    internal_service: ''
+  });
+
   // Update form data when switching service lines
   React.useEffect(() => {
     setNewCategory(prev => ({ ...prev, service_line: activeServiceLine }));
     setEditCategory(prev => ({ ...prev, service_line: activeServiceLine }));
+    setNewMapping(prev => ({ ...prev, service_line: activeServiceLine }));
+    setEditMapping(prev => ({ ...prev, service_line: activeServiceLine }));
     setIsAddingCategory(false);
     setEditingCategoryId(null);
+    setIsAddingMapping(false);
+    setEditingMappingId(null);
     setPendingChanges(new Map());
   }, [activeServiceLine]);
 
@@ -230,6 +265,133 @@ const ServiceLineResourceTab: React.FC = () => {
     if (!effort) return 0;
     
     return changes?.fte_required ?? effort.fte_required ?? 0;
+  };
+
+  // Threshold handling
+  const getThresholdCount = (): number => {
+    // Get threshold count from first available threshold (should be same across all stages)
+    const firstThreshold = allThresholds.find(t => t.service_line === activeServiceLine);
+    return firstThreshold?.threshold_count || 4;
+  };
+
+  const handleThresholdCountChange = async (newThresholdCount: number) => {
+    if (isNaN(newThresholdCount) || newThresholdCount < 1) return;
+
+    // Update threshold count for all stages
+    const updates = SALES_STAGES.map(async (stage) => {
+      const existingThreshold = allThresholds.find(t => 
+        t.service_line === activeServiceLine && 
+        t.stage_name === stage.code
+      );
+
+      const thresholdData = {
+        service_line: activeServiceLine,
+        stage_name: stage.code,
+        threshold_count: newThresholdCount,
+        increment_multiplier: existingThreshold?.increment_multiplier || 0.2
+      };
+
+      try {
+        if (existingThreshold) {
+          await updateThresholdMutation.mutateAsync({
+            id: existingThreshold.id!,
+            data: thresholdData
+          });
+        } else {
+          await createThresholdMutation.mutateAsync(thresholdData);
+        }
+      } catch (error) {
+        console.error('Failed to update threshold count for stage:', stage.code, error);
+      }
+    });
+
+    await Promise.all(updates);
+  };
+
+  const handleThresholdChange = async (stageCode: string, _field: 'increment_multiplier', value: number) => {
+    if (isNaN(value) || value < 0) return;
+
+    const existingThreshold = allThresholds.find(t => 
+      t.service_line === activeServiceLine && 
+      t.stage_name === stageCode
+    );
+
+    const thresholdData = {
+      service_line: activeServiceLine,
+      stage_name: stageCode,
+      threshold_count: existingThreshold?.threshold_count || getThresholdCount(),
+      increment_multiplier: value
+    };
+
+    try {
+      if (existingThreshold) {
+        await updateThresholdMutation.mutateAsync({
+          id: existingThreshold.id!,
+          data: thresholdData
+        });
+      } else {
+        await createThresholdMutation.mutateAsync(thresholdData);
+      }
+    } catch (error) {
+      console.error('Failed to update threshold:', error);
+    }
+  };
+
+  // Internal Service Mapping handlers
+  const handleAddMapping = async () => {
+    if (!newMapping.internal_service?.trim()) return;
+
+    try {
+      await createMappingMutation.mutateAsync({
+        service_line: activeServiceLine,
+        internal_service: newMapping.internal_service.trim()
+      });
+      setNewMapping({ service_line: activeServiceLine, internal_service: '' });
+      setIsAddingMapping(false);
+    } catch (error) {
+      console.error('Failed to create internal service mapping:', error);
+    }
+  };
+
+  const handleUpdateMapping = async () => {
+    if (!editMapping.internal_service?.trim() || !editingMappingId) return;
+
+    try {
+      await updateMappingMutation.mutateAsync({
+        id: editingMappingId,
+        data: {
+          service_line: activeServiceLine,
+          internal_service: editMapping.internal_service.trim()
+        }
+      });
+      setEditingMappingId(null);
+      setEditMapping({ service_line: activeServiceLine, internal_service: '' });
+    } catch (error) {
+      console.error('Failed to update internal service mapping:', error);
+    }
+  };
+
+  const handleDeleteMapping = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this internal service mapping?')) return;
+
+    try {
+      await deleteMappingMutation.mutateAsync(id);
+    } catch (error) {
+      console.error('Failed to delete internal service mapping:', error);
+    }
+  };
+
+  const startEditMapping = (mapping: ServiceLineInternalServiceMapping) => {
+    setEditingMappingId(mapping.id!);
+    setEditMapping({
+      service_line: mapping.service_line,
+      internal_service: mapping.internal_service
+    });
+  };
+
+  const cancelEditMapping = () => {
+    setEditingMappingId(null);
+    setEditMapping({ service_line: activeServiceLine, internal_service: '' });
   };
 
   if (categoriesLoading || effortsLoading) {
@@ -581,6 +743,246 @@ const ServiceLineResourceTab: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Offering Thresholds Section */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center gap-4 mb-6">
+          <AlertCircle className="h-6 w-6 text-dxc-purple" />
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Offering Thresholds</h3>
+            <p className="text-gray-600 text-sm">Configure service-line-wide offering thresholds with stage-specific multipliers</p>
+          </div>
+        </div>
+
+        {thresholdsLoading ? (
+          <div className="flex justify-center items-center h-32">
+            <Loader2 className="h-6 w-6 animate-spin text-dxc-purple" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Threshold Count Configuration */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="flex items-center gap-4 mb-3">
+                <h4 className="font-medium text-gray-900">Threshold Count</h4>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">Offerings threshold:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={getThresholdCount()}
+                    onChange={(e) => handleThresholdCountChange(parseInt(e.target.value))}
+                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-dxc-purple"
+                    placeholder="4"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                Opportunities with ≤{getThresholdCount()} offerings use base FTE. Above this threshold, incremental multipliers apply per stage.
+              </p>
+            </div>
+
+            {/* Stage Multipliers Table */}
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="font-medium text-gray-900 mb-3">Stage Multipliers</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-white border border-gray-200">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 border-r border-gray-200">
+                        Sales Stage
+                      </th>
+                      {SALES_STAGES.map((stage) => (
+                        <th key={stage.code} className="px-3 py-2 text-center text-xs font-medium text-gray-700 border-r border-gray-200 min-w-[100px]">
+                          <div>{stage.label}</div>
+                          <div className="text-xs text-gray-500 font-normal">{stage.code}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="bg-white border border-gray-200">
+                      <td className="px-3 py-2 text-sm font-medium text-gray-900 border-r border-gray-200">
+                        Increment Multiplier
+                      </td>
+                      {SALES_STAGES.map((stage) => {
+                        const threshold = allThresholds.find(t => t.stage_name === stage.code);
+                        return (
+                          <td key={stage.code} className="px-3 py-2 text-center border-r border-gray-200">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={threshold?.increment_multiplier || 0.2}
+                              onChange={(e) => handleThresholdChange(stage.code, 'increment_multiplier', parseFloat(e.target.value))}
+                              className="w-16 px-2 py-1 text-center border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-dxc-purple text-sm"
+                              placeholder="0.2"
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    <tr className="bg-gray-50 border border-gray-200">
+                      <td className="px-3 py-2 text-xs text-gray-600 border-r border-gray-200">
+                        Example: {getThresholdCount() + 1} offerings
+                      </td>
+                      {SALES_STAGES.map((stage) => {
+                        const threshold = allThresholds.find(t => t.stage_name === stage.code);
+                        const multiplier = 1 + (threshold?.increment_multiplier || 0.2);
+                        return (
+                          <td key={stage.code} className="px-3 py-2 text-center text-xs text-gray-500 border-r border-gray-200">
+                            {multiplier.toFixed(1)}x
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Internal Service Mappings Section */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Internal Service Mappings</h3>
+            <p className="text-gray-600 text-sm">Configure which internal service values are counted for offering threshold calculations</p>
+          </div>
+          <button
+            onClick={() => setIsAddingMapping(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-dxc-purple text-white text-sm font-medium rounded-md hover:bg-dxc-purple-dark"
+          >
+            <Plus className="h-4 w-4" />
+            Add Mapping
+          </button>
+        </div>
+
+        {mappingsLoading ? (
+          <div className="flex justify-center items-center h-32">
+            <Loader2 className="h-6 w-6 animate-spin text-dxc-purple" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Add New Mapping Form */}
+            {isAddingMapping && (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-3">Add Internal Service Mapping</h4>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Internal Service Value
+                    </label>
+                    <input
+                      type="text"
+                      value={newMapping.internal_service || ''}
+                      onChange={(e) => setNewMapping(prev => ({ ...prev, internal_service: e.target.value }))}
+                      placeholder="Enter internal service name..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    />
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <button
+                      onClick={handleAddMapping}
+                      disabled={!newMapping.internal_service?.trim()}
+                      className="px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsAddingMapping(false);
+                        setNewMapping({ service_line: activeServiceLine, internal_service: '' });
+                      }}
+                      className="px-3 py-2 bg-gray-500 text-white text-sm font-medium rounded-md hover:bg-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Current Mappings */}
+            <div>
+              <h4 className="font-medium text-gray-900 mb-3">
+                Current {activeServiceLine} Mappings ({allInternalServiceMappings.length})
+              </h4>
+              
+              {allInternalServiceMappings.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                  <p>No internal service mappings configured for {activeServiceLine}</p>
+                  <p className="text-sm">Add mappings to enable offering threshold calculations</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {allInternalServiceMappings.map((mapping) => (
+                    <div key={mapping.id} className="border border-gray-200 rounded-lg p-3">
+                      {editingMappingId === mapping.id ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editMapping.internal_service || ''}
+                            onChange={(e) => setEditMapping(prev => ({ ...prev, internal_service: e.target.value }))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                          />
+                          <div className="flex justify-end gap-1">
+                            <button
+                              onClick={handleUpdateMapping}
+                              disabled={!editMapping.internal_service?.trim()}
+                              className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:bg-gray-300"
+                            >
+                              <Check className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={cancelEditMapping}
+                              className="px-2 py-1 bg-gray-500 text-white text-xs rounded hover:bg-gray-600"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{mapping.internal_service}</p>
+                            <p className="text-xs text-gray-500">{mapping.service_line}</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => startEditMapping(mapping)}
+                              className="p-1 text-gray-400 hover:text-dxc-purple"
+                            >
+                              <Edit2 className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMapping(mapping.id!)}
+                              className="p-1 text-gray-400 hover:text-red-600"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {allInternalServiceMappings.length > 0 && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> Only opportunity line items with these internal service values will be counted 
+                    for offering threshold calculations in {activeServiceLine}.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

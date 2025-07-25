@@ -37,7 +37,7 @@ pip install -r requirements.txt
 python3 -m alembic upgrade head  # Run migrations to create database schema
 
 # Initialize configuration data (REQUIRED for first run)
-python3 seed_data.py  # Creates categories, effort estimates, and SME allocation rules
+python3 seed_data.py  # Creates categories and internal service mappings
 
 # Optional: Add sample opportunity data for testing
 python3 add_sample_data.py  # Creates sample opportunities with line items
@@ -75,9 +75,10 @@ python3 -m alembic revision --autogenerate -m "Description"
 python3 -m alembic upgrade head
 
 # Data initialization
-python3 seed_data.py              # Initialize configuration data
-python3 seed_service_line_data.py # Initialize MW/ITOC service line templates
-python3 add_sample_data.py        # Add sample opportunities
+python3 seed_data.py                      # Initialize configuration data and internal service mappings
+python3 seed_service_line_data.py         # Initialize MW/ITOC service line templates
+python3 seed_internal_service_mappings.py # Manage internal service mappings (verify/reset)
+python3 add_sample_data.py                # Add sample opportunities
 
 # Testing
 pytest                    # Run all tests
@@ -183,6 +184,37 @@ Excel import uses background tasks with progress tracking:
 - **Optimistic Updates**: Opportunity edits update cache immediately
 - **Error Boundaries**: Global error handling for API failures
 
+## Configuration Management & Troubleshooting
+
+### Internal Service Mappings
+Internal service mappings determine which opportunity line items are counted for offering threshold calculations. Each service line (MW, ITOC) has a configured list of internal service values that should be included in FTE multiplier calculations.
+
+**Default Mappings:**
+- **MW (Modern Workplace)**: "Modern Workplace", "MW", "Workplace Services", "Digital Employee Experience", "Collaboration", "Endpoint Services"
+- **ITOC (Infrastructure & Cloud)**: "Infrastructure & Cloud", "ITOC", "Cloud Services", "Infrastructure Services", "Data Center Services", "Network Services", "Platform Services"
+
+**Troubleshooting Commands:**
+```bash
+# Verify all default mappings exist
+python3 seed_internal_service_mappings.py verify
+
+# Create any missing default mappings
+python3 seed_internal_service_mappings.py
+
+# Reset all mappings to defaults (removes custom mappings)
+python3 seed_internal_service_mappings.py reset
+```
+
+**Common Issues:**
+- **FTE multipliers not working**: Check that opportunity line items have `internal_service` values that match the configured mappings
+- **Missing default mappings**: Run the verify command to check, then run seed script to create missing mappings
+- **Custom mappings lost**: Use the reset command to restore defaults, then re-add custom mappings through the UI
+
+**API Management:**
+- View mappings: `GET /api/config/service-line-internal-service-mappings`
+- Add mapping: `POST /api/config/service-line-internal-service-mappings`
+- Delete mapping: `DELETE /api/config/service-line-internal-service-mappings/{id}`
+
 ## Development Environment
 
 - Backend runs on port 8000, frontend on 5173
@@ -199,6 +231,8 @@ The core business logic revolves around resource timeline calculations:
 - **Service Lines**: Only MW (Modern Workplace) and ITOC (Infrastructure & Cloud) have full resource planning templates
 - **Category Mapping**: TCV amounts map to categories (Sub $5M, Cat C, Cat B, Cat A) via `OpportunityCategory` database records
 - **Timeline Generation**: Uses `ServiceLineStageEffort` templates to calculate FTE requirements across sales stages
+- **Offering-Based Multipliers**: `calculate_offering_multiplier()` counts unique offerings filtered by internal service mappings and applies threshold-based FTE multipliers
+- **Internal Service Filtering**: Only opportunity line items with `internal_service` values mapped to the service line are counted for offering threshold calculations
 - **Missing Timeline Calculation**: `_calculate_missing_timelines_count()` identifies opportunities eligible for timeline generation but lacking timeline data
 
 ### Database Architecture Patterns

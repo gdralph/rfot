@@ -107,6 +107,20 @@ export interface ServiceLineStageEffort {
   fte_required: number;
 }
 
+export interface ServiceLineOfferingThreshold {
+  id?: number;
+  service_line: string;
+  stage_name: string;
+  threshold_count: number;
+  increment_multiplier: number;
+}
+
+export interface ServiceLineInternalServiceMapping {
+  id?: number;
+  service_line: string;
+  internal_service: string;
+}
+
 export interface ImportTask {
   task_id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';

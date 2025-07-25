@@ -6,6 +6,8 @@ import type {
   OpportunityCategory,
   ServiceLineCategory,
   ServiceLineStageEffort,
+  ServiceLineOfferingThreshold,
+  ServiceLineInternalServiceMapping,
   ForecastSummary,
   ServiceLineForecast,
   ActiveServiceLines,
@@ -277,6 +279,84 @@ class ApiClient {
 
   async bulkCreateServiceLineStageEfforts(data: Array<Omit<ServiceLineStageEffort, 'id' | 'effort_weeks'>>): Promise<ServiceLineStageEffort[]> {
     return this.request('/api/config/service-line-stage-efforts/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Service Line Offering Thresholds
+  async getServiceLineOfferingThresholds(serviceLine?: string, stageName?: string): Promise<ServiceLineOfferingThreshold[]> {
+    const params = new URLSearchParams();
+    if (serviceLine) params.append('service_line', serviceLine);
+    if (stageName) params.append('stage_name', stageName);
+    
+    const queryString = params.toString();
+    const url = queryString ? `/api/config/service-line-offering-thresholds?${queryString}` : '/api/config/service-line-offering-thresholds';
+    
+    return this.request(url);
+  }
+
+  async createServiceLineOfferingThreshold(data: Omit<ServiceLineOfferingThreshold, 'id'>): Promise<ServiceLineOfferingThreshold> {
+    return this.request('/api/config/service-line-offering-thresholds', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateServiceLineOfferingThreshold(id: number, data: Omit<ServiceLineOfferingThreshold, 'id'>): Promise<ServiceLineOfferingThreshold> {
+    return this.request(`/api/config/service-line-offering-thresholds/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteServiceLineOfferingThreshold(id: number): Promise<void> {
+    return this.request(`/api/config/service-line-offering-thresholds/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async bulkCreateServiceLineOfferingThresholds(data: Array<Omit<ServiceLineOfferingThreshold, 'id'>>): Promise<ServiceLineOfferingThreshold[]> {
+    return this.request('/api/config/service-line-offering-thresholds/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Service Line Internal Service Mappings
+  async getServiceLineInternalServiceMappings(serviceLine?: string): Promise<ServiceLineInternalServiceMapping[]> {
+    const params = new URLSearchParams();
+    if (serviceLine) params.append('service_line', serviceLine);
+    
+    const url = params.toString() 
+      ? `/api/config/service-line-internal-service-mappings?${params}`
+      : '/api/config/service-line-internal-service-mappings';
+    
+    return this.request(url);
+  }
+
+  async createServiceLineInternalServiceMapping(data: Omit<ServiceLineInternalServiceMapping, 'id'>): Promise<ServiceLineInternalServiceMapping> {
+    return this.request('/api/config/service-line-internal-service-mappings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateServiceLineInternalServiceMapping(id: number, data: Omit<ServiceLineInternalServiceMapping, 'id'>): Promise<ServiceLineInternalServiceMapping> {
+    return this.request(`/api/config/service-line-internal-service-mappings/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteServiceLineInternalServiceMapping(id: number): Promise<void> {
+    return this.request(`/api/config/service-line-internal-service-mappings/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async bulkCreateServiceLineInternalServiceMappings(data: Array<Omit<ServiceLineInternalServiceMapping, 'id'>>): Promise<ServiceLineInternalServiceMapping[]> {
+    return this.request('/api/config/service-line-internal-service-mappings/bulk', {
       method: 'POST',
       body: JSON.stringify(data),
     });
