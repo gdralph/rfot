@@ -5,9 +5,21 @@ import { useCategories } from '../hooks/useConfig';
 import { useResourceTimeline, useCalculateResourceTimeline, useUpdateResourceTimelineData } from '../hooks/useResourceTimeline';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { OpportunityFormData, Opportunity, OpportunityCategory, OpportunityEffortPrediction } from '../types/index';
-import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES } from '../types/index';
+import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES, SALES_STAGES } from '../types/index';
+
+// Sales stage colors for milestone/Gantt chart
+const SALES_STAGE_COLORS: Record<string, string> = {
+  '01': '#FF6B6B', // Red - Understand Customer
+  '02': '#4ECDC4', // Teal - Validate Opportunity  
+  '03': '#45B7D1', // Blue - Qualify Opportunity
+  '04A': '#96CEB4', // Light Green - Develop Solution
+  '04B': '#FFEAA7', // Light Yellow - Propose Solution
+  '05A': '#DDA0DD', // Plum - Negotiate
+  '05B': '#98D8C8', // Mint - Award & Close
+  '06': '#A8E6CF', // Light Green - Deploy & Extend
+};
 import { getSecurityClearanceColorClass } from '../utils/securityClearance';
-import { ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
+import { ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, CartesianGrid, PieChart, Pie, Cell, ReferenceLine } from 'recharts';
 import { ArrowLeft, BarChart3, Layers, Calendar, Users, DollarSign, Edit, Save, X, Calculator, RefreshCw, Settings, TrendingUp, Eye } from 'lucide-react';
 
 // Enhanced UI Components
@@ -51,6 +63,149 @@ const mapOpportunityForDisplay = (opp: Opportunity, categories: OpportunityCateg
     status: opp.in_forecast === 'Y' ? 'Active' : opp.in_forecast === 'N' ? 'Inactive' : 'Unknown',
     notes: '' // This field doesn't exist in the current schema
   };
+};
+
+
+
+// Enhanced XAxis tick component with week view optimization
+const CustomXAxisTick = ({ x, y, payload, timePeriod }: any) => {
+  const fontSize = timePeriod === 'week' ? 10 : 11;
+  const textAnchor = timePeriod === 'week' ? "end" : "middle";
+  const dy = timePeriod === 'week' ? 12 : 16;
+  
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text 
+        x={0} 
+        y={0} 
+        dy={dy} 
+        textAnchor={textAnchor} 
+        fill="#666" 
+        fontSize={fontSize}
+        transform={timePeriod === 'week' ? `rotate(-45)` : undefined}
+      >
+        {payload.value}
+      </text>
+    </g>
+  );
+};
+
+// Sales Stage Gantt/Milestone Component - Aligned with main chart
+const SalesStageGantt = ({ 
+  timePeriod, 
+  chartData, 
+  tableData, 
+  opportunity: _opportunity 
+}: {
+  timePeriod: 'week' | 'month' | 'quarter' | 'stage';
+  chartData: any[];
+  tableData: any[];
+  opportunity: Opportunity;
+}) => {
+  if (timePeriod === 'stage' || !chartData.length) {
+    return null;
+  }
+
+  // Create stage timeline data
+  const stageTimeline = chartData.map((item: any) => {
+    const dateKey = item.dateKey || item.date;
+    let stageCode = null;
+    
+    if (dateKey) {
+      // Extract stage code from tableData
+      for (const tableItem of tableData) {
+        if (!tableItem.stage_start_date || !tableItem.stage_end_date) continue;
+        
+        let targetDate: Date;
+        try {
+          if (timePeriod === 'quarter') {
+            const [year, quarterPart] = dateKey.split('-Q');
+            const quarter = parseInt(quarterPart);
+            const quarterStartMonth = (quarter - 1) * 3;
+            targetDate = new Date(parseInt(year), quarterStartMonth, 15);
+          } else if (timePeriod === 'month') {
+            const [year, month] = dateKey.split('-');
+            targetDate = new Date(parseInt(year), parseInt(month), 15);
+          } else {
+            targetDate = new Date(dateKey);
+          }
+          
+          const stageStart = new Date(tableItem.stage_start_date);
+          const stageEnd = new Date(tableItem.stage_end_date);
+          
+          if (targetDate >= stageStart && targetDate <= stageEnd) {
+            const stageMatch = tableItem.stage_name.match(/(\d{2}[AB]?)/);
+            if (stageMatch) {
+              stageCode = stageMatch[1];
+              break;
+            }
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+    
+    return {
+      period: item.period, // Use the same period key as main chart
+      stageCode,
+      color: stageCode ? SALES_STAGE_COLORS[stageCode] : '#E5E7EB',
+      value: 1 // Fixed value for consistent bar height
+    };
+  });
+
+  return (
+    <div className="mt-1">
+      {/* Sales Stage Timeline Label */}
+      <div className="text-xs text-gray-600 mb-1 ml-1">
+        <span className="font-medium">Sales Stage Timeline:</span>
+      </div>
+      
+      {/* Simplified aligned timeline bars using CSS - aligned with chart margins */}
+      <div className="relative" style={{ marginLeft: '65px', marginRight: '10px' }}>
+        <div className="flex items-center h-8 border border-gray-300 rounded bg-gray-50">
+          {stageTimeline.map((item: any, index: number) => {
+            const width = `${100 / stageTimeline.length}%`;
+            return (
+              <div
+                key={index}
+                className="h-full border-r border-gray-300 last:border-r-0"
+                style={{ 
+                  width,
+                  backgroundColor: item.color,
+                  opacity: item.stageCode ? 0.9 : 0.3
+                }}
+                title={item.stageCode ? `Stage ${item.stageCode} - ${item.period}` : item.period}
+              >
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Sales Stage Legend Component - restored to original position
+const SalesStageGanttLegend = () => {
+  return (
+    <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+      <h4 className="text-xs font-semibold text-gray-700 mb-2">Sales Stage Timeline</h4>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {SALES_STAGES.map((stage) => (
+          <div key={stage.code} className="flex items-center gap-1.5">
+            <div 
+              className="w-3 h-3 rounded-sm border border-gray-300" 
+              style={{ backgroundColor: SALES_STAGE_COLORS[stage.code] }}
+            />
+            <span className="text-xs text-gray-600">
+              {stage.code}: {stage.label.replace(/^Stage \d{2}[AB]? \(/, '').replace(/\)$/, '')}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 const OpportunityDetailV2: React.FC = () => {
@@ -340,11 +495,11 @@ const OpportunityDetailV2: React.FC = () => {
         
         // Calculate start and end dates based on duration
         const durationWeeks = item.duration_weeks || 0;
-        const durationDays = Math.round(durationWeeks * 7); // Convert weeks to days
+        const _durationDays = Math.round(durationWeeks * 7); // Convert weeks to days
         
         const stageEndDate = new Date(currentEndDate);
         const stageStartDate = new Date(currentEndDate);
-        stageStartDate.setDate(stageStartDate.getDate() - durationDays);
+        stageStartDate.setDate(stageStartDate.getDate() - _durationDays);
         
         // Format dates for date input fields (YYYY-MM-DD format)
         const formatDateForInput = (date: Date) => {
@@ -389,7 +544,6 @@ const OpportunityDetailV2: React.FC = () => {
       // When duration changes, recalculate dates working backwards from close date
       const closeDate = opportunity.decision_date ? new Date(opportunity.decision_date) : new Date();
       const newDurationWeeks = parseFloat(value) || 0;
-      const durationDays = Math.round(newDurationWeeks * 7);
       
       // Get all timeline data to maintain proper sequencing
       const tableData = getTimelineTableData(resourceTimeline!);
@@ -1029,11 +1183,16 @@ const OpportunityDetailV2: React.FC = () => {
                       const weekStart = new Date(currentDate);
                       weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week
                       dateKey = weekStart.toISOString().split('T')[0];
-                      periodLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                      // Make weekly labels more compact: use M/D format
+                      periodLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
                     }
                     
                     if (!timelineMap.has(dateKey)) {
-                      const entry: Record<string, any> = { date: dateKey, period: periodLabel };
+                      const entry: Record<string, any> = { 
+                        date: dateKey, 
+                        period: periodLabel,
+                        dateKey: dateKey  // Store the date key for stage mapping
+                      };
                       // Initialize all service lines to 0
                       Array.from(serviceLines).forEach(sl => {
                         entry[sl] = 0;
@@ -1061,11 +1220,28 @@ const OpportunityDetailV2: React.FC = () => {
 
               return (
                 <div className="space-y-4">
-                  {/* Time Period Indicator */}
-                  <div className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
-                    Viewing: <span className="font-medium capitalize">{timePeriod}</span> 
-                    {timePeriod !== 'stage' ? ' timeline (concurrent FTE by service line)' : ' stages'} • 
-                    {timePeriod !== 'stage' ? `${chartData.length} time periods` : `${chartData.length} stages`}
+                  {/* Time Period Indicator and Service Line Legend */}
+                  <div className="flex items-start justify-between">
+                    <div className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                      Viewing: <span className="font-medium capitalize">{timePeriod}</span> 
+                      {timePeriod !== 'stage' ? ' timeline (concurrent FTE by service line)' : ' stages'} • 
+                      {timePeriod !== 'stage' ? `${chartData.length} time periods` : `${chartData.length} stages`}
+                    </div>
+                    
+                    {/* Service Line Legend - positioned to the right */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                      {Array.from(new Set(tableData.map(item => item.service_line))).map((serviceLine, index) => (
+                        <div key={serviceLine} className="flex items-center gap-1">
+                          <div 
+                            className="w-3 h-3 rounded-sm border border-gray-300" 
+                            style={{ backgroundColor: DXC_COLORS[index % DXC_COLORS.length] }}
+                          />
+                          <span className="text-gray-600 font-medium">
+                            {serviceLine}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   {/* Chart */}
                   <div className="h-64">
@@ -1074,11 +1250,11 @@ const OpportunityDetailV2: React.FC = () => {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis 
                           dataKey={timePeriod === 'stage' ? 'stage' : 'period'} 
-                          angle={0}
-                          textAnchor="middle"
-                          height={60}
-                          tick={{ fontSize: 11 }}
-                          interval={0}
+                          angle={timePeriod === 'week' ? -45 : 0}
+                          textAnchor={timePeriod === 'week' ? 'end' : 'middle'}
+                          height={timePeriod === 'week' ? 80 : 60}
+                          tick={(props) => <CustomXAxisTick {...props} timePeriod={timePeriod} />}
+                          interval={timePeriod === 'week' ? 'preserveStartEnd' : 0}
                         />
                         <YAxis />
                         <Tooltip 
@@ -1088,7 +1264,44 @@ const OpportunityDetailV2: React.FC = () => {
                             name
                           ]}
                         />
-                        <Legend />
+                        {/* Close Date Reference Line - only for time-based views */}
+                        {timePeriod !== 'stage' && opportunity.decision_date && (() => {
+                          // Find the close date in the chart data
+                          const closeDate = new Date(opportunity.decision_date);
+                          let closeDateKey = '';
+                          
+                          if (timePeriod === 'quarter') {
+                            const year = closeDate.getFullYear();
+                            const quarter = Math.floor(closeDate.getMonth() / 3) + 1;
+                            closeDateKey = `Q${quarter} ${year.toString().slice(-2)}`;
+                          } else if (timePeriod === 'month') {
+                            closeDateKey = closeDate.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                          } else {
+                            // For weekly, find the closest week
+                            const weekStart = new Date(closeDate);
+                            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+                            closeDateKey = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                          }
+                          
+                          // Find if this close date key exists in chart data
+                          const closeDateIndex = chartData.findIndex((item: any) => item.period === closeDateKey);
+                          
+                          return closeDateIndex >= 0 ? (
+                            <ReferenceLine 
+                              x={closeDateKey}
+                              stroke="#EF4444" 
+                              strokeDasharray="5 5"
+                              strokeWidth={2}
+                              label={{
+                                value: "Close Date",
+                                position: "top",
+                                fill: "#EF4444",
+                                fontSize: 10,
+                                fontWeight: "bold"
+                              }}
+                            />
+                          ) : null;
+                        })()}
                         {timePeriod === 'stage' ? (
                           // Show stacked bars by service line
                           Array.from(new Set(tableData.map(item => item.service_line))).map((serviceLine, index) => (
@@ -1115,6 +1328,17 @@ const OpportunityDetailV2: React.FC = () => {
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
+                  
+                  {/* Sales Stage Gantt Chart */}
+                  <SalesStageGantt 
+                    timePeriod={timePeriod}
+                    chartData={chartData}
+                    tableData={tableData}
+                    opportunity={opportunity}
+                  />
+                  
+                  {/* Sales Stage Legend */}
+                  <SalesStageGanttLegend />
                 </div>
               );
             })()}
