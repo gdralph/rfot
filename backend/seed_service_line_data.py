@@ -134,6 +134,7 @@ def seed_service_line_stage_efforts():
         # print(f"Found {len(categories)} service line categories:")
         for cat in categories:
             # print(f"  - {cat.service_line}/{cat.name} (ID: {cat.id})")
+            pass
         
         # Process MW templates
         logger.info("Seeding MW (Modern Workplace) templates")
