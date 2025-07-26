@@ -351,3 +351,85 @@ export interface APIError {
   detail: string;
   status?: number;
 }
+
+// Financial Quarter Utilities
+export interface FinancialQuarter {
+  quarter: number; // 1, 2, 3, 4
+  fiscalYear: number; // e.g., 26 for FY26
+  label: string; // e.g., "Q1 FY26"
+}
+
+/**
+ * Calculates the financial quarter and fiscal year for a given date.
+ * Financial year runs April 1 to March 31.
+ * FY26 = April 1, 2025 to March 31, 2026
+ */
+export function getFinancialQuarter(date: Date): FinancialQuarter {
+  const month = date.getMonth(); // 0-11
+  const year = date.getFullYear();
+  
+  let quarter: number;
+  let fiscalYear: number;
+  
+  if (month >= 3 && month <= 5) { // April (3), May (4), June (5)
+    quarter = 1;
+    fiscalYear = year + 1; // If it's April 2025, it's FY26
+  } else if (month >= 6 && month <= 8) { // July (6), August (7), September (8)
+    quarter = 2;
+    fiscalYear = year + 1;
+  } else if (month >= 9 && month <= 11) { // October (9), November (10), December (11)
+    quarter = 3;
+    fiscalYear = year + 1;
+  } else { // January (0), February (1), March (2)
+    quarter = 4;
+    fiscalYear = year; // If it's January 2026, it's still FY26
+  }
+  
+  // Convert to 2-digit fiscal year (2026 -> 26)
+  const fiscalYearShort = fiscalYear % 100;
+  
+  return {
+    quarter,
+    fiscalYear: fiscalYearShort,
+    label: `Q${quarter} FY${fiscalYearShort.toString().padStart(2, '0')}`
+  };
+}
+
+/**
+ * Parses a financial quarter label and returns the corresponding date range start.
+ * Supports formats like "Q1 FY26", "Q1 26", etc.
+ */
+export function parseFinancialQuarterLabel(label: string): Date | null {
+  // Try "Q1 FY26" format
+  let match = label.match(/Q(\d)\s+FY(\d{2})/);
+  if (match) {
+    const quarter = parseInt(match[1]);
+    const fiscalYear = 2000 + parseInt(match[2]);
+    return getFinancialQuarterStartDate(quarter, fiscalYear);
+  }
+  
+  // Try "Q1 26" format (legacy)
+  match = label.match(/Q(\d)\s+(\d{2})/);
+  if (match) {
+    const quarter = parseInt(match[1]);
+    const fiscalYear = 2000 + parseInt(match[2]);
+    return getFinancialQuarterStartDate(quarter, fiscalYear);
+  }
+  
+  return null;
+}
+
+/**
+ * Gets the start date of a financial quarter.
+ */
+function getFinancialQuarterStartDate(quarter: number, fiscalYear: number): Date {
+  const calendarYear = fiscalYear - 1; // FY26 starts in calendar year 2025
+  
+  switch (quarter) {
+    case 1: return new Date(calendarYear, 3, 1); // April 1
+    case 2: return new Date(calendarYear, 6, 1); // July 1
+    case 3: return new Date(calendarYear, 9, 1); // October 1
+    case 4: return new Date(fiscalYear, 0, 1); // January 1 of the fiscal year
+    default: throw new Error(`Invalid quarter: ${quarter}`);
+  }
+}

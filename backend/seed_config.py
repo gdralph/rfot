@@ -93,52 +93,56 @@ OPPORTUNITY_CATEGORIES = [
     }
 ]
 
-# Service Line Categories - MW and ITOC specific TCV thresholds
+# Service Line Categories - MW and ITOC Tier-based resource planning categories ONLY
+# Note: Opportunity categories (Cat A, Cat B, Cat C, Sub $5M) belong in OPPORTUNITY_CATEGORIES, not here
 SERVICE_LINE_CATEGORIES = [
-    {"service_line": "MW", "name": "Sub $5M", "min_tcv": 0.0, "max_tcv": 5.0},
-    {"service_line": "MW", "name": "Cat C", "min_tcv": 5.0, "max_tcv": 25.0},
-    {"service_line": "MW", "name": "Cat B", "min_tcv": 25.0, "max_tcv": 50.0},
-    {"service_line": "MW", "name": "Cat A", "min_tcv": 50.0, "max_tcv": None},
-    {"service_line": "MW", "name": "Small", "min_tcv": 0.0, "max_tcv": 5.0},
-    {"service_line": "ITOC", "name": "Sub $5M", "min_tcv": 0.0, "max_tcv": 5.0},
-    {"service_line": "ITOC", "name": "Cat C", "min_tcv": 5.0, "max_tcv": 25.0},
-    {"service_line": "ITOC", "name": "Cat B", "min_tcv": 25.0, "max_tcv": 50.0},
-    {"service_line": "ITOC", "name": "Cat A", "min_tcv": 50.0, "max_tcv": None},
+    # MW Tier categories for resource planning
+    {"service_line": "MW", "name": "MW-Tier1", "min_tcv": 0.0, "max_tcv": 5.0},
+    {"service_line": "MW", "name": "MW-Tier2", "min_tcv": 5.0, "max_tcv": 25.0},
+    {"service_line": "MW", "name": "MW-Tier3", "min_tcv": 25.0, "max_tcv": 50.0},
+    {"service_line": "MW", "name": "MW-Tier4", "min_tcv": 50.0, "max_tcv": None},
+    # ITOC Tier categories for resource planning
+    {"service_line": "ITOC", "name": "ITOC-Tier1", "min_tcv": 0.0, "max_tcv": 10.0},
+    {"service_line": "ITOC", "name": "ITOC-Tier2", "min_tcv": 5.0, "max_tcv": 20.0},
+    {"service_line": "ITOC", "name": "ITOC-Tier3", "min_tcv": 40.0, "max_tcv": 70.0},
+    {"service_line": "ITOC", "name": "ITOC-Tier4", "min_tcv": 70.0, "max_tcv": 90.0},
+    {"service_line": "ITOC", "name": "ITIC-Tier5", "min_tcv": 90.0, "max_tcv": None},
 ]
 
-# Service Line Stage Efforts - FTE requirements by service line, category, and stage
-# Format: (service_line, category_name, stage_name, fte_required)
+# Service Line Stage Efforts - FTE requirements by service line, Tier category, and stage
+# Note: These are for service line resource planning ONLY. Opportunity categories handled elsewhere.
+# Format: (service_line, tier_category_name, stage_name, fte_required)
 SERVICE_LINE_STAGE_EFFORTS = [
-    # MW (Modern Workplace) efforts
-    ("MW", "Sub $5M", "01", 0.0), ("MW", "Sub $5M", "02", 0.0), ("MW", "Sub $5M", "03", 0.0),
-    ("MW", "Sub $5M", "04A", 0.5), ("MW", "Sub $5M", "04B", 0.0), ("MW", "Sub $5M", "05A", 0.0),
-    ("MW", "Sub $5M", "05B", 0.0), ("MW", "Sub $5M", "06", 0.0),
-    ("MW", "Cat C", "01", 0.0), ("MW", "Cat C", "02", 0.0), ("MW", "Cat C", "03", 0.0),
-    ("MW", "Cat C", "04A", 1.0), ("MW", "Cat C", "04B", 0.0), ("MW", "Cat C", "05A", 0.0),
-    ("MW", "Cat C", "05B", 0.0), ("MW", "Cat C", "06", 0.0),
-    ("MW", "Cat B", "01", 0.0), ("MW", "Cat B", "02", 0.0), ("MW", "Cat B", "03", 0.25),
-    ("MW", "Cat B", "04A", 2.0), ("MW", "Cat B", "04B", 0.0), ("MW", "Cat B", "05A", 0.25),
-    ("MW", "Cat B", "05B", 0.0), ("MW", "Cat B", "06", 0.25),
-    ("MW", "Cat A", "01", 0.0), ("MW", "Cat A", "02", 0.0), ("MW", "Cat A", "03", 0.25),
-    ("MW", "Cat A", "04A", 2.5), ("MW", "Cat A", "04B", 0.0), ("MW", "Cat A", "05A", 0.25),
-    ("MW", "Cat A", "05B", 0.0), ("MW", "Cat A", "06", 0.25),
-    ("MW", "Small", "01", 0.0), ("MW", "Small", "02", 0.0), ("MW", "Small", "03", 0.0),
-    ("MW", "Small", "04A", 0.0), ("MW", "Small", "04B", 0.0), ("MW", "Small", "05A", 0.0),
-    ("MW", "Small", "05B", 0.0), ("MW", "Small", "06", 0.0),
+    # MW (Modern Workplace) Tier efforts
+    ("MW", "MW-Tier1", "01", 0.0), ("MW", "MW-Tier1", "02", 0.0), ("MW", "MW-Tier1", "03", 0.0),
+    ("MW", "MW-Tier1", "04A", 0.0), ("MW", "MW-Tier1", "04B", 0.0), ("MW", "MW-Tier1", "05A", 0.0),
+    ("MW", "MW-Tier1", "05B", 0.0), ("MW", "MW-Tier1", "06", 0.0),
+    ("MW", "MW-Tier2", "01", 0.0), ("MW", "MW-Tier2", "02", 0.0), ("MW", "MW-Tier2", "03", 0.2),
+    ("MW", "MW-Tier2", "04A", 1.0), ("MW", "MW-Tier2", "04B", 1.0), ("MW", "MW-Tier2", "05A", 0.5),
+    ("MW", "MW-Tier2", "05B", 0.0), ("MW", "MW-Tier2", "06", 0.0),
+    ("MW", "MW-Tier3", "01", 0.0), ("MW", "MW-Tier3", "02", 0.0), ("MW", "MW-Tier3", "03", 0.2),
+    ("MW", "MW-Tier3", "04A", 2.0), ("MW", "MW-Tier3", "04B", 2.0), ("MW", "MW-Tier3", "05A", 0.2),
+    ("MW", "MW-Tier3", "05B", 0.0), ("MW", "MW-Tier3", "06", 0.2),
+    ("MW", "MW-Tier4", "01", 0.0), ("MW", "MW-Tier4", "02", 0.1), ("MW", "MW-Tier4", "03", 0.2),
+    ("MW", "MW-Tier4", "04A", 2.5), ("MW", "MW-Tier4", "04B", 2.5), ("MW", "MW-Tier4", "05A", 0.5),
+    ("MW", "MW-Tier4", "05B", 0.0), ("MW", "MW-Tier4", "06", 0.5),
     
-    # ITOC (Infrastructure & Cloud) efforts  
-    ("ITOC", "Sub $5M", "01", 0.08), ("ITOC", "Sub $5M", "02", 0.12), ("ITOC", "Sub $5M", "03", 0.17),
-    ("ITOC", "Sub $5M", "04A", 0.5), ("ITOC", "Sub $5M", "04B", 0.0), ("ITOC", "Sub $5M", "05A", 0.08),
-    ("ITOC", "Sub $5M", "05B", 0.0), ("ITOC", "Sub $5M", "06", 0.08),
-    ("ITOC", "Cat C", "01", 0.08), ("ITOC", "Cat C", "02", 0.12), ("ITOC", "Cat C", "03", 0.17),
-    ("ITOC", "Cat C", "04A", 1.0), ("ITOC", "Cat C", "04B", 0.0), ("ITOC", "Cat C", "05A", 0.08),
-    ("ITOC", "Cat C", "05B", 0.0), ("ITOC", "Cat C", "06", 0.08),
-    ("ITOC", "Cat B", "01", 0.08), ("ITOC", "Cat B", "02", 0.12), ("ITOC", "Cat B", "03", 0.25),
-    ("ITOC", "Cat B", "04A", 2.0), ("ITOC", "Cat B", "04B", 0.0), ("ITOC", "Cat B", "05A", 0.25),
-    ("ITOC", "Cat B", "05B", 0.0), ("ITOC", "Cat B", "06", 0.25),
-    ("ITOC", "Cat A", "01", 0.08), ("ITOC", "Cat A", "02", 0.12), ("ITOC", "Cat A", "03", 0.5),
-    ("ITOC", "Cat A", "04A", 2.5), ("ITOC", "Cat A", "04B", 0.0), ("ITOC", "Cat A", "05A", 0.5),
-    ("ITOC", "Cat A", "05B", 0.0), ("ITOC", "Cat A", "06", 0.5),
+    # ITOC (Infrastructure & Cloud) Tier efforts  
+    ("ITOC", "ITOC-Tier1", "01", 0.08), ("ITOC", "ITOC-Tier1", "02", 0.12), ("ITOC", "ITOC-Tier1", "03", 0.16),
+    ("ITOC", "ITOC-Tier1", "04A", 0.2), ("ITOC", "ITOC-Tier1", "04B", 0.2), ("ITOC", "ITOC-Tier1", "05A", 0.2),
+    ("ITOC", "ITOC-Tier1", "05B", 0.2), ("ITOC", "ITOC-Tier1", "06", 0.2),
+    ("ITOC", "ITOC-Tier2", "01", 0.16), ("ITOC", "ITOC-Tier2", "02", 0.24), ("ITOC", "ITOC-Tier2", "03", 0.32),
+    ("ITOC", "ITOC-Tier2", "04A", 0.4), ("ITOC", "ITOC-Tier2", "04B", 0.4), ("ITOC", "ITOC-Tier2", "05A", 0.4),
+    ("ITOC", "ITOC-Tier2", "05B", 0.4), ("ITOC", "ITOC-Tier2", "06", 0.4),
+    ("ITOC", "ITOC-Tier3", "01", 0.24), ("ITOC", "ITOC-Tier3", "02", 0.36), ("ITOC", "ITOC-Tier3", "03", 0.48),
+    ("ITOC", "ITOC-Tier3", "04A", 0.6), ("ITOC", "ITOC-Tier3", "04B", 0.6), ("ITOC", "ITOC-Tier3", "05A", 0.6),
+    ("ITOC", "ITOC-Tier3", "05B", 0.6), ("ITOC", "ITOC-Tier3", "06", 0.6),
+    ("ITOC", "ITOC-Tier4", "01", 0.32), ("ITOC", "ITOC-Tier4", "02", 0.48), ("ITOC", "ITOC-Tier4", "03", 0.64),
+    ("ITOC", "ITOC-Tier4", "04A", 0.8), ("ITOC", "ITOC-Tier4", "04B", 0.8), ("ITOC", "ITOC-Tier4", "05A", 0.8),
+    ("ITOC", "ITOC-Tier4", "05B", 0.8), ("ITOC", "ITOC-Tier4", "06", 0.8),
+    ("ITOC", "ITIC-Tier5", "01", 0.4), ("ITOC", "ITIC-Tier5", "02", 0.6), ("ITOC", "ITIC-Tier5", "03", 0.8),
+    ("ITOC", "ITIC-Tier5", "04A", 1.0), ("ITOC", "ITIC-Tier5", "04B", 1.0), ("ITOC", "ITIC-Tier5", "05A", 1.0),
+    ("ITOC", "ITIC-Tier5", "05B", 1.0), ("ITOC", "ITIC-Tier5", "06", 1.0),
 ]
 
 # Service Line Offering Thresholds - Multiplier rules for offering counts  

@@ -5,7 +5,7 @@ import { useCategories } from '../hooks/useConfig';
 import { useResourceTimeline, useCalculateResourceTimeline, useUpdateResourceTimelineData } from '../hooks/useResourceTimeline';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { OpportunityFormData, Opportunity, OpportunityCategory, OpportunityEffortPrediction, StageTimelineData } from '../types/index';
-import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES } from '../types/index';
+import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES, getFinancialQuarter } from '../types/index';
 import { getSecurityClearanceColorClass } from '../utils/securityClearance';
 import { ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, AreaChart, Area, CartesianGrid, Legend } from 'recharts';
 import { TrendingUp, BarChart3, Layers, Calendar, Users, FileText, DollarSign } from 'lucide-react';
@@ -507,11 +507,10 @@ const OpportunityDetail: React.FC = () => {
           let periodLabel: string;
           
           if (timePeriod === 'quarter') {
-            // For quarterly, group by quarter
-            const year = currentDate.getFullYear();
-            const quarter = Math.floor(currentDate.getMonth() / 3) + 1;
-            dateKey = `${year}-Q${quarter}`;
-            periodLabel = `Q${quarter} ${year}`;
+            // For quarterly, group by financial quarter (April-March FY)
+            const financialQuarter = getFinancialQuarter(currentDate);
+            dateKey = `FY${financialQuarter.fiscalYear}-Q${financialQuarter.quarter}`;
+            periodLabel = financialQuarter.label;
           } else if (timePeriod === 'month') {
             // For monthly, group by month
             const year = currentDate.getFullYear();

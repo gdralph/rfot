@@ -212,6 +212,23 @@ sqlite3 database.db "SELECT COUNT(*) FROM servicelineinternalservicemapping;"
 - Add mapping: `POST /api/config/service-line-internal-service-mappings`
 - Delete mapping: `DELETE /api/config/service-line-internal-service-mappings/{id}`
 
+### Configuration Table Separation - CRITICAL
+**IMPORTANT**: There are two distinct category systems that serve different purposes:
+
+1. **OpportunityCategory** (`opportunitycategory` table):
+   - Purpose: TCV-based categorization of opportunities (Cat A, Cat B, Cat C, Sub $5M)
+   - Usage: Automatically assigns categories based on opportunity TCV ranges
+   - Contains stage duration templates for timeline calculations
+   - Used by: Opportunity management, timeline generation, general categorization
+
+2. **ServiceLineCategory** (`servicelinecategory` table):
+   - Purpose: Service line specific resource planning templates (MW-Tier1-4, ITOC-Tier1-5)
+   - Usage: Resource FTE calculations for MW and ITOC service lines only
+   - Contains service line specific TCV thresholds for tier assignment
+   - Used by: Service line resource planning, FTE calculations, capacity planning
+
+**NEVER mix these systems**: Opportunity categories (Cat A, Cat B, etc.) should NEVER be added to the servicelinecategory table. Only Tier-based categories belong in service line configuration.
+
 ## Development Environment
 
 - Backend runs on port 8000, frontend on 5173

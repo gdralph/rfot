@@ -656,11 +656,7 @@ def _generate_time_period_forecast(
             else:
                 current_date = current_date.replace(month=current_date.month + 1)
     
-    # Calculate daily concurrent FTE requirements first
-    from collections import defaultdict
-    daily_fte = defaultdict(lambda: {"total": 0, "service_lines": defaultdict(float)})
-    
-    # Apply filters to get the relevant records for daily FTE calculation
+    # Apply filters to get the relevant records for proportional FTE calculation
     filtered_records = timeline_records
     if service_line_filter:
         filtered_records = [r for r in filtered_records if r.service_line in service_line_filter]
@@ -669,19 +665,7 @@ def _generate_time_period_forecast(
     if stage_filter:
         filtered_records = [r for r in filtered_records if r.stage_name in stage_filter]
     
-    for record in filtered_records:
-        stage_start = record.stage_start_date
-        stage_end = record.stage_end_date
-        
-        # Add FTE for each day the stage is active
-        current_day = stage_start
-        while current_day <= stage_end:
-            if start_date <= current_day <= end_date:
-                daily_fte[current_day]["total"] += record.fte_required
-                daily_fte[current_day]["service_lines"][record.service_line] += record.fte_required
-            current_day += timedelta(days=1)
-    
-    # Now aggregate daily FTE into periods by averaging
+    # Use proportional allocation method (same as get_stage_resource_timeline)
     for period_key, period_data in period_totals.items():
         period_start = period_data["period_start"]
         
@@ -706,30 +690,30 @@ def _generate_time_period_forecast(
             _, last_day = calendar.monthrange(period_start.year, period_start.month)
             period_end = period_start.replace(day=last_day)
         
-        # Collect daily FTE values for this period
-        period_days = []
-        check_date = max(period_start, start_date)
-        end_check = min(period_end, end_date)
-        
-        while check_date <= end_check:
-            period_days.append(check_date)
-            check_date += timedelta(days=1)
-        
-        if period_days:
-            # Calculate average FTE for this period
-            avg_total = sum(daily_fte[day]["total"] for day in period_days) / len(period_days)
-            period_totals[period_key]["total_fte"] = avg_total
+        # Calculate proportional FTE for each timeline record that overlaps with this period
+        for record in filtered_records:
+            # Make sure all dates are timezone-naive for comparison
+            record_start = record.stage_start_date.replace(tzinfo=None) if record.stage_start_date.tzinfo else record.stage_start_date
+            record_end = record.stage_end_date.replace(tzinfo=None) if record.stage_end_date.tzinfo else record.stage_end_date
+            period_start_naive = period_start.replace(tzinfo=None) if period_start.tzinfo else period_start
+            period_end_naive = period_end.replace(tzinfo=None) if period_end.tzinfo else period_end
             
-            for sl in ["CES", "INS", "BPS", "SEC", "ITOC", "MW"]:
-                avg_sl_fte = sum(daily_fte[day]["service_lines"][sl] for day in period_days) / len(period_days)
-                period_totals[period_key]["service_line_breakdown"][sl] = avg_sl_fte
-            
-            # Count unique opportunities that have any activity in this period
-            for day in period_days:
-                if daily_fte[day]["total"] > 0:
-                    # This is a simplified approach - we'd need to track which opportunities 
-                    # are active on each day for exact counts, but this gives us a baseline
-                    pass
+            # Check if timeline record overlaps with this period
+            if (record_start <= period_end_naive and record_end >= period_start_naive):
+                # Calculate overlap using proportional allocation
+                overlap_start = max(record_start, period_start_naive)
+                overlap_end = min(record_end, period_end_naive)
+                overlap_days = (overlap_end - overlap_start).days + 1
+                stage_days = (record_end - record_start).days + 1
+                
+                if overlap_days > 0 and stage_days > 0:
+                    # Calculate proportional FTE for this period
+                    overlap_ratio = overlap_days / stage_days
+                    period_fte = record.fte_required * overlap_ratio
+                    
+                    # Add to period totals
+                    period_data["total_fte"] += period_fte
+                    period_data["service_line_breakdown"][record.service_line] += period_fte
     
     # Convert to list format with correct structure
     time_period_forecast = []

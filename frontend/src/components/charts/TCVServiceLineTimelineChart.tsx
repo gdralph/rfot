@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { TrendingUp, BarChart3, Layers, AlertCircle, DollarSign } from 'lucide-react';
 import { useAllOpportunities } from '../../hooks/useAllOpportunities';
-import { DXC_COLORS, SERVICE_LINES, type ServiceLine } from '../../types/index.js';
+import { DXC_COLORS, SERVICE_LINES, type ServiceLine, getFinancialQuarter } from '../../types/index.js';
 import LoadingSpinner from '../LoadingSpinner';
 
 type ChartType = 'line' | 'bar' | 'area';
@@ -83,10 +83,10 @@ const TCVServiceLineTimelineChart: React.FC<TCVServiceLineTimelineChartProps> = 
           break;
         }
         case 'quarter': {
-          const quarter = Math.floor(decisionDate.getMonth() / 3) + 1;
-          periodKey = `Q${quarter} ${decisionDate.getFullYear()}`;
-          // Sort key: YYYY-Q format for proper chronological sorting
-          sortKey = `${decisionDate.getFullYear()}-${quarter}`;
+          const financialQuarter = getFinancialQuarter(decisionDate);
+          periodKey = financialQuarter.label;
+          // Sort key: FY-Q format for proper chronological sorting  
+          sortKey = `FY${financialQuarter.fiscalYear}-${financialQuarter.quarter}`;
           break;
         }
         case 'month':

@@ -56,7 +56,11 @@ const useStageResourceTimeline = (options: {
   return useQuery({
     queryKey: ['stage-resource-timeline', options.startDate?.toISOString(), options.endDate?.toISOString(), options.timePeriod, JSON.stringify(options.filters)],
     queryFn: () => {
-      console.log('🌐 API Call: getStageResourceTimeline with options:', options);
+      console.log('🌐 API Call: getStageResourceTimeline with options:', {
+      ...options,
+      startDate: options.startDate?.toISOString(),
+      endDate: options.endDate?.toISOString()
+    });
       return api.getStageResourceTimeline(options);
     },
     enabled: true,
@@ -107,6 +111,20 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
     timePeriod,
     filters,
   });
+  
+  // Add error logging for debugging
+  useEffect(() => {
+    if (error) {
+      console.error('❌ StageResourceTimelineChart: API Error:', error);
+      console.error('❌ StageResourceTimelineChart: Error details:', {
+        timePeriod,
+        dateRange,
+        filters,
+        startDate: startDate?.toISOString(),
+        endDate: endDate?.toISOString()
+      });
+    }
+  }, [error, timePeriod, dateRange, filters, startDate, endDate]);
 
   // Debug effect to see when time period changes
   useEffect(() => {
@@ -114,6 +132,7 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
     console.log('📊 StageResourceTimelineChart: Date range:', dateRange);
     console.log('📊 StageResourceTimelineChart: External filters from dashboard:', filters);
     console.log('📊 StageResourceTimelineChart: API call params:', { startDate, endDate, timePeriod, filters });
+    console.log('📊 StageResourceTimelineChart: Query key will be:', ['stage-resource-timeline', startDate?.toISOString(), endDate?.toISOString(), timePeriod, JSON.stringify(filters)]);
   }, [timePeriod, dateRange, startDate, endDate, filters]);
 
   // Debug effect to see when data changes
@@ -123,8 +142,8 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
       console.log('📈 StageResourceTimelineChart: Total periods in forecast:', data.monthly_forecast?.length);
       console.log('📈 StageResourceTimelineChart: Total opportunities processed:', data.total_opportunities_processed);
       if (data.monthly_forecast?.length > 0) {
-        // console.log('📈 StageResourceTimelineChart: First few periods:', data.monthly_forecast.slice(0, 3).map((p: any) => p.period));
         console.log('📈 StageResourceTimelineChart: First period example:', data.monthly_forecast[0]);
+        console.log('📈 StageResourceTimelineChart: Service line stage breakdown keys:', Object.keys(data.monthly_forecast[0].service_line_stage_breakdown || {}));
       }
     }
   }, [data, timePeriod]);
@@ -156,7 +175,7 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
     return serviceLineColors[serviceLine];
   };
 
-  // Transform data for separate service line charts
+  // Transform data for separate service line charts with improved smoothing
   const serviceLineData = useMemo(() => {
     if (!data?.monthly_forecast) return {};
     
@@ -164,7 +183,8 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
     const result: Record<string, any[]> = {};
     
     serviceLines.forEach(serviceLine => {
-      result[serviceLine] = data.monthly_forecast.map((period: any) => {
+      // Transform periods data
+      const periodsData = data.monthly_forecast.map((period: any) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const chartItem: any = {
           period: period.period,
@@ -175,17 +195,55 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
         Object.entries(period.service_line_stage_breakdown || {}).forEach(([key, value]) => {
           if (key.startsWith(`${serviceLine}_`) && (value as number) > 0) {
             const stage = key.split('_')[1];
-            chartItem[stage] = value;
-            chartItem.total += (value as number);
+            const roundedValue = Math.round((value as number) * 100) / 100; // Round to 2 decimal places
+            chartItem[stage] = roundedValue;
+            chartItem.total += roundedValue;
           }
         });
 
+        // Round total to avoid floating point precision issues
+        chartItem.total = Math.round(chartItem.total * 100) / 100;
         return chartItem;
       });
+
+      // Apply smoothing for quarterly view to reduce spikes
+      if (timePeriod === 'quarter' && periodsData.length > 2) {
+        result[serviceLine] = periodsData.map((period: any, index: number) => {
+          if (index === 0 || index === periodsData.length - 1) {
+            return period; // Don't smooth first/last periods
+          }
+          
+          const smoothedPeriod = { ...period };
+          Object.keys(period).forEach(key => {
+            if (key !== 'period' && key !== 'total' && typeof period[key] === 'number') {
+              const prev = periodsData[index - 1][key] || 0;
+              const curr = period[key] || 0;
+              const next = periodsData[index + 1][key] || 0;
+              
+              // Apply light smoothing (70% current, 15% prev, 15% next)
+              const smoothed = (curr * 0.7) + (prev * 0.15) + (next * 0.15);
+              smoothedPeriod[key] = Math.round(smoothed * 100) / 100;
+            }
+          });
+          
+          // Recalculate total
+          smoothedPeriod.total = Object.keys(smoothedPeriod)
+            .filter(key => key !== 'period' && key !== 'total')
+            .reduce((sum, key) => sum + (smoothedPeriod[key] || 0), 0);
+          smoothedPeriod.total = Math.round(smoothedPeriod.total * 100) / 100;
+          
+          return smoothedPeriod;
+        });
+      } else {
+        result[serviceLine] = periodsData;
+      }
     });
     
+    console.log('📊 serviceLineData transformation complete for timePeriod:', timePeriod);
+    console.log('📊 Sample service line data (CES):', result['CES']?.slice(0, 3));
+    
     return result;
-  }, [data]);
+  }, [data, timePeriod]);
 
   // Generate unique stages for each service line
   const serviceLineStages = useMemo(() => {
@@ -220,9 +278,13 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
     }
 
     // Filter service lines that have data
-    const activeServiceLines = Object.entries(serviceLineData).filter(([, periods]) => 
-      periods.some(period => period.total > 0)
-    );
+    const activeServiceLines = Object.entries(serviceLineData).filter(([serviceLine, periods]) => {
+      const hasData = periods.some(period => period.total > 0);
+      if (hasData) {
+        console.log(`✅ ${serviceLine} has data:`, periods.filter(p => p.total > 0).length, 'periods with FTE');
+      }
+      return hasData;
+    });
 
     if (activeServiceLines.length === 0) {
       return (
@@ -239,6 +301,9 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
           const stages = serviceLineStages[serviceLine] || [];
           const baseColor = getServiceLineBaseColor(serviceLine as ServiceLine);
           
+          // Calculate total FTE for this service line to show in header
+          const totalServiceLineFTE = periods.reduce((sum, period) => sum + (period.total || 0), 0);
+          
           if (stages.length === 0) return null;
 
           return (
@@ -249,6 +314,9 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
                   style={{ backgroundColor: baseColor }}
                 />
                 {serviceLine} Service Line Resource Timeline
+                <span className="text-sm font-normal text-dxc-medium-gray ml-2">
+                  (Total: {totalServiceLineFTE.toFixed(1)} FTE)
+                </span>
               </h4>
               
               <div className="h-80">
@@ -383,7 +451,12 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
           
           {/* Debug Manual Refetch Button */}
           <button
-            onClick={() => refetch()}
+            onClick={() => {
+              console.log('🔄 Manual refetch triggered for timePeriod:', timePeriod);
+              console.log('🔄 Current filters:', filters);
+              console.log('🔄 Date range:', { startDate, endDate, dateRange });
+              refetch();
+            }}
             className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
             title="Manual refetch for debugging"
           >
@@ -448,9 +521,10 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
       {/* Legend explanation */}
       <div className="mt-4 text-sm text-dxc-medium-gray">
         <p>
-          This chart shows predicted FTE resource requirements by time period, 
+          This chart shows predicted FTE resource requirements by {timePeriod === 'quarter' ? 'quarter' : (timePeriod === 'week' ? 'week' : 'month')}, 
           broken down by service line and the current sales stage of opportunities. 
-          Each color represents a different service line, with varying opacity indicating different stages.
+          Each service line is shown in its own chart, with stacked bars representing different sales stages. 
+          {timePeriod === 'quarter' ? 'Quarterly data includes light smoothing to reduce period-to-period spikes.' : ''}
         </p>
       </div>
     </div>

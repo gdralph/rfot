@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOpportunity, useOpportunityLineItems, useUpdateOpportunity } from '../hooks/useOpportunities';
-import { useCategories } from '../hooks/useConfig';
+import { useCategories, useServiceLineInternalServiceMappings } from '../hooks/useConfig';
 import { useResourceTimeline, useCalculateResourceTimeline, useUpdateResourceTimelineData } from '../hooks/useResourceTimeline';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { OpportunityFormData, Opportunity, OpportunityCategory, OpportunityEffortPrediction } from '../types/index';
-import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES, SALES_STAGES } from '../types/index';
+import { DXC_COLORS, SERVICE_LINES, RESOURCE_STATUSES, SALES_STAGES, getFinancialQuarter, parseFinancialQuarterLabel } from '../types/index';
 
 // Sales stage colors for milestone/Gantt chart
 const SALES_STAGE_COLORS: Record<string, string> = {
@@ -19,7 +19,9 @@ const SALES_STAGE_COLORS: Record<string, string> = {
   '06': '#A8E6CF', // Light Green - Deploy & Extend
 };
 import { getSecurityClearanceColorClass } from '../utils/securityClearance';
-import { ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, CartesianGrid, PieChart, Pie, Cell, ReferenceLine } from 'recharts';
+import { countServiceLineOfferings, getLineItemServiceLine } from '../utils/serviceLineUtils';
+import { ServiceLineBadge } from '../components/ui/ServiceLineBadge';
+import { ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, LineChart, Line, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 import { ArrowLeft, BarChart3, Layers, Calendar, Users, DollarSign, Edit, Save, X, Calculator, RefreshCw, Settings, TrendingUp, Eye } from 'lucide-react';
 
 // Enhanced UI Components
@@ -216,6 +218,7 @@ const OpportunityDetailV2: React.FC = () => {
   const { data: opportunity, isLoading: opportunityLoading, error: opportunityError } = useOpportunity(opportunityId);
   const { data: lineItems } = useOpportunityLineItems(opportunityId);
   const { data: categories = [], isLoading: categoriesLoading } = useCategories();
+  const { data: internalServiceMappings = [] } = useServiceLineInternalServiceMappings();
   const updateMutation = useUpdateOpportunity();
 
   // Resource Timeline hooks
@@ -331,56 +334,116 @@ const OpportunityDetailV2: React.FC = () => {
           formatOptions = { month: 'short', day: 'numeric' };
       }
       
+      // First, create all time periods we'll need
+      const allPeriods = new Set<string>();
       tableData.forEach(item => {
-        const serviceLine = item.service_line;
         const startDate = new Date(item.stage_start_date || Date.now());
         const endDate = new Date(item.stage_end_date || Date.now());
         
-        // Create time interval points between start and end date
         const currentDate = new Date(startDate);
         while (currentDate <= endDate) {
           let dateKey: string;
-          let periodLabel: string;
           
           if (timePeriod === 'quarter') {
-            // For quarterly, group by quarter
-            const year = currentDate.getFullYear();
-            const quarter = Math.floor(currentDate.getMonth() / 3) + 1;
-            dateKey = `${year}-Q${quarter}`;
-            periodLabel = `Q${quarter} ${year.toString().slice(-2)}`;
+            const financialQuarter = getFinancialQuarter(currentDate);
+            dateKey = `FY${financialQuarter.fiscalYear}-Q${financialQuarter.quarter}`;
           } else if (timePeriod === 'month') {
-            // For monthly, group by month
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth();
             dateKey = `${year}-${month.toString().padStart(2, '0')}`;
-            periodLabel = currentDate.toLocaleDateString('en-US', formatOptions);
           } else {
-            // For weekly, group by week
             const weekStart = new Date(currentDate);
-            weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
             dateKey = weekStart.toISOString().split('T')[0];
-            // Make weekly labels more compact: use M/D format
-            periodLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
           }
           
-          if (!timelineMap.has(dateKey)) {
-            const entry: Record<string, any> = { 
-              date: dateKey, 
-              period: periodLabel,
-              dateKey: dateKey  // Store the date key for stage mapping
-            };
-            // Initialize all service lines to 0
-            Array.from(serviceLines).forEach(sl => {
-              entry[sl] = 0;
-            });
-            timelineMap.set(dateKey, entry);
-          }
-          
-          const entry = timelineMap.get(dateKey)!;
-          entry[serviceLine] = (entry[serviceLine] || 0) + Number(item.fte_required);
-          
+          allPeriods.add(dateKey);
           currentDate.setDate(currentDate.getDate() + intervalDays);
         }
+      });
+
+      // Initialize all periods
+      allPeriods.forEach(dateKey => {
+        let periodLabel: string;
+        
+        if (timePeriod === 'quarter') {
+          // Parse the FY format back to get the label
+          const match = dateKey.match(/FY(\d+)-Q(\d+)/);
+          if (match) {
+            periodLabel = `FY${match[1]} Q${match[2]}`;
+          } else {
+            periodLabel = dateKey;
+          }
+        } else if (timePeriod === 'month') {
+          const [year, month] = dateKey.split('-');
+          const date = new Date(parseInt(year), parseInt(month), 1);
+          periodLabel = date.toLocaleDateString('en-US', formatOptions);
+        } else {
+          const weekStart = new Date(dateKey);
+          periodLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
+        }
+        
+        const entry: Record<string, any> = { 
+          date: dateKey, 
+          period: periodLabel,
+          dateKey: dateKey
+        };
+        Array.from(serviceLines).forEach(sl => {
+          entry[sl] = 0;
+        });
+        timelineMap.set(dateKey, entry);
+      });
+
+      // Now use proportional allocation for each stage
+      tableData.forEach(item => {
+        const serviceLine = item.service_line;
+        const stageStart = new Date(item.stage_start_date || Date.now());
+        const stageEnd = new Date(item.stage_end_date || Date.now());
+        const stageDays = Math.max(1, Math.ceil((stageEnd.getTime() - stageStart.getTime()) / (1000 * 60 * 60 * 24))) + 1;
+        
+        // For each period, check if it overlaps with this stage
+        timelineMap.forEach((entry, dateKey) => {
+          let periodStart: Date;
+          let periodEnd: Date;
+          
+          if (timePeriod === 'quarter') {
+            const match = dateKey.match(/FY(\d+)-Q(\d+)/);
+            if (match) {
+              const fiscalYear = parseInt(match[1]);
+              const quarter = parseInt(match[2]);
+              // Convert fiscal year/quarter back to calendar dates
+              const calendarYear = quarter === 1 ? fiscalYear - 1 : fiscalYear;
+              const quarterStartMonth = ((quarter - 1) * 3 + 3) % 12; // Q1=Apr(3), Q2=Jul(6), Q3=Oct(9), Q4=Jan(0)
+              periodStart = new Date(calendarYear, quarterStartMonth, 1);
+              periodEnd = new Date(calendarYear, quarterStartMonth + 3, 0); // Last day of quarter
+            } else {
+              return; // Skip invalid format
+            }
+          } else if (timePeriod === 'month') {
+            const [year, month] = dateKey.split('-');
+            periodStart = new Date(parseInt(year), parseInt(month), 1);
+            periodEnd = new Date(parseInt(year), parseInt(month) + 1, 0); // Last day of month
+          } else {
+            // Weekly - dateKey is the week start date
+            periodStart = new Date(dateKey);
+            periodEnd = new Date(periodStart);
+            periodEnd.setDate(periodEnd.getDate() + 6); // End of week
+          }
+          
+          // Check if stage overlaps with this period
+          if (stageStart <= periodEnd && stageEnd >= periodStart) {
+            // Calculate overlap
+            const overlapStart = new Date(Math.max(stageStart.getTime(), periodStart.getTime()));
+            const overlapEnd = new Date(Math.min(stageEnd.getTime(), periodEnd.getTime()));
+            const overlapDays = Math.max(1, Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24))) + 1;
+            
+            // Proportional FTE allocation
+            const overlapRatio = overlapDays / stageDays;
+            const proportionalFTE = Number(item.fte_required) * overlapRatio;
+            
+            entry[serviceLine] = (entry[serviceLine] || 0) + proportionalFTE;
+          }
+        });
       });
       
       // Convert to array and sort by date
@@ -408,12 +471,21 @@ const OpportunityDetailV2: React.FC = () => {
       let chartStartDate: Date, chartEndDate: Date;
       
       // Get the date range that corresponds to what's actually shown in the chart
-      // First, let's log what periods we're actually getting
-      console.log('📊 Chart periods for', timePeriod + ':', chartData.map(d => d.period));
+      // First, let's log what periods we're actually getting (only for time-based charts)
+      if (timePeriod === 'week' || timePeriod === 'month' || timePeriod === 'quarter') {
+        console.log('📊 Chart periods for', timePeriod + ':', chartData.map(d => 'period' in d ? d.period : 'N/A'));
+      }
       
       if (timePeriod === 'quarter') {
         // Parse quarter periods - try multiple formats
         const parseQuarterPeriod = (periodStr: string) => {
+          // Use financial quarter parser for formats like "Q1 FY26"
+          const parsedDate = parseFinancialQuarterLabel(periodStr);
+          if (parsedDate) {
+            return parsedDate;
+          }
+          
+          // Fallback: Try legacy calendar quarter formats
           // Try "Q1 25" format
           let match = periodStr.match(/Q(\d)\s+(\d{2})/);
           if (match) {
@@ -430,13 +502,14 @@ const OpportunityDetailV2: React.FC = () => {
             return new Date(year, (quarter - 1) * 3, 1);
           }
           
-          // Try other potential formats
           console.log('⚠️ Could not parse quarter period:', periodStr);
           return null;
         };
         
-        const firstQuarter = parseQuarterPeriod(chartData[0].period);
-        const lastQuarter = parseQuarterPeriod(chartData[chartData.length - 1].period);
+        const firstItem = chartData[0];
+        const lastItem = chartData[chartData.length - 1];
+        const firstQuarter = 'period' in firstItem ? parseQuarterPeriod(firstItem.period) : null;
+        const lastQuarter = 'period' in lastItem ? parseQuarterPeriod(lastItem.period) : null;
         
         if (!firstQuarter || !lastQuarter) {
           console.log('❌ Failed to parse quarter periods');
@@ -460,8 +533,10 @@ const OpportunityDetailV2: React.FC = () => {
           }
         };
         
-        const firstMonth = parseMonthPeriod(chartData[0].period);
-        const lastMonth = parseMonthPeriod(chartData[chartData.length - 1].period);
+        const firstItem = chartData[0];
+        const lastItem = chartData[chartData.length - 1];
+        const firstMonth = 'period' in firstItem ? parseMonthPeriod(firstItem.period) : null;
+        const lastMonth = 'period' in lastItem ? parseMonthPeriod(lastItem.period) : null;
         
         if (!firstMonth || !lastMonth) {
           console.log('❌ Failed to parse month periods');
@@ -486,9 +561,10 @@ const OpportunityDetailV2: React.FC = () => {
                 
                 if (!isFirst && chartData.length > 0) {
                   // Check if we need to handle year transition
-                  const firstPeriod = chartData[0].period;
+                  const firstItem = chartData[0];
+                  const firstPeriod = 'period' in firstItem ? firstItem.period : '';
                   if (firstPeriod.includes('/')) {
-                    const [firstMonth] = firstPeriod.split('/').map(n => parseInt(n));
+                    const [firstMonth] = firstPeriod.split('/').map((n: string) => parseInt(n));
                     // If current month is less than first month, we've wrapped to next year
                     if (month < firstMonth) {
                       year = new Date().getFullYear() + 1;
@@ -509,12 +585,14 @@ const OpportunityDetailV2: React.FC = () => {
           }
         };
         
-        const firstWeek = parseWeekPeriod(chartData[0].period, true);
-        const lastWeek = parseWeekPeriod(chartData[chartData.length - 1].period, false);
+        const firstItem = chartData[0];
+        const lastItem = chartData[chartData.length - 1];
+        const firstWeek = 'period' in firstItem ? parseWeekPeriod(firstItem.period, true) : null;
+        const lastWeek = 'period' in lastItem ? parseWeekPeriod(lastItem.period, false) : null;
         
         console.log('📅 Week parsing results:', {
-          firstPeriod: chartData[0].period,
-          lastPeriod: chartData[chartData.length - 1].period,
+          firstPeriod: 'period' in firstItem ? firstItem.period : 'N/A',
+          lastPeriod: 'period' in lastItem ? lastItem.period : 'N/A',
           firstWeek,
           lastWeek,
           currentYear: new Date().getFullYear()
@@ -1333,9 +1411,21 @@ const OpportunityDetailV2: React.FC = () => {
               const value = opportunity[fieldName] as number || 0;
               const percentage = opportunity.tcv_millions ? (value / opportunity.tcv_millions * 100) : 0;
               
+              // Count offerings for this service line if it has mappings
+              const offeringCount = internalServiceMappings && lineItems ? 
+                countServiceLineOfferings(lineItems, serviceLine, internalServiceMappings) : 0;
+              
+              // Show count only if there are mappings and offerings
+              const showCount = offeringCount > 0;
+              
               return (
                 <div key={serviceLine} className="text-center">
-                  <div className="text-xs font-bold text-gray-600 mb-1">{serviceLine}</div>
+                  <div className="text-xs font-bold text-gray-600 mb-1">
+                    {serviceLine}
+                    {showCount && (
+                      <span className="ml-1 text-dxc-bright-purple">({offeringCount})</span>
+                    )}
+                  </div>
                   <div className="text-sm font-medium text-dxc-bright-purple">{formatCurrency(value)}</div>
                   <div className="text-xs text-gray-500">{percentage.toFixed(1)}%</div>
                 </div>
@@ -1831,13 +1921,19 @@ const OpportunityDetailV2: React.FC = () => {
                       <tbody className="divide-y divide-gray-200">
                         {lineItems.map((item, index) => {
                           const percentage = totalTCV > 0 ? ((item.offering_tcv || 0) / totalTCV * 100) : 0;
+                          const serviceLineForItem = getLineItemServiceLine(item, internalServiceMappings);
                           return (
                             <tr key={index} className="hover:bg-gray-50">
                               <td className="px-3 py-2 text-xs text-gray-900">
                                 {item.internal_service || 'N/A'}
                               </td>
                               <td className="px-3 py-2 text-xs text-gray-900">
-                                {item.simplified_offering || 'N/A'}
+                                <div className="flex items-center gap-2">
+                                  <span>{item.simplified_offering || 'N/A'}</span>
+                                  {serviceLineForItem && (
+                                    <ServiceLineBadge serviceLine={serviceLineForItem} size="xs" />
+                                  )}
+                                </div>
                               </td>
                               <td className="px-3 py-2 text-xs text-gray-900">
                                 {item.product_name || 'N/A'}
