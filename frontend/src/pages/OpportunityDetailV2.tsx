@@ -394,12 +394,11 @@ const OpportunityDetailV2: React.FC = () => {
         timelineMap.set(dateKey, entry);
       });
 
-      // Now use proportional allocation for each stage
+      // Use concurrent headcount allocation for each stage (no proportional division)
       tableData.forEach(item => {
         const serviceLine = item.service_line;
         const stageStart = new Date(item.stage_start_date || Date.now());
         const stageEnd = new Date(item.stage_end_date || Date.now());
-        const stageDays = Math.max(1, Math.ceil((stageEnd.getTime() - stageStart.getTime()) / (1000 * 60 * 60 * 24))) + 1;
         
         // For each period, check if it overlaps with this stage
         timelineMap.forEach((entry, dateKey) => {
@@ -432,16 +431,13 @@ const OpportunityDetailV2: React.FC = () => {
           
           // Check if stage overlaps with this period
           if (stageStart <= periodEnd && stageEnd >= periodStart) {
-            // Calculate overlap
-            const overlapStart = new Date(Math.max(stageStart.getTime(), periodStart.getTime()));
-            const overlapEnd = new Date(Math.min(stageEnd.getTime(), periodEnd.getTime()));
-            const overlapDays = Math.max(1, Math.ceil((overlapEnd.getTime() - overlapStart.getTime()) / (1000 * 60 * 60 * 24))) + 1;
-            
-            // Proportional FTE allocation
-            const overlapRatio = overlapDays / stageDays;
-            const proportionalFTE = Number(item.fte_required) * overlapRatio;
-            
-            entry[serviceLine] = (entry[serviceLine] || 0) + proportionalFTE;
+            // Use full concurrent FTE for any overlapping period (not proportional)
+            // Skip zero-duration stages 
+            if (item.duration_weeks > 0) {
+              const concurrentFTE = Number(item.fte_required);
+              // For sequential stages within same service line, take maximum FTE (not sum)
+              entry[serviceLine] = Math.max((entry[serviceLine] || 0), concurrentFTE);
+            }
           }
         });
       });

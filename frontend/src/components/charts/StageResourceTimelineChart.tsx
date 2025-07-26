@@ -11,6 +11,44 @@ import LoadingSpinner from '../LoadingSpinner';
 
 type TimePeriod = 'week' | 'month' | 'quarter';
 
+// Period boundary utility functions
+const getPeriodBoundaries = {
+  // Get start and end of quarter containing the given date
+  quarter: (date: Date) => {
+    const quarterMonth = Math.floor((date.getMonth()) / 3) * 3;
+    const start = new Date(date.getFullYear(), quarterMonth, 1);
+    const end = new Date(date.getFullYear(), quarterMonth + 3, 0); // Last day of quarter
+    return { start, end };
+  },
+  
+  // Get start and end of month containing the given date
+  month: (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), 1);
+    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0); // Last day of month
+    return { start, end };
+  },
+  
+  // Get start and end of week containing the given date (Monday to Sunday)
+  week: (date: Date) => {
+    const dayOfWeek = date.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday = 0
+    const start = new Date(date);
+    start.setDate(date.getDate() + mondayOffset);
+    start.setHours(0, 0, 0, 0);
+    
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+};
+
+// Calculate period count for range calculation
+const getPeriodCount = (rangeOption: string): number => {
+  const match = rangeOption.match(/^(\d+)[QMW]$/);
+  return match ? parseInt(match[1]) : 0;
+};
+
 // interface StageServiceLineData {
 //   [serviceLineAndStage: string]: number; // Format: "CES_01", "INS_02", etc.
 // }
@@ -71,39 +109,108 @@ const useStageResourceTimeline = (options: {
   });
 };
 
+// Hook to get timeline data bounds
+const useTimelineDataBounds = () => {
+  return useQuery({
+    queryKey: ['timeline-data-bounds'],
+    queryFn: () => api.getTimelineDataBounds(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+};
+
 const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({ 
   className = '', 
   filters 
 }) => {
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('month');
-  const [dateRange, setDateRange] = useState<'3m' | '6m' | '12m' | 'all'>('all');
+  const [dateRange, setDateRange] = useState<string>('12M'); // Start with a reasonable default
+  
+  // Initialize proper date range on first load
+  useEffect(() => {
+    const defaultRanges = {
+      quarter: '4Q',
+      month: '12M', 
+      week: '26W'
+    };
+    setDateRange(defaultRanges[timePeriod]);
+  }, []); // Only run once on mount
+  
+  // Reset date range when time period changes to ensure appropriate defaults
+  const handleTimePeriodChange = (newTimePeriod: TimePeriod) => {
+    setTimePeriod(newTimePeriod);
+    // Set appropriate default range for the new time period
+    const defaultRanges = {
+      quarter: '4Q',
+      month: '12M', 
+      week: '26W'
+    };
+    setDateRange(defaultRanges[newTimePeriod]);
+  };
 
-  // Calculate date range
+  // Get timeline data bounds for intelligent range calculation
+  const { data: timelineBounds } = useTimelineDataBounds();
+
+  // Calculate time-period aware date range
   const { startDate, endDate } = useMemo(() => {
     const now = new Date();
+    const currentPeriod = getPeriodBoundaries[timePeriod](now);
+    
     let start: Date, end: Date;
     
-    switch (dateRange) {
-      case '3m':
-        start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-        end = new Date(now.getFullYear(), now.getMonth() + 3, 0);
-        break;
-      case '6m':
-        start = new Date(now.getFullYear(), now.getMonth() - 6, 1);
-        end = new Date(now.getFullYear(), now.getMonth() + 6, 0);
-        break;
-      case '12m':
-        start = new Date(now.getFullYear(), now.getMonth() - 12, 1);   
-        end = new Date(now.getFullYear(), now.getMonth() + 12, 0);
-        break;
-      case 'all':
-        start = new Date(2024, 10, 15);
-        end = new Date(2027, 2, 31);
-        break;
+    if (dateRange === 'all') {
+      // Use timeline data bounds if available, otherwise fallback to wide range
+      if (timelineBounds?.earliest_date && timelineBounds?.latest_date) {
+        const earliestDate = new Date(timelineBounds.earliest_date);
+        const latestDate = new Date(timelineBounds.latest_date);
+        
+        // Align to period boundaries
+        start = getPeriodBoundaries[timePeriod](earliestDate).start;
+        end = getPeriodBoundaries[timePeriod](latestDate).end;
+        
+        // Ensure we include current period
+        if (start > currentPeriod.start) start = currentPeriod.start;
+        if (end < currentPeriod.end) end = currentPeriod.end;
+      } else {
+        // Fallback to wide range aligned to periods
+        start = getPeriodBoundaries[timePeriod](new Date(2024, 0, 1)).start;
+        end = getPeriodBoundaries[timePeriod](new Date(2027, 11, 31)).end;
+      }
+    } else {
+      // Calculate range based on period count
+      const periodCount = getPeriodCount(dateRange);
+      
+      if (periodCount > 0) {
+        // Start from current period and go back by periodCount
+        end = currentPeriod.end;
+        
+        let tempStart = new Date(now);
+        
+        // Calculate start date based on time period
+        if (timePeriod === 'quarter') {
+          tempStart.setMonth(tempStart.getMonth() - (periodCount * 3));
+        } else if (timePeriod === 'month') {
+          tempStart.setMonth(tempStart.getMonth() - periodCount);
+        } else { // week
+          tempStart.setDate(tempStart.getDate() - (periodCount * 7));
+        }
+        
+        start = getPeriodBoundaries[timePeriod](tempStart).start;
+      } else {
+        // Fallback for unrecognized range
+        start = currentPeriod.start;
+        end = currentPeriod.end;
+      }
     }
     
+    console.log(`📅 Time-period aware date range (${timePeriod}, ${dateRange}):`, {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0],
+      timelineBounds
+    });
+    
     return { startDate: start, endDate: end };
-  }, [dateRange]);
+  }, [dateRange, timePeriod, timelineBounds]);
 
   const { data, isLoading, error, refetch } = useStageResourceTimeline({
     startDate,
@@ -128,12 +235,34 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
 
   // Debug effect to see when time period changes
   useEffect(() => {
-    console.log('📊 StageResourceTimelineChart: Time period changed to:', timePeriod);
-    console.log('📊 StageResourceTimelineChart: Date range:', dateRange);
-    console.log('📊 StageResourceTimelineChart: External filters from dashboard:', filters);
-    console.log('📊 StageResourceTimelineChart: API call params:', { startDate, endDate, timePeriod, filters });
-    console.log('📊 StageResourceTimelineChart: Query key will be:', ['stage-resource-timeline', startDate?.toISOString(), endDate?.toISOString(), timePeriod, JSON.stringify(filters)]);
-  }, [timePeriod, dateRange, startDate, endDate, filters]);
+    console.log('📊 StageResourceTimelineChart: Configuration changed');
+    console.log('  - Time period:', timePeriod);
+    console.log('  - Date range selector:', dateRange);
+    console.log('  - Calculated date range:', {
+      start: startDate?.toISOString().split('T')[0],
+      end: endDate?.toISOString().split('T')[0],
+      spanDays: startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : 0
+    });
+    console.log('  - External filters from dashboard:', filters);
+    console.log('  - Timeline bounds available:', !!timelineBounds);
+    if (timelineBounds) {
+      console.log('  - Timeline data bounds:', {
+        earliest: timelineBounds.earliest_date,
+        latest: timelineBounds.latest_date
+      });
+    }
+    
+    // Check if current period is included
+    const now = new Date();
+    const currentBoundary = getPeriodBoundaries[timePeriod](now);
+    const includesCurrent = startDate && endDate && startDate <= currentBoundary.start && endDate >= currentBoundary.end;
+    console.log('  - Current period included:', includesCurrent, {
+      current: {
+        start: currentBoundary.start.toISOString().split('T')[0],
+        end: currentBoundary.end.toISOString().split('T')[0]
+      }
+    });
+  }, [timePeriod, dateRange, startDate, endDate, filters, timelineBounds]);
 
   // Debug effect to see when data changes
   useEffect(() => {
@@ -315,7 +444,7 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
                 />
                 {serviceLine} Service Line Resource Timeline
                 <span className="text-sm font-normal text-dxc-medium-gray ml-2">
-                  (Total: {totalServiceLineFTE.toFixed(1)} FTE)
+                  (Total: {totalServiceLineFTE.toFixed(1)} Average Headcount)
                 </span>
               </h4>
               
@@ -336,7 +465,7 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
                     />
                     <YAxis 
                       tick={{ fontSize: 12 }} 
-                      label={{ value: 'FTE', angle: -90, position: 'insideLeft' }} 
+                      label={{ value: 'Average Headcount', angle: -90, position: 'insideLeft' }} 
                     />
                     <Tooltip
                       contentStyle={{
@@ -345,12 +474,12 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
                         borderRadius: '8px',
                       }}
                       formatter={(value: number, name: string) => {
-                        if (name === 'total') return [value.toFixed(1), 'Total FTE'];
+                        if (name === 'total') return [value.toFixed(1), 'Total Average Headcount'];
                         
                         const stageInfo = SALES_STAGES.find(s => s.code === name);
                         return [
                           value.toFixed(1), 
-                          `${stageInfo?.label || `Stage ${name}`}`
+                          `${stageInfo?.label || `Stage ${name}`} Average Headcount`
                         ];
                       }}
                       labelFormatter={(label) => `${label} (${timePeriod}ly view)`}
@@ -417,14 +546,25 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
           <Calendar className="w-6 h-6 text-dxc-bright-purple" />
           <div>
             <h3 className="text-xl font-semibold text-dxc-dark-gray flex items-center gap-2">
-              Resource Timeline by Current Opportunity Stage
+              Resource Timeline by Sales Stage
               {isLoading && (
                 <div className="w-4 h-4 border-2 border-dxc-bright-purple border-t-transparent rounded-full animate-spin"></div>
               )}
             </h3>
             <p className="text-sm text-dxc-gray mt-1">
               Viewing by <span className="font-medium capitalize">{timePeriod}</span>s • 
-              Range: {dateRange === 'all' ? 'All data' : dateRange.toUpperCase()}
+              Range: {dateRange === 'all' ? 'All data' : dateRange.toUpperCase()} •
+              <span className="ml-1 text-dxc-bright-purple font-medium">
+                {startDate.toLocaleDateString('en-US', { 
+                  ...(timePeriod === 'quarter' ? { year: 'numeric', month: 'short' } : 
+                      timePeriod === 'month' ? { year: 'numeric', month: 'short' } : 
+                      { month: 'short', day: 'numeric' })
+                })} - {endDate.toLocaleDateString('en-US', {
+                  ...(timePeriod === 'quarter' ? { year: 'numeric', month: 'short' } : 
+                      timePeriod === 'month' ? { year: 'numeric', month: 'short' } : 
+                      { month: 'short', day: 'numeric' })
+                })}
+              </span>
             </p>
           </div>
         </div>
@@ -433,20 +573,31 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
         <div className="flex flex-wrap gap-2">
           {/* Time Period Selector */}
           <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-            {(['week', 'month', 'quarter'] as const).map(period => (
-              <button
-                key={period}
-                onClick={() => setTimePeriod(period)}
-                disabled={isLoading}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
-                  timePeriod === period
-                    ? 'bg-dxc-bright-purple text-white shadow-md'
-                    : 'text-dxc-gray hover:text-dxc-dark-gray hover:bg-gray-200'
-                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {period.charAt(0).toUpperCase() + period.slice(1)}s
-              </button>
-            ))}
+            {(['week', 'month', 'quarter'] as const).map(period => {
+              const isCurrentPeriod = (() => {
+                const now = new Date();
+                const currentBoundary = getPeriodBoundaries[period](now);
+                return startDate <= currentBoundary.start && endDate >= currentBoundary.end;
+              })();
+              
+              return (
+                <button
+                  key={period}
+                  onClick={() => handleTimePeriodChange(period)}
+                  disabled={isLoading}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-all relative ${
+                    timePeriod === period
+                      ? 'bg-dxc-bright-purple text-white shadow-md'
+                      : 'text-dxc-gray hover:text-dxc-dark-gray hover:bg-gray-200'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {period.charAt(0).toUpperCase() + period.slice(1)}s
+                  {isCurrentPeriod && timePeriod === period && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-dxc-bright-teal rounded-full" title="Includes current period" />
+                  )}
+                </button>
+              );
+            })}
           </div>
           
           {/* Debug Manual Refetch Button */}
@@ -463,22 +614,31 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
             🔄 Refetch
           </button>
 
-          {/* Date Range Selector */}
+          {/* Date Range Selector - Period-aware options */}
           <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
-            {(['3m', '6m', '12m', 'all'] as const).map(range => (
-              <button
-                key={range}
-                onClick={() => setDateRange(range)}
-                disabled={isLoading}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
-                  dateRange === range
-                    ? 'bg-dxc-bright-teal text-white shadow-md'
-                    : 'text-dxc-gray hover:text-dxc-dark-gray hover:bg-gray-200'
-                } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {range === 'all' ? 'All' : range.toUpperCase()}
-              </button>
-            ))}
+            {(() => {
+              // Define period-specific range options
+              const rangeOptions = {
+                quarter: [{ key: '2Q', label: '2Q' }, { key: '4Q', label: '4Q' }, { key: '6Q', label: '6Q' }, { key: 'all', label: 'All' }],
+                month: [{ key: '6M', label: '6M' }, { key: '12M', label: '12M' }, { key: '18M', label: '18M' }, { key: 'all', label: 'All' }],
+                week: [{ key: '12W', label: '12W' }, { key: '26W', label: '26W' }, { key: '52W', label: '52W' }, { key: 'all', label: 'All' }]
+              };
+              
+              return rangeOptions[timePeriod].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setDateRange(key)}
+                  disabled={isLoading}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
+                    dateRange === key
+                      ? 'bg-dxc-bright-teal text-white shadow-md'
+                      : 'text-dxc-gray hover:text-dxc-dark-gray hover:bg-gray-200'
+                  } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {label}
+                </button>
+              ));
+            })()}
           </div>
         </div>
       </div>
@@ -521,11 +681,23 @@ const StageResourceTimelineChart: React.FC<StageResourceTimelineChartProps> = ({
       {/* Legend explanation */}
       <div className="mt-4 text-sm text-dxc-medium-gray">
         <p>
-          This chart shows predicted FTE resource requirements by {timePeriod === 'quarter' ? 'quarter' : (timePeriod === 'week' ? 'week' : 'month')}, 
-          broken down by service line and the current sales stage of opportunities. 
-          Each service line is shown in its own chart, with stacked bars representing different sales stages. 
-          {timePeriod === 'quarter' ? 'Quarterly data includes light smoothing to reduce period-to-period spikes.' : ''}
+          This chart shows average headcount requirements by {timePeriod === 'quarter' ? 'quarter' : (timePeriod === 'week' ? 'week' : 'month')}, 
+          broken down by service line and sales stage. Each service line is shown in its own chart, with stacked bars representing 
+          the average number of people needed concurrently for work in different sales stages during each time period.
+          {timePeriod === 'quarter' ? ' Quarterly data includes light smoothing to reduce period-to-period spikes.' : ''}
+          {(() => {
+            const now = new Date();
+            const currentBoundary = getPeriodBoundaries[timePeriod](now);
+            const includesCurrent = startDate <= currentBoundary.start && endDate >= currentBoundary.end;
+            return includesCurrent ? ` 🟢 Current ${timePeriod} is included in the displayed range.` : ` ⚠️ Current ${timePeriod} is not in the displayed range.`;
+          })()} 
         </p>
+        {timelineBounds && (
+          <p className="mt-1 text-xs text-dxc-medium-gray">
+            Timeline data available from {new Date(timelineBounds.earliest_date || '').toLocaleDateString()} 
+            to {new Date(timelineBounds.latest_date || '').toLocaleDateString()}
+          </p>
+        )}
       </div>
     </div>
   );

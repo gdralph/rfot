@@ -3,6 +3,7 @@ Resource forecasting API endpoints for FTE timeline calculations.
 """
 from datetime import datetime, timedelta
 from typing import List, Optional, Union
+from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, delete
 from pydantic import BaseModel
@@ -605,10 +606,12 @@ def _generate_time_period_forecast(
     
     # Generate period keys based on time_period
     if time_period == "week":
-        # Start from Monday of start_date's week
+        # Align start_date to Monday BEFORE the loop
         current_date = start_date - timedelta(days=start_date.weekday())
         while current_date <= end_date:
-            week_key = current_date.strftime("%Y-W%U")  # Year-Week format
+            # Use ISO week numbering to avoid conflicts
+            year, week_num, _ = current_date.isocalendar()
+            week_key = f"{year}-W{week_num:02d}"
             period_totals[week_key] = {
                 "period": current_date.strftime("%m/%d"),  # MM/DD format for display
                 "period_start": current_date,
@@ -665,7 +668,13 @@ def _generate_time_period_forecast(
     if stage_filter:
         filtered_records = [r for r in filtered_records if r.stage_name in stage_filter]
     
-    # Use proportional allocation method (same as get_stage_resource_timeline)
+    # Group records by opportunity + service line to handle sequential stages correctly
+    opportunity_service_groups = defaultdict(list)
+    for record in filtered_records:
+        group_key = f"{record.opportunity_id}_{record.service_line}"
+        opportunity_service_groups[group_key].append(record)
+    
+    # Process each period
     for period_key, period_data in period_totals.items():
         period_start = period_data["period_start"]
         
@@ -690,30 +699,31 @@ def _generate_time_period_forecast(
             _, last_day = calendar.monthrange(period_start.year, period_start.month)
             period_end = period_start.replace(day=last_day)
         
-        # Calculate proportional FTE for each timeline record that overlaps with this period
-        for record in filtered_records:
-            # Make sure all dates are timezone-naive for comparison
-            record_start = record.stage_start_date.replace(tzinfo=None) if record.stage_start_date.tzinfo else record.stage_start_date
-            record_end = record.stage_end_date.replace(tzinfo=None) if record.stage_end_date.tzinfo else record.stage_end_date
-            period_start_naive = period_start.replace(tzinfo=None) if period_start.tzinfo else period_start
-            period_end_naive = period_end.replace(tzinfo=None) if period_end.tzinfo else period_end
-            
-            # Check if timeline record overlaps with this period
-            if (record_start <= period_end_naive and record_end >= period_start_naive):
-                # Calculate overlap using proportional allocation
-                overlap_start = max(record_start, period_start_naive)
-                overlap_end = min(record_end, period_end_naive)
-                overlap_days = (overlap_end - overlap_start).days + 1
-                stage_days = (record_end - record_start).days + 1
+        # For each opportunity+service line group, find max FTE during this period
+        for group_key, group_records in opportunity_service_groups.items():
+            # Find all stages within this group that overlap with this period
+            overlapping_stages = []
+            for record in group_records:
+                # Make sure all dates are timezone-naive for comparison
+                record_start = record.stage_start_date.replace(tzinfo=None) if record.stage_start_date.tzinfo else record.stage_start_date
+                record_end = record.stage_end_date.replace(tzinfo=None) if record.stage_end_date.tzinfo else record.stage_end_date
+                period_start_naive = period_start.replace(tzinfo=None) if period_start.tzinfo else period_start
+                period_end_naive = period_end.replace(tzinfo=None) if period_end.tzinfo else period_end
                 
-                if overlap_days > 0 and stage_days > 0:
-                    # Calculate proportional FTE for this period
-                    overlap_ratio = overlap_days / stage_days
-                    period_fte = record.fte_required * overlap_ratio
-                    
-                    # Add to period totals
-                    period_data["total_fte"] += period_fte
-                    period_data["service_line_breakdown"][record.service_line] += period_fte
+                # Check if timeline record overlaps with this period
+                if (record_start <= period_end_naive and record_end >= period_start_naive):
+                    # Skip zero-duration stages
+                    if record.duration_weeks > 0:
+                        overlapping_stages.append(record)
+            
+            # Take maximum FTE from overlapping stages (not sum) - stages are sequential, not concurrent
+            if overlapping_stages:
+                max_fte = max(stage.fte_required for stage in overlapping_stages)
+                representative_stage = max(overlapping_stages, key=lambda s: s.fte_required)
+                
+                # Add to period totals
+                period_data["total_fte"] += max_fte
+                period_data["service_line_breakdown"][representative_stage.service_line] += max_fte
     
     # Convert to list format with correct structure
     time_period_forecast = []
@@ -1264,13 +1274,21 @@ def get_stage_resource_timeline(
     
     # Generate time periods
     period_data = {}
-    current_date = start_date.replace(day=1) if time_period == "month" else start_date
+    
+    if time_period == "week":
+        # Align start_date to Monday BEFORE the loop
+        week_start = start_date - timedelta(days=start_date.weekday())
+        current_date = week_start
+    elif time_period == "month":
+        current_date = start_date.replace(day=1)
+    else:
+        current_date = start_date
     
     while current_date <= end_date:
         if time_period == "week":
-            # Align to Monday
-            current_date = current_date - timedelta(days=current_date.weekday())
-            period_key = current_date.strftime("%Y-W%U")
+            # Use ISO week numbering to avoid conflicts
+            year, week_num, _ = current_date.isocalendar()
+            period_key = f"{year}-W{week_num:02d}"
             display_period = current_date.strftime("%m/%d")
             next_date = current_date + timedelta(weeks=1)
         elif time_period == "quarter":
@@ -1311,11 +1329,17 @@ def get_stage_resource_timeline(
     stage_breakdown = defaultdict(float)
     category_breakdown = defaultdict(float)
     
+    # Group timeline records by opportunity + service line to handle sequential stages correctly
+    opportunity_service_groups = defaultdict(list)
     for timeline_record, opportunity in results:
-        # Get current opportunity stage
-        current_stage = opportunity.sales_stage or "01"
+        group_key = f"{timeline_record.opportunity_id}_{timeline_record.service_line}"
+        opportunity_service_groups[group_key].append((timeline_record, opportunity))
+    
+    for group_key, group_records in opportunity_service_groups.items():
+        # Get current opportunity stage from first record
+        current_stage = group_records[0][1].sales_stage or "01"
         
-        # Check if timeline record overlaps with any period
+        # For each period, find the maximum FTE needed within this opportunity+service line group
         for period_key, period_info in period_data.items():
             period_start = period_info["period_start"]
             period_end = period_info["period_end"]
@@ -1323,35 +1347,41 @@ def get_stage_resource_timeline(
             # Make sure all dates are timezone-naive for comparison
             period_start = period_start.replace(tzinfo=None) if period_start.tzinfo else period_start
             period_end = period_end.replace(tzinfo=None) if period_end.tzinfo else period_end
-            record_start = timeline_record.stage_start_date.replace(tzinfo=None) if timeline_record.stage_start_date.tzinfo else timeline_record.stage_start_date
-            record_end = timeline_record.stage_end_date.replace(tzinfo=None) if timeline_record.stage_end_date.tzinfo else timeline_record.stage_end_date
             
-            # Check if timeline record overlaps with this period
-            if (record_start <= period_end and record_end >= period_start):
+            # Find all stages within this group that overlap with this period
+            overlapping_stages = []
+            for timeline_record, opportunity in group_records:
+                record_start = timeline_record.stage_start_date.replace(tzinfo=None) if timeline_record.stage_start_date.tzinfo else timeline_record.stage_start_date
+                record_end = timeline_record.stage_end_date.replace(tzinfo=None) if timeline_record.stage_end_date.tzinfo else timeline_record.stage_end_date
                 
-                # Calculate overlap using timezone-naive dates
-                overlap_start = max(record_start, period_start)
-                overlap_end = min(record_end, period_end)
-                overlap_days = (overlap_end - overlap_start).days + 1
-                stage_days = (record_end - record_start).days + 1
+                # Check if timeline record overlaps with this period
+                if (record_start <= period_end and record_end >= period_start):
+                    # Skip zero-duration stages
+                    if timeline_record.duration_weeks > 0:
+                        overlapping_stages.append(timeline_record)
+            
+            # Take maximum FTE from overlapping stages (not sum) - stages are sequential, not concurrent
+            if overlapping_stages:
+                max_fte = max(stage.fte_required for stage in overlapping_stages)
                 
-                if overlap_days > 0 and stage_days > 0:
-                    # Calculate proportional FTE for this period
-                    overlap_ratio = overlap_days / stage_days
-                    period_fte = timeline_record.fte_required * overlap_ratio
-                    
-                    # Create key for service line + current stage combination
-                    service_stage_key = f"{timeline_record.service_line}_{current_stage}"
-                    
-                    period_info["service_line_stage_breakdown"][service_stage_key] += period_fte
-                    period_info["total_fte"] += period_fte
+                # For display purposes, use the stage with the highest FTE for this period
+                # (In practice, FTE should be the same for sequential stages, but this handles edge cases)
+                representative_stage = max(overlapping_stages, key=lambda s: s.fte_required)
+                
+                # Create key for service line + actual stage combination
+                service_stage_key = f"{representative_stage.service_line}_{representative_stage.stage_name}"
+                
+                period_info["service_line_stage_breakdown"][service_stage_key] += max_fte
+                period_info["total_fte"] += max_fte
         
-        # Track overall statistics
-        total_opportunities_processed.add(timeline_record.opportunity_id)
-        total_effort_weeks += timeline_record.total_effort_weeks
-        service_line_breakdown[timeline_record.service_line] += timeline_record.total_effort_weeks
-        stage_breakdown[current_stage] += timeline_record.total_effort_weeks
-        category_breakdown[timeline_record.category] += timeline_record.total_effort_weeks
+        # Track overall statistics (use first record from group for stats)
+        first_record = group_records[0][0]
+        total_opportunities_processed.add(first_record.opportunity_id)
+        for timeline_record, _ in group_records:
+            total_effort_weeks += timeline_record.total_effort_weeks
+            service_line_breakdown[timeline_record.service_line] += timeline_record.total_effort_weeks
+            stage_breakdown[current_stage] += timeline_record.total_effort_weeks
+            category_breakdown[timeline_record.category] += timeline_record.total_effort_weeks
     
     # Convert defaultdicts to regular dicts for JSON serialization
     monthly_forecast = []
