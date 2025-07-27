@@ -243,6 +243,7 @@ const OpportunityDetailV2: React.FC = () => {
   // Resource Timeline chart controls
   const [_chartType, _setChartType] = useState<'line' | 'bar' | 'area'>('bar');
   const [timePeriod, setTimePeriod] = useState<'week' | 'month' | 'quarter' | 'stage'>('week');
+  const [dateRange, setDateRange] = useState<'3M' | '6M' | '12M' | 'all'>('all');
   
   // Debug logging for timePeriod changes
   useEffect(() => {
@@ -279,6 +280,46 @@ const OpportunityDetailV2: React.FC = () => {
   // Chart data calculation - extracted to component level
   const chartData = useMemo(() => {
     if (!tableData.length) return [];
+    
+    // Calculate date range based on selection
+    const getDateRangeFilter = () => {
+      const now = new Date();
+      let startDate: Date, endDate: Date;
+      
+      if (dateRange === 'all') {
+        // Use timeline earliest/latest dates plus current date
+        const timelineDates = tableData.map(item => [
+          new Date(item.stage_start_date || Date.now()),
+          new Date(item.stage_end_date || Date.now())
+        ]).flat();
+        
+        if (timelineDates.length > 0) {
+          const earliestTimeline = new Date(Math.min(...timelineDates.map(d => d.getTime())));
+          const latestTimeline = new Date(Math.max(...timelineDates.map(d => d.getTime())));
+          
+          // Include current date in the range
+          startDate = new Date(Math.min(earliestTimeline.getTime(), now.getTime()));
+          endDate = new Date(Math.max(latestTimeline.getTime(), now.getTime()));
+          
+          // Add some padding around the range
+          startDate.setMonth(startDate.getMonth() - 1);
+          endDate.setMonth(endDate.getMonth() + 1);
+        } else {
+          // Fallback to wide range
+          startDate = new Date(now.getFullYear() - 1, 0, 1);
+          endDate = new Date(now.getFullYear() + 1, 11, 31);
+        }
+      } else {
+        // Calculate range based on months from current date
+        const months = parseInt(dateRange.replace('M', ''));
+        startDate = new Date(now);
+        startDate.setMonth(startDate.getMonth() - months / 2);
+        endDate = new Date(now);
+        endDate.setMonth(endDate.getMonth() + months / 2);
+      }
+      
+      return { startDate, endDate };
+    };
     
     let result = [];
     if (timePeriod === 'stage') {
@@ -334,33 +375,32 @@ const OpportunityDetailV2: React.FC = () => {
           formatOptions = { month: 'short', day: 'numeric' };
       }
       
-      // First, create all time periods we'll need
+      // Get date range filter
+      const dateRangeFilter = getDateRangeFilter();
+      
+      // Create time periods within the filtered date range
       const allPeriods = new Set<string>();
-      tableData.forEach(item => {
-        const startDate = new Date(item.stage_start_date || Date.now());
-        const endDate = new Date(item.stage_end_date || Date.now());
+      const currentDate = new Date(dateRangeFilter.startDate);
+      
+      while (currentDate <= dateRangeFilter.endDate) {
+        let dateKey: string;
         
-        const currentDate = new Date(startDate);
-        while (currentDate <= endDate) {
-          let dateKey: string;
-          
-          if (timePeriod === 'quarter') {
-            const financialQuarter = getFinancialQuarter(currentDate);
-            dateKey = `FY${financialQuarter.fiscalYear}-Q${financialQuarter.quarter}`;
-          } else if (timePeriod === 'month') {
-            const year = currentDate.getFullYear();
-            const month = currentDate.getMonth();
-            dateKey = `${year}-${month.toString().padStart(2, '0')}`;
-          } else {
-            const weekStart = new Date(currentDate);
-            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-            dateKey = weekStart.toISOString().split('T')[0];
-          }
-          
-          allPeriods.add(dateKey);
-          currentDate.setDate(currentDate.getDate() + intervalDays);
+        if (timePeriod === 'quarter') {
+          const financialQuarter = getFinancialQuarter(currentDate);
+          dateKey = `FY${financialQuarter.fiscalYear}-Q${financialQuarter.quarter}`;
+        } else if (timePeriod === 'month') {
+          const year = currentDate.getFullYear();
+          const month = currentDate.getMonth();
+          dateKey = `${year}-${month.toString().padStart(2, '0')}`;
+        } else {
+          const weekStart = new Date(currentDate);
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+          dateKey = weekStart.toISOString().split('T')[0];
         }
-      });
+        
+        allPeriods.add(dateKey);
+        currentDate.setDate(currentDate.getDate() + intervalDays);
+      }
 
       // Initialize all periods
       allPeriods.forEach(dateKey => {
@@ -452,7 +492,7 @@ const OpportunityDetailV2: React.FC = () => {
     }
     
     return result;
-  }, [tableData, timePeriod]);
+  }, [tableData, timePeriod, dateRange]);
 
   // Date markers calculation - moved to top level to follow Rules of Hooks
   const dateMarkers = useMemo(() => {
@@ -1441,24 +1481,46 @@ const OpportunityDetailV2: React.FC = () => {
             {/* Timeline Controls and Calculate Button */}
             <div className="flex flex-wrap gap-2">
               {activeResourceTab === 'timeline' && hasValidTimeline(resourceTimeline) && (
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  {(['week', 'month', 'quarter', 'stage'] as const).map(period => (
-                    <button
-                      key={period}
-                      onClick={() => {
-                        console.log('🔄 OpportunityDetailV2: Time period clicked:', period);
-                        setTimePeriod(period);
-                      }}
-                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                        timePeriod === period
-                          ? 'bg-white text-dxc-bright-purple shadow-sm'
-                          : 'text-gray-600 hover:text-dxc-bright-purple'
-                      }`}
-                    >
-                      {period.charAt(0).toUpperCase() + period.slice(1)}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  {/* Time Period Controls */}
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    {(['week', 'month', 'quarter', 'stage'] as const).map(period => (
+                      <button
+                        key={period}
+                        onClick={() => {
+                          console.log('🔄 OpportunityDetailV2: Time period clicked:', period);
+                          setTimePeriod(period);
+                        }}
+                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                          timePeriod === period
+                            ? 'bg-white text-dxc-bright-purple shadow-sm'
+                            : 'text-gray-600 hover:text-dxc-bright-purple'
+                        }`}
+                      >
+                        {period.charAt(0).toUpperCase() + period.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Date Range Controls - only show for time-based views */}
+                  {timePeriod !== 'stage' && (
+                    <div className="flex bg-gray-100 rounded-lg p-1">
+                      {(['3M', '6M', '12M', 'all'] as const).map(range => (
+                        <button
+                          key={range}
+                          onClick={() => setDateRange(range)}
+                          className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            dateRange === range
+                              ? 'bg-white text-dxc-bright-teal shadow-sm'
+                              : 'text-gray-600 hover:text-dxc-bright-teal'
+                          }`}
+                        >
+                          {range}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
               
               {/* Calculate Timeline Button */}
@@ -1529,6 +1591,11 @@ const OpportunityDetailV2: React.FC = () => {
                       Viewing: <span className="font-medium capitalize">{timePeriod}</span> 
                       {timePeriod !== 'stage' ? ' timeline (concurrent FTE by service line)' : ' stages'} • 
                       {timePeriod !== 'stage' ? `${chartData.length} time periods` : `${chartData.length} stages`}
+                      {timePeriod !== 'stage' && (
+                        <span className="ml-2 text-dxc-bright-teal font-medium">
+                          ({dateRange} range)
+                        </span>
+                      )}
                     </div>
                     
                     {/* Service Line Legend - positioned to the right */}
