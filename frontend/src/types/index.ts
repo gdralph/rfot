@@ -96,7 +96,7 @@ export interface ServiceLineCategory {
   service_line: string;
   name: string;
   min_tcv: number;
-  max_tcv?: number;
+  max_tcv?: number | null;
 }
 
 export interface ServiceLineStageEffort {
@@ -115,10 +115,18 @@ export interface ServiceLineOfferingThreshold {
   increment_multiplier: number;
 }
 
-export interface ServiceLineInternalServiceMapping {
+export interface ServiceLineOfferingMapping {
   id?: number;
   service_line: string;
   internal_service: string;
+  simplified_offering: string;
+}
+
+export interface ServiceLineOfferingOptions {
+  service_line?: string;
+  options: {
+    [internal_service: string]: string[];
+  };
 }
 
 export interface ImportTask {

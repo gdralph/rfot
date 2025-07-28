@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 import structlog
 
 from app.models.opportunity import Opportunity, OpportunityLineItem
-from app.models.config import OpportunityCategory, ServiceLineStageEffort, ServiceLineOfferingThreshold, ServiceLineInternalServiceMapping
+from app.models.config import OpportunityCategory, ServiceLineStageEffort, ServiceLineOfferingThreshold, ServiceLineOfferingMapping
 from app.models.database import engine
 
 logger = structlog.get_logger()
@@ -132,34 +132,36 @@ def calculate_offering_multiplier(
     Returns:
         Multiplier value (1.0 if no threshold configured or count below threshold)
     """
-    # Get valid internal service values for this service line
-    internal_service_mappings = session.exec(
-        select(ServiceLineInternalServiceMapping).where(
-            ServiceLineInternalServiceMapping.service_line == service_line
+    # Get valid internal service and simplified offering combinations for this service line
+    offering_mappings = session.exec(
+        select(ServiceLineOfferingMapping).where(
+            ServiceLineOfferingMapping.service_line == service_line
         )
     ).all()
     
-    if not internal_service_mappings:
+    if not offering_mappings:
         # No mappings configured, return default multiplier
-        logger.info("No internal service mappings found for service line", 
+        logger.info("No offering mappings found for service line", 
                    service_line=service_line)
         return 1.0
     
-    valid_internal_services = {mapping.internal_service for mapping in internal_service_mappings}
-    
-    # Get opportunity line items filtered by valid internal services
-    line_items = session.exec(
+    # Get all opportunity line items
+    all_line_items = session.exec(
         select(OpportunityLineItem).where(
-            OpportunityLineItem.opportunity_id == opportunity_id,
-            OpportunityLineItem.internal_service.in_(valid_internal_services)
+            OpportunityLineItem.opportunity_id == opportunity_id
         )
     ).all()
     
-    # Count unique non-null simplified_offering values from mapped line items
+    # Count unique simplified offerings that match the configured mappings
     unique_offerings = set()
-    for item in line_items:
-        if item.simplified_offering and item.simplified_offering.strip():
-            unique_offerings.add(item.simplified_offering.strip())
+    for item in all_line_items:
+        if item.internal_service and item.simplified_offering and item.simplified_offering.strip():
+            # Check if this combination is mapped to the service line
+            for mapping in offering_mappings:
+                if (mapping.internal_service == item.internal_service and 
+                    mapping.simplified_offering == item.simplified_offering.strip()):
+                    unique_offerings.add(item.simplified_offering.strip())
+                    break
     
     offering_count = len(unique_offerings)
     
@@ -189,7 +191,8 @@ def calculate_offering_multiplier(
                 service_line=service_line, 
                 stage_name=stage_name,
                 offering_count=offering_count, 
-                mapped_internal_services=list(valid_internal_services),
+                unique_offerings=list(unique_offerings),
+                mapped_combinations_count=len(offering_mappings),
                 threshold=threshold_config.threshold_count,
                 increment=threshold_config.increment_multiplier,
                 multiplier=multiplier)

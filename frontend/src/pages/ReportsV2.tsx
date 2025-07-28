@@ -216,9 +216,92 @@ const ReportsV2: React.FC = () => {
         
         {showFilters && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {report.filters.map(filter => renderFilterInput(filter))}
+            {report.filters.map(filter => (
+              <div key={filter}>
+                {renderFilterInput(filter)}
+              </div>
+            ))}
           </div>
         )}
+      </div>
+    );
+  };
+
+  // Multi-select component for filters
+  const MultiSelectFilter = ({ 
+    filter, 
+    options, 
+    label 
+  }: { 
+    filter: string; 
+    options: Array<{value: string, label: string}>; 
+    label: string;
+  }) => {
+    const selectedValues = reportFilters[filter] || [];
+    const selectedArray = Array.isArray(selectedValues) ? selectedValues : [];
+
+    const toggleOption = (value: string) => {
+      const currentValues = Array.isArray(reportFilters[filter]) ? reportFilters[filter] : [];
+      const newValues = currentValues.includes(value)
+        ? currentValues.filter((v: string) => v !== value)
+        : [...currentValues, value];
+      
+      setReportFilters(prev => ({ ...prev, [filter]: newValues }));
+    };
+
+    const selectAll = () => {
+      const allValues = options.map(opt => opt.value);
+      setReportFilters(prev => ({ ...prev, [filter]: allValues }));
+    };
+
+    const clearAll = () => {
+      setReportFilters(prev => ({ ...prev, [filter]: [] }));
+    };
+
+    return (
+      <div key={filter}>
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-xs font-medium text-gray-600">
+            {label} {selectedArray.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 bg-dxc-bright-purple text-white rounded-full text-xs">
+                {selectedArray.length}
+              </span>
+            )}
+          </label>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={selectAll}
+              className="text-xs text-dxc-bright-purple hover:underline"
+            >
+              All
+            </button>
+            <span className="text-xs text-gray-400">|</span>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="text-xs text-gray-500 hover:underline"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        <div className="border border-gray-300 rounded max-h-32 overflow-y-auto">
+          {options.map(option => (
+            <label
+              key={option.value}
+              className="flex items-center px-2 py-1 hover:bg-gray-50 cursor-pointer text-sm"
+            >
+              <input
+                type="checkbox"
+                checked={selectedArray.includes(option.value)}
+                onChange={() => toggleOption(option.value)}
+                className="mr-2 text-dxc-bright-purple focus:ring-dxc-bright-purple"
+              />
+              {option.label}
+            </label>
+          ))}
+        </div>
       </div>
     );
   };
@@ -234,7 +317,7 @@ const ReportsV2: React.FC = () => {
       case 'start_date':
       case 'end_date':
         return (
-          <div key={filter}>
+          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1 capitalize">
               {filter.replace('_', ' ')}
             </label>
@@ -248,55 +331,69 @@ const ReportsV2: React.FC = () => {
 
       case 'service_line':
         return (
-          <div key={filter}>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Service Line
-            </label>
-            <select className={inputClass} onChange={(e) => updateFilter(e.target.value)}>
-              <option value="">All Service Lines</option>
-              <option value="MW">MW</option>
-              <option value="ITOC">ITOC</option>
-              <option value="CES">CES</option>
-              <option value="INS">INS</option>
-              <option value="BPS">BPS</option>
-              <option value="SEC">SEC</option>
-            </select>
-          </div>
+          <MultiSelectFilter
+            filter={filter}
+            label="Service Lines"
+            options={[
+              { value: "MW", label: "MW (Modern Workplace)" },
+              { value: "ITOC", label: "ITOC (Infrastructure & Cloud)" },
+              { value: "CES", label: "CES (Consulting & Engineering Services)" },
+              { value: "INS", label: "INS (Insurance)" },
+              { value: "BPS", label: "BPS (Business Process Services)" },
+              { value: "SEC", label: "SEC (Security)" }
+            ]}
+          />
         );
 
       case 'stage':
       case 'sales_stage':
         return (
-          <div key={filter}>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              {filter === 'sales_stage' ? 'Current Sales Stage' : 'Sales Stage'}
-            </label>
-            <select className={inputClass} onChange={(e) => updateFilter(e.target.value)}>
-              <option value="">All Stages</option>
-              <option value="01">01: Understand Customer</option>
-              <option value="02">02: Validate Opportunity</option>
-              <option value="03">03: Qualify Opportunity</option>
-              <option value="04A">04A: Develop Solution</option>
-              <option value="04B">04B: Propose Solution</option>
-              <option value="05A">05A: Negotiate</option>
-              <option value="05B">05B: Award & Close</option>
-              <option value="06">06: Deploy & Extend</option>
-            </select>
-          </div>
+          <MultiSelectFilter
+            filter={filter}
+            label={filter === 'sales_stage' ? 'Current Sales Stages' : 'Sales Stages'}
+            options={[
+              { value: "01", label: "01: Understand Customer" },
+              { value: "02", label: "02: Validate Opportunity" },
+              { value: "03", label: "03: Qualify Opportunity" },
+              { value: "04A", label: "04A: Develop Solution" },
+              { value: "04B", label: "04B: Propose Solution" },
+              { value: "05A", label: "05A: Negotiate" },
+              { value: "05B", label: "05B: Award & Close" },
+              { value: "06", label: "06: Deploy & Extend" }
+            ]}
+          />
         );
 
       case 'category':
         return (
-          <div key={filter}>
+          <MultiSelectFilter
+            filter={filter}
+            label="Categories"
+            options={[
+              { value: "Sub $5M", label: "Sub $5M" },
+              { value: "Cat C", label: "Cat C ($5M - $20M)" },
+              { value: "Cat B", label: "Cat B ($20M - $100M)" },
+              { value: "Cat A", label: "Cat A ($100M+)" }
+            ]}
+          />
+        );
+
+      case 'sort_by':
+        return (
+          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Category
+              Sort By
             </label>
-            <select className={inputClass} onChange={(e) => updateFilter(e.target.value)}>
-              <option value="">All Categories</option>
-              <option value="Sub $5M">Sub $5M</option>
-              <option value="Cat C">Cat C</option>
-              <option value="Cat B">Cat B</option>
-              <option value="Cat A">Cat A</option>
+            <select 
+              className={inputClass} 
+              onChange={(e) => updateFilter(e.target.value)} 
+              defaultValue="total_effort_weeks"
+            >
+              <option value="total_effort_weeks">Total Effort (Weeks) - Highest First</option>
+              <option value="opportunity_name">Opportunity Name (A-Z)</option>
+              <option value="tcv_millions">TCV (Millions) - Highest First</option>
+              <option value="decision_date">Decision Date - Earliest First</option>
+              <option value="account_name">Account Name (A-Z)</option>
             </select>
           </div>
         );
@@ -304,7 +401,7 @@ const ReportsV2: React.FC = () => {
       case 'period_months':
       case 'forecast_months':
         return (
-          <div key={filter}>
+          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
               {filter.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </label>
@@ -320,7 +417,7 @@ const ReportsV2: React.FC = () => {
 
       default:
         return (
-          <div key={filter}>
+          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1 capitalize">
               {filter.replace('_', ' ')}
             </label>

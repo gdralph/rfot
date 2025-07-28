@@ -4,12 +4,13 @@ from typing import List
 import structlog
 
 from app.models.database import engine
+from app.models.opportunity import OpportunityLineItem
 from app.models.config import (
     OpportunityCategory, OpportunityCategoryRead, OpportunityCategoryCreate, OpportunityCategoryUpdate,
     ServiceLineCategory, ServiceLineCategoryRead, ServiceLineCategoryCreate, ServiceLineCategoryUpdate,
     ServiceLineStageEffort, ServiceLineStageEffortRead, ServiceLineStageEffortCreate, ServiceLineStageEffortUpdate,
     ServiceLineOfferingThreshold, ServiceLineOfferingThresholdRead, ServiceLineOfferingThresholdCreate, ServiceLineOfferingThresholdUpdate,
-    ServiceLineInternalServiceMapping, ServiceLineInternalServiceMappingRead, ServiceLineInternalServiceMappingCreate, ServiceLineInternalServiceMappingUpdate
+    ServiceLineOfferingMapping, ServiceLineOfferingMappingRead, ServiceLineOfferingMappingCreate, ServiceLineOfferingMappingUpdate
 )
 
 logger = structlog.get_logger()
@@ -453,71 +454,77 @@ async def bulk_create_service_line_offering_thresholds(
     return created_thresholds
 
 
-# Service Line Internal Service Mappings
-@router.get("/service-line-internal-service-mappings", response_model=List[ServiceLineInternalServiceMappingRead])
-async def get_service_line_internal_service_mappings(
+# Service Line Offering Mappings (Consolidated)
+@router.get("/service-line-offering-mappings", response_model=List[ServiceLineOfferingMappingRead])
+async def get_service_line_offering_mappings(
     service_line: str = None,
     session: Session = Depends(get_session)
 ):
-    """Get service line internal service mappings with optional filters."""
-    query = select(ServiceLineInternalServiceMapping)
+    """Get consolidated service line offering mappings with optional filters."""
+    query = select(ServiceLineOfferingMapping)
     
     if service_line:
-        query = query.where(ServiceLineInternalServiceMapping.service_line == service_line)
+        query = query.where(ServiceLineOfferingMapping.service_line == service_line)
     
     mappings = session.exec(query).all()
-    logger.info("Retrieved service line internal service mappings", count=len(mappings), filters={"service_line": service_line})
+    logger.info("Retrieved service line offering mappings", count=len(mappings), filters={"service_line": service_line})
     return mappings
 
 
-@router.post("/service-line-internal-service-mappings", response_model=ServiceLineInternalServiceMappingRead)
-async def create_service_line_internal_service_mapping(
-    mapping: ServiceLineInternalServiceMappingCreate,
+@router.post("/service-line-offering-mappings", response_model=ServiceLineOfferingMappingRead)
+async def create_service_line_offering_mapping(
+    mapping: ServiceLineOfferingMappingCreate,
     session: Session = Depends(get_session)
 ):
-    """Create a new service line internal service mapping."""
+    """Create a new consolidated service line offering mapping."""
     # Check if this combination already exists
     existing = session.exec(
-        select(ServiceLineInternalServiceMapping).where(
-            ServiceLineInternalServiceMapping.service_line == mapping.service_line,
-            ServiceLineInternalServiceMapping.internal_service == mapping.internal_service
+        select(ServiceLineOfferingMapping).where(
+            ServiceLineOfferingMapping.service_line == mapping.service_line,
+            ServiceLineOfferingMapping.internal_service == mapping.internal_service,
+            ServiceLineOfferingMapping.simplified_offering == mapping.simplified_offering
         )
     ).first()
     
     if existing:
-        raise HTTPException(status_code=400, detail="Mapping for this service line and internal service already exists")
+        raise HTTPException(status_code=400, detail="Mapping for this combination already exists")
     
-    db_mapping = ServiceLineInternalServiceMapping.from_orm(mapping)
+    db_mapping = ServiceLineOfferingMapping.from_orm(mapping)
     session.add(db_mapping)
     session.commit()
     session.refresh(db_mapping)
     
-    logger.info("Created service line internal service mapping", mapping_id=db_mapping.id, service_line=db_mapping.service_line, internal_service=db_mapping.internal_service)
+    logger.info("Created service line offering mapping", 
+                mapping_id=db_mapping.id, 
+                service_line=db_mapping.service_line, 
+                internal_service=db_mapping.internal_service,
+                simplified_offering=db_mapping.simplified_offering)
     return db_mapping
 
 
-@router.put("/service-line-internal-service-mappings/{mapping_id}", response_model=ServiceLineInternalServiceMappingRead)
-async def update_service_line_internal_service_mapping(
+@router.put("/service-line-offering-mappings/{mapping_id}", response_model=ServiceLineOfferingMappingRead)
+async def update_service_line_offering_mapping(
     mapping_id: int,
-    mapping: ServiceLineInternalServiceMappingUpdate,
+    mapping: ServiceLineOfferingMappingUpdate,
     session: Session = Depends(get_session)
 ):
-    """Update a service line internal service mapping."""
-    db_mapping = session.get(ServiceLineInternalServiceMapping, mapping_id)
+    """Update a consolidated service line offering mapping."""
+    db_mapping = session.get(ServiceLineOfferingMapping, mapping_id)
     if not db_mapping:
         raise HTTPException(status_code=404, detail="Mapping not found")
     
     # Check if updating would create a duplicate
     existing = session.exec(
-        select(ServiceLineInternalServiceMapping).where(
-            ServiceLineInternalServiceMapping.service_line == mapping.service_line,
-            ServiceLineInternalServiceMapping.internal_service == mapping.internal_service,
-            ServiceLineInternalServiceMapping.id != mapping_id
+        select(ServiceLineOfferingMapping).where(
+            ServiceLineOfferingMapping.service_line == mapping.service_line,
+            ServiceLineOfferingMapping.internal_service == mapping.internal_service,
+            ServiceLineOfferingMapping.simplified_offering == mapping.simplified_offering,
+            ServiceLineOfferingMapping.id != mapping_id
         )
     ).first()
     
     if existing:
-        raise HTTPException(status_code=400, detail="Mapping for this service line and internal service already exists")
+        raise HTTPException(status_code=400, detail="Mapping for this combination already exists")
     
     mapping_data = mapping.model_dump(exclude_unset=True)
     for key, value in mapping_data.items():
@@ -527,53 +534,84 @@ async def update_service_line_internal_service_mapping(
     session.commit()
     session.refresh(db_mapping)
     
-    logger.info("Updated service line internal service mapping", mapping_id=mapping_id, service_line=db_mapping.service_line, internal_service=db_mapping.internal_service)
+    logger.info("Updated service line offering mapping", 
+                mapping_id=mapping_id, 
+                service_line=db_mapping.service_line,
+                internal_service=db_mapping.internal_service,
+                simplified_offering=db_mapping.simplified_offering)
     return db_mapping
 
 
-@router.delete("/service-line-internal-service-mappings/{mapping_id}")
-async def delete_service_line_internal_service_mapping(
+@router.delete("/service-line-offering-mappings/{mapping_id}")
+async def delete_service_line_offering_mapping(
     mapping_id: int,
     session: Session = Depends(get_session)
 ):
-    """Delete a service line internal service mapping."""
-    db_mapping = session.get(ServiceLineInternalServiceMapping, mapping_id)
+    """Delete a consolidated service line offering mapping."""
+    db_mapping = session.get(ServiceLineOfferingMapping, mapping_id)
     if not db_mapping:
         raise HTTPException(status_code=404, detail="Mapping not found")
     
     session.delete(db_mapping)
     session.commit()
     
-    logger.info("Deleted service line internal service mapping", mapping_id=mapping_id, service_line=db_mapping.service_line, internal_service=db_mapping.internal_service)
+    logger.info("Deleted service line offering mapping", 
+                mapping_id=mapping_id, 
+                service_line=db_mapping.service_line,
+                internal_service=db_mapping.internal_service,
+                simplified_offering=db_mapping.simplified_offering)
     return {"message": "Mapping deleted successfully"}
 
 
-@router.post("/service-line-internal-service-mappings/bulk", response_model=List[ServiceLineInternalServiceMappingRead])
-async def bulk_create_service_line_internal_service_mappings(
-    mappings: List[ServiceLineInternalServiceMappingCreate],
+@router.get("/service-line-offering-options")
+async def get_service_line_offering_options(
+    service_line: str = None,
     session: Session = Depends(get_session)
 ):
-    """Bulk create service line internal service mappings."""
-    created_mappings = []
+    """Get available dropdown options for creating mappings from actual opportunity data."""
+    # Get distinct combinations from opportunity line items
+    query = select(
+        OpportunityLineItem.internal_service,
+        OpportunityLineItem.simplified_offering
+    ).where(
+        OpportunityLineItem.internal_service.is_not(None),
+        OpportunityLineItem.simplified_offering.is_not(None)
+    ).distinct()
     
-    for mapping in mappings:
-        # Check if this combination already exists
-        existing = session.exec(
-            select(ServiceLineInternalServiceMapping).where(
-                ServiceLineInternalServiceMapping.service_line == mapping.service_line,
-                ServiceLineInternalServiceMapping.internal_service == mapping.internal_service
-            )
-        ).first()
-        
-        if not existing:
-            db_mapping = ServiceLineInternalServiceMapping.from_orm(mapping)
-            session.add(db_mapping)
-            created_mappings.append(db_mapping)
+    combinations = session.exec(query).all()
     
-    if created_mappings:
-        session.commit()
-        for mapping in created_mappings:
-            session.refresh(mapping)
+    # Group by internal service
+    grouped_options = {}
+    for internal_service, simplified_offering in combinations:
+        if internal_service not in grouped_options:
+            grouped_options[internal_service] = []
+        grouped_options[internal_service].append(simplified_offering)
     
-    logger.info("Bulk created service line internal service mappings", count=len(created_mappings))
-    return created_mappings
+    # Sort the options
+    for internal_service in grouped_options:
+        grouped_options[internal_service].sort()
+    
+    # Filter by service line if requested
+    if service_line:
+        if service_line == 'ITOC':
+            # Only include Cloud and IT Outsourcing for ITOC
+            filtered_options = {}
+            for internal_service in ['Cloud', 'IT Outsourcing']:
+                if internal_service in grouped_options:
+                    filtered_options[internal_service] = grouped_options[internal_service]
+            grouped_options = filtered_options
+        elif service_line == 'MW':
+            # Only include Modern Workplace for MW
+            filtered_options = {}
+            if 'Modern Workplace' in grouped_options:
+                filtered_options['Modern Workplace'] = grouped_options['Modern Workplace']
+            grouped_options = filtered_options
+    
+    logger.info("Retrieved service line offering options", 
+                service_line=service_line, 
+                internal_services=len(grouped_options))
+    
+    return {
+        "service_line": service_line,
+        "options": grouped_options
+    }

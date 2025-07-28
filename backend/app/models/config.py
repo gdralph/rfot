@@ -219,10 +219,11 @@ class ServiceLineOfferingThresholdUpdate(ServiceLineOfferingThresholdBase):
     pass
 
 
-class ServiceLineInternalServiceMappingBase(SQLModel):
-    """Base service line internal service mapping model."""
+class ServiceLineOfferingMappingBase(SQLModel):
+    """Base service line offering mapping model - consolidated version."""
     service_line: str  # MW, ITOC
-    internal_service: str  # Internal service value to map to this service line
+    internal_service: str  # Internal service value (Cloud, IT Outsourcing, Modern Workplace, etc.)
+    simplified_offering: str  # Simplified offering value
 
     @field_validator('service_line')
     @classmethod
@@ -239,24 +240,31 @@ class ServiceLineInternalServiceMappingBase(SQLModel):
             raise ValueError('Internal service cannot be empty')
         return v.strip()
 
+    @field_validator('simplified_offering')
+    @classmethod
+    def validate_simplified_offering(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Simplified offering cannot be empty')
+        return v.strip()
 
-class ServiceLineInternalServiceMapping(ServiceLineInternalServiceMappingBase, table=True):
-    """Service line internal service mapping database model."""
+
+class ServiceLineOfferingMapping(ServiceLineOfferingMappingBase, table=True):
+    """Service line offering mapping database model - consolidated version."""
     id: Optional[int] = Field(default=None, primary_key=True)
 
 
-class ServiceLineInternalServiceMappingCreate(ServiceLineInternalServiceMappingBase):
-    """Model for creating service line internal service mappings."""
+class ServiceLineOfferingMappingCreate(ServiceLineOfferingMappingBase):
+    """Model for creating service line offering mappings."""
     pass
 
 
-class ServiceLineInternalServiceMappingRead(ServiceLineInternalServiceMappingBase):
-    """Model for reading service line internal service mappings."""
+class ServiceLineOfferingMappingRead(ServiceLineOfferingMappingBase):
+    """Model for reading service line offering mappings."""
     id: int
     
     model_config = ConfigDict(from_attributes=True)
 
 
-class ServiceLineInternalServiceMappingUpdate(ServiceLineInternalServiceMappingBase):
-    """Model for updating service line internal service mappings."""
+class ServiceLineOfferingMappingUpdate(ServiceLineOfferingMappingBase):
+    """Model for updating service line offering mappings."""
     pass

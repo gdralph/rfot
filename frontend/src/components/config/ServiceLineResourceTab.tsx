@@ -11,12 +11,13 @@ import {
   useServiceLineOfferingThresholds,
   useCreateServiceLineOfferingThreshold,
   useUpdateServiceLineOfferingThreshold,
-  useServiceLineInternalServiceMappings,
-  useCreateServiceLineInternalServiceMapping,
-  useUpdateServiceLineInternalServiceMapping,
-  useDeleteServiceLineInternalServiceMapping
+  useServiceLineOfferingMappings,
+  useCreateServiceLineOfferingMapping,
+  useUpdateServiceLineOfferingMapping,
+  useDeleteServiceLineOfferingMapping,
+  useServiceLineOfferingOptions
 } from '../../hooks/useConfig';
-import type { ServiceLineCategory, ServiceLineStageEffort, ServiceLineInternalServiceMapping } from '../../types/index';
+import type { ServiceLineCategory, ServiceLineStageEffort, ServiceLineOfferingMapping } from '../../types/index';
 import { SALES_STAGES } from '../../types/index';
 
 const ServiceLineResourceTab: React.FC = () => {
@@ -28,13 +29,13 @@ const ServiceLineResourceTab: React.FC = () => {
     service_line: activeServiceLine,
     name: '',
     min_tcv: 0,
-    max_tcv: undefined
+    max_tcv: null
   });
   const [editCategory, setEditCategory] = useState<Partial<ServiceLineCategory>>({
     service_line: activeServiceLine,
     name: '',
     min_tcv: 0,
-    max_tcv: undefined
+    max_tcv: null
   });
   
   // Fetch service line categories for active service line
@@ -54,30 +55,41 @@ const ServiceLineResourceTab: React.FC = () => {
   const updateThresholdMutation = useUpdateServiceLineOfferingThreshold();
   // const deleteThresholdMutation = useDeleteServiceLineOfferingThreshold();
 
-  // Fetch internal service mappings for active service line
-  const { data: allInternalServiceMappings = [], isLoading: mappingsLoading } = useServiceLineInternalServiceMappings(activeServiceLine);
-  const createMappingMutation = useCreateServiceLineInternalServiceMapping();
-  const updateMappingMutation = useUpdateServiceLineInternalServiceMapping();
-  const deleteMappingMutation = useDeleteServiceLineInternalServiceMapping();
+  // Fetch offering mappings for active service line (consolidated)
+  const { data: allOfferingMappings = [], isLoading: mappingsLoading, error: mappingsError } = useServiceLineOfferingMappings(activeServiceLine);
+  const { data: offeringOptions } = useServiceLineOfferingOptions(activeServiceLine);
   
-  // State for internal service mappings
+  // Debug logging
+  React.useEffect(() => {
+    // console.log('Offering mappings:', allOfferingMappings);
+    // console.log('Offering options:', offeringOptions);
+    // console.log('Mappings loading:', mappingsLoading);
+    // console.log('Mappings error:', mappingsError);
+  }, [allOfferingMappings, offeringOptions, mappingsLoading, mappingsError]);
+  const createMappingMutation = useCreateServiceLineOfferingMapping();
+  const updateMappingMutation = useUpdateServiceLineOfferingMapping();
+  const deleteMappingMutation = useDeleteServiceLineOfferingMapping();
+  
+  // State for offering mappings (consolidated)
   const [isAddingMapping, setIsAddingMapping] = useState(false);
   const [editingMappingId, setEditingMappingId] = useState<number | null>(null);
-  const [newMapping, setNewMapping] = useState<Partial<ServiceLineInternalServiceMapping>>({
+  const [newMapping, setNewMapping] = useState<Partial<ServiceLineOfferingMapping>>({
     service_line: activeServiceLine,
-    internal_service: ''
+    internal_service: '',
+    simplified_offering: ''
   });
-  const [editMapping, setEditMapping] = useState<Partial<ServiceLineInternalServiceMapping>>({
+  const [editMapping, setEditMapping] = useState<Partial<ServiceLineOfferingMapping>>({
     service_line: activeServiceLine,
-    internal_service: ''
+    internal_service: '',
+    simplified_offering: ''
   });
 
   // Update form data when switching service lines
   React.useEffect(() => {
     setNewCategory(prev => ({ ...prev, service_line: activeServiceLine }));
     setEditCategory(prev => ({ ...prev, service_line: activeServiceLine }));
-    setNewMapping(prev => ({ ...prev, service_line: activeServiceLine }));
-    setEditMapping(prev => ({ ...prev, service_line: activeServiceLine }));
+    setNewMapping({ service_line: activeServiceLine, internal_service: '', simplified_offering: '' });
+    setEditMapping({ service_line: activeServiceLine, internal_service: '', simplified_offering: '' });
     setIsAddingCategory(false);
     setEditingCategoryId(null);
     setIsAddingMapping(false);
@@ -129,7 +141,7 @@ const ServiceLineResourceTab: React.FC = () => {
         service_line: activeServiceLine,
         name: '',
         min_tcv: 0,
-        max_tcv: undefined
+        max_tcv: null
       });
     } catch (error) {
       console.error('Failed to create category:', error);
@@ -164,7 +176,7 @@ const ServiceLineResourceTab: React.FC = () => {
         service_line: activeServiceLine,
         name: '',
         min_tcv: 0,
-        max_tcv: undefined
+        max_tcv: null
       });
     } catch (error) {
       console.error('Failed to update category:', error);
@@ -337,61 +349,64 @@ const ServiceLineResourceTab: React.FC = () => {
     }
   };
 
-  // Internal Service Mapping handlers
+  // Offering Mapping handlers (consolidated)
   const handleAddMapping = async () => {
-    if (!newMapping.internal_service?.trim()) return;
+    if (!newMapping.internal_service?.trim() || !newMapping.simplified_offering?.trim()) return;
 
     try {
       await createMappingMutation.mutateAsync({
         service_line: activeServiceLine,
-        internal_service: newMapping.internal_service.trim()
+        internal_service: newMapping.internal_service.trim(),
+        simplified_offering: newMapping.simplified_offering.trim()
       });
-      setNewMapping({ service_line: activeServiceLine, internal_service: '' });
+      setNewMapping({ service_line: activeServiceLine, internal_service: '', simplified_offering: '' });
       setIsAddingMapping(false);
     } catch (error) {
-      console.error('Failed to create internal service mapping:', error);
+      console.error('Failed to create offering mapping:', error);
     }
   };
 
   const handleUpdateMapping = async () => {
-    if (!editMapping.internal_service?.trim() || !editingMappingId) return;
+    if (!editMapping.internal_service?.trim() || !editMapping.simplified_offering?.trim() || !editingMappingId) return;
 
     try {
       await updateMappingMutation.mutateAsync({
         id: editingMappingId,
         data: {
           service_line: activeServiceLine,
-          internal_service: editMapping.internal_service.trim()
+          internal_service: editMapping.internal_service.trim(),
+          simplified_offering: editMapping.simplified_offering.trim()
         }
       });
       setEditingMappingId(null);
-      setEditMapping({ service_line: activeServiceLine, internal_service: '' });
+      setEditMapping({ service_line: activeServiceLine, internal_service: '', simplified_offering: '' });
     } catch (error) {
-      console.error('Failed to update internal service mapping:', error);
+      console.error('Failed to update offering mapping:', error);
     }
   };
 
   const handleDeleteMapping = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this internal service mapping?')) return;
+    if (!confirm('Are you sure you want to delete this offering mapping?')) return;
 
     try {
       await deleteMappingMutation.mutateAsync(id);
     } catch (error) {
-      console.error('Failed to delete internal service mapping:', error);
+      console.error('Failed to delete offering mapping:', error);
     }
   };
 
-  const startEditMapping = (mapping: ServiceLineInternalServiceMapping) => {
+  const startEditMapping = (mapping: ServiceLineOfferingMapping) => {
     setEditingMappingId(mapping.id!);
     setEditMapping({
       service_line: mapping.service_line,
-      internal_service: mapping.internal_service
+      internal_service: mapping.internal_service,
+      simplified_offering: mapping.simplified_offering
     });
   };
 
   const cancelEditMapping = () => {
     setEditingMappingId(null);
-    setEditMapping({ service_line: activeServiceLine, internal_service: '' });
+    setEditMapping({ service_line: activeServiceLine, internal_service: '', simplified_offering: '' });
   };
 
   if (categoriesLoading || effortsLoading) {
@@ -528,8 +543,11 @@ const ServiceLineResourceTab: React.FC = () => {
                         </label>
                         <input
                           type="number"
-                          value={editCategory.max_tcv || ''}
-                          onChange={(e) => setEditCategory({ ...editCategory, max_tcv: parseFloat(e.target.value) || undefined })}
+                          value={editCategory.max_tcv === null || editCategory.max_tcv === undefined ? '' : editCategory.max_tcv}
+                          onChange={(e) => setEditCategory({ 
+                            ...editCategory, 
+                            max_tcv: e.target.value === '' ? null : parseFloat(e.target.value) || null 
+                          })}
                           min="0"
                           step="0.01"
                           className="input w-full"
@@ -628,8 +646,11 @@ const ServiceLineResourceTab: React.FC = () => {
                   </label>
                   <input
                     type="number"
-                    value={newCategory.max_tcv || ''}
-                    onChange={(e) => setNewCategory({ ...newCategory, max_tcv: parseFloat(e.target.value) || undefined })}
+                    value={newCategory.max_tcv === null || newCategory.max_tcv === undefined ? '' : newCategory.max_tcv}
+                    onChange={(e) => setNewCategory({ 
+                      ...newCategory, 
+                      max_tcv: e.target.value === '' ? null : parseFloat(e.target.value) || null 
+                    })}
                     placeholder="Leave empty for no limit"
                     min="0"
                     step="0.01"
@@ -852,11 +873,11 @@ const ServiceLineResourceTab: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Internal Service Mappings</h3>
-            <p className="text-gray-600 text-sm">Configure which internal service values are counted for offering threshold calculations</p>
+            <p className="text-gray-600 text-sm">Configure which internal service and simplified offering combinations are counted for offering threshold calculations</p>
           </div>
           <button
             onClick={() => setIsAddingMapping(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-dxc-purple text-white text-sm font-medium rounded-md hover:bg-dxc-purple-dark"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-md hover:bg-purple-700 transition-colors"
           >
             <Plus className="h-4 w-4" />
             Add Mapping
@@ -865,7 +886,13 @@ const ServiceLineResourceTab: React.FC = () => {
 
         {mappingsLoading ? (
           <div className="flex justify-center items-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin text-dxc-purple" />
+            <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
+            <span className="ml-2 text-gray-600">Loading mappings...</span>
+          </div>
+        ) : mappingsError ? (
+          <div className="flex justify-center items-center h-32">
+            <AlertCircle className="h-6 w-6 text-red-500" />
+            <span className="ml-2 text-red-600">Error loading mappings</span>
           </div>
         ) : (
           <div className="space-y-4">
@@ -873,37 +900,68 @@ const ServiceLineResourceTab: React.FC = () => {
             {isAddingMapping && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-3">Add Internal Service Mapping</h4>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Internal Service Value
+                      Internal Service
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={newMapping.internal_service || ''}
-                      onChange={(e) => setNewMapping(prev => ({ ...prev, internal_service: e.target.value }))}
-                      placeholder="Enter internal service name..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    />
-                  </div>
-                  <div className="flex items-end gap-2">
-                    <button
-                      onClick={handleAddMapping}
-                      disabled={!newMapping.internal_service?.trim()}
-                      className="px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                    >
-                      <Check className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsAddingMapping(false);
-                        setNewMapping({ service_line: activeServiceLine, internal_service: '' });
+                      onChange={(e) => {
+                        setNewMapping(prev => ({ 
+                          ...prev, 
+                          internal_service: e.target.value,
+                          simplified_offering: '' // Reset simplified offering when internal service changes
+                        }));
                       }}
-                      className="px-3 py-2 bg-gray-500 text-white text-sm font-medium rounded-md hover:bg-gray-600"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-dxc-purple"
                     >
-                      <X className="h-4 w-4" />
-                    </button>
+                      <option value="">Select Internal Service...</option>
+                      {offeringOptions?.options && Object.keys(offeringOptions.options).map(internalService => (
+                        <option key={internalService} value={internalService}>
+                          {internalService}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Simplified Offering
+                    </label>
+                    <select
+                      value={newMapping.simplified_offering || ''}
+                      onChange={(e) => setNewMapping(prev => ({ ...prev, simplified_offering: e.target.value }))}
+                      disabled={!newMapping.internal_service}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-dxc-purple disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    >
+                      <option value="">Select Simplified Offering...</option>
+                      {newMapping.internal_service && offeringOptions?.options?.[newMapping.internal_service]?.map(offering => (
+                        <option key={offering} value={offering}>
+                          {offering}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleAddMapping}
+                    disabled={!newMapping.internal_service?.trim() || !newMapping.simplified_offering?.trim()}
+                    className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Check className="h-4 w-4" />
+                    Add Mapping
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsAddingMapping(false);
+                      setNewMapping({ service_line: activeServiceLine, internal_service: '', simplified_offering: '' });
+                    }}
+                    className="px-4 py-2 bg-gray-500 text-white text-sm font-medium rounded-md hover:bg-gray-600 flex items-center gap-2"
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </button>
                 </div>
               </div>
             )}
@@ -911,61 +969,112 @@ const ServiceLineResourceTab: React.FC = () => {
             {/* Current Mappings */}
             <div>
               <h4 className="font-medium text-gray-900 mb-3">
-                Current {activeServiceLine} Mappings ({allInternalServiceMappings.length})
+                Current {activeServiceLine} Mappings ({allOfferingMappings.length})
               </h4>
               
-              {allInternalServiceMappings.length === 0 ? (
+              {allOfferingMappings.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <AlertCircle className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                   <p>No internal service mappings configured for {activeServiceLine}</p>
                   <p className="text-sm">Add mappings to enable offering threshold calculations</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {allInternalServiceMappings.map((mapping) => (
-                    <div key={mapping.id} className="border border-gray-200 rounded-lg p-3">
+                <div className="space-y-3">
+                  {allOfferingMappings.map((mapping) => (
+                    <div key={mapping.id} className="border border-gray-200 rounded-lg p-4">
                       {editingMappingId === mapping.id ? (
-                        <div className="space-y-2">
-                          <input
-                            type="text"
-                            value={editMapping.internal_service || ''}
-                            onChange={(e) => setEditMapping(prev => ({ ...prev, internal_service: e.target.value }))}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                          />
-                          <div className="flex justify-end gap-1">
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Internal Service
+                              </label>
+                              <select
+                                value={editMapping.internal_service || ''}
+                                onChange={(e) => {
+                                  setEditMapping(prev => ({ 
+                                    ...prev, 
+                                    internal_service: e.target.value,
+                                    simplified_offering: '' // Reset simplified offering when internal service changes
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-dxc-purple"
+                              >
+                                <option value="">Select Internal Service...</option>
+                                {offeringOptions?.options && Object.keys(offeringOptions.options).map(internalService => (
+                                  <option key={internalService} value={internalService}>
+                                    {internalService}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Simplified Offering
+                              </label>
+                              <select
+                                value={editMapping.simplified_offering || ''}
+                                onChange={(e) => setEditMapping(prev => ({ ...prev, simplified_offering: e.target.value }))}
+                                disabled={!editMapping.internal_service}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-dxc-purple disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              >
+                                <option value="">Select Simplified Offering...</option>
+                                {editMapping.internal_service && offeringOptions?.options?.[editMapping.internal_service]?.map(offering => (
+                                  <option key={offering} value={offering}>
+                                    {offering}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
                             <button
                               onClick={handleUpdateMapping}
-                              disabled={!editMapping.internal_service?.trim()}
-                              className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:bg-gray-300"
+                              disabled={!editMapping.internal_service?.trim() || !editMapping.simplified_offering?.trim()}
+                              className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                             >
-                              <Check className="h-3 w-3" />
+                              <Check className="h-4 w-4" />
+                              Save
                             </button>
                             <button
                               onClick={cancelEditMapping}
-                              className="px-2 py-1 bg-gray-500 text-white text-xs rounded hover:bg-gray-600"
+                              className="px-3 py-2 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 flex items-center gap-2"
                             >
-                              <X className="h-3 w-3" />
+                              <X className="h-4 w-4" />
+                              Cancel
                             </button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{mapping.internal_service}</p>
-                            <p className="text-xs text-gray-500">{mapping.service_line}</p>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-4">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">Internal Service:</p>
+                                <p className="text-sm text-dxc-purple font-medium">{mapping.internal_service}</p>
+                              </div>
+                              <div className="text-gray-400">→</div>
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">Simplified Offering:</p>
+                                <p className="text-sm text-dxc-purple font-medium">{mapping.simplified_offering}</p>
+                              </div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">{mapping.service_line}</p>
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2">
                             <button
                               onClick={() => startEditMapping(mapping)}
-                              className="p-1 text-gray-400 hover:text-dxc-purple"
+                              className="p-2 text-gray-400 hover:text-dxc-purple transition-colors"
+                              title="Edit mapping"
                             >
-                              <Edit2 className="h-3 w-3" />
+                              <Edit2 className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteMapping(mapping.id!)}
-                              className="p-1 text-gray-400 hover:text-red-600"
+                              className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                              title="Delete mapping"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
@@ -975,10 +1084,10 @@ const ServiceLineResourceTab: React.FC = () => {
                 </div>
               )}
 
-              {allInternalServiceMappings.length > 0 && (
+              {allOfferingMappings.length > 0 && (
                 <div className="mt-4 p-3 bg-blue-50 rounded-lg">
                   <p className="text-sm text-blue-800">
-                    <strong>Note:</strong> Only opportunity line items with these internal service values will be counted 
+                    <strong>Note:</strong> Only opportunity line items with these internal service and simplified offering combinations will be counted 
                     for offering threshold calculations in {activeServiceLine}.
                   </p>
                 </div>

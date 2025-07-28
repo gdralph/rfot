@@ -7,7 +7,8 @@ import type {
   ServiceLineCategory,
   ServiceLineStageEffort,
   ServiceLineOfferingThreshold,
-  ServiceLineInternalServiceMapping,
+  ServiceLineOfferingMapping,
+  ServiceLineOfferingOptions,
   ForecastSummary,
   ServiceLineForecast,
   ActiveServiceLines,
@@ -323,43 +324,47 @@ class ApiClient {
     });
   }
 
-  // Service Line Internal Service Mappings
-  async getServiceLineInternalServiceMappings(serviceLine?: string): Promise<ServiceLineInternalServiceMapping[]> {
+  // Service Line Offering Mappings (Consolidated)
+  async getServiceLineOfferingMappings(serviceLine?: string): Promise<ServiceLineOfferingMapping[]> {
     const params = new URLSearchParams();
     if (serviceLine) params.append('service_line', serviceLine);
     
     const url = params.toString() 
-      ? `/api/config/service-line-internal-service-mappings?${params}`
-      : '/api/config/service-line-internal-service-mappings';
+      ? `/api/config/service-line-offering-mappings?${params}`
+      : '/api/config/service-line-offering-mappings';
     
     return this.request(url);
   }
 
-  async createServiceLineInternalServiceMapping(data: Omit<ServiceLineInternalServiceMapping, 'id'>): Promise<ServiceLineInternalServiceMapping> {
-    return this.request('/api/config/service-line-internal-service-mappings', {
+  async createServiceLineOfferingMapping(data: Omit<ServiceLineOfferingMapping, 'id'>): Promise<ServiceLineOfferingMapping> {
+    return this.request('/api/config/service-line-offering-mappings', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateServiceLineInternalServiceMapping(id: number, data: Omit<ServiceLineInternalServiceMapping, 'id'>): Promise<ServiceLineInternalServiceMapping> {
-    return this.request(`/api/config/service-line-internal-service-mappings/${id}`, {
+  async updateServiceLineOfferingMapping(id: number, data: Omit<ServiceLineOfferingMapping, 'id'>): Promise<ServiceLineOfferingMapping> {
+    return this.request(`/api/config/service-line-offering-mappings/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteServiceLineInternalServiceMapping(id: number): Promise<void> {
-    return this.request(`/api/config/service-line-internal-service-mappings/${id}`, {
+  async deleteServiceLineOfferingMapping(id: number): Promise<void> {
+    return this.request(`/api/config/service-line-offering-mappings/${id}`, {
       method: 'DELETE',
     });
   }
 
-  async bulkCreateServiceLineInternalServiceMappings(data: Array<Omit<ServiceLineInternalServiceMapping, 'id'>>): Promise<ServiceLineInternalServiceMapping[]> {
-    return this.request('/api/config/service-line-internal-service-mappings/bulk', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  async getServiceLineOfferingOptions(serviceLine?: string): Promise<ServiceLineOfferingOptions> {
+    const params = new URLSearchParams();
+    if (serviceLine) params.append('service_line', serviceLine);
+    
+    const url = params.toString() 
+      ? `/api/config/service-line-offering-options?${params}`
+      : '/api/config/service-line-offering-options';
+    
+    return this.request(url);
   }
 
   // Import API
@@ -594,7 +599,12 @@ class ApiClient {
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== '' && value !== null && value !== undefined) {
-          params.append(key, value.toString());
+          // Handle array values (multi-select filters) by joining with commas
+          if (Array.isArray(value) && value.length > 0) {
+            params.append(key, value.join(','));
+          } else if (!Array.isArray(value)) {
+            params.append(key, value.toString());
+          }
         }
       });
     }

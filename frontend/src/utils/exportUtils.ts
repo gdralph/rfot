@@ -377,7 +377,7 @@ export const convertReportDataToExcel = (reportData: ReportData, reportType: str
               'Stage Start Date': stage.stage_start_date,
               'Stage End Date': stage.stage_end_date,
               'Duration (Weeks)': stage.duration_weeks,
-              'FTE Required': stage.fte_required,
+              'Headcount (FTE)': stage.fte_required,
               'Total Effort (Weeks)': stage.total_effort_weeks,
               'Resource Status': stage.resource_status,
               'Current/Future Activity': stage.is_current_future ? 'Yes' : 'No',

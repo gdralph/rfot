@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useOpportunity, useOpportunityLineItems, useUpdateOpportunity } from '../hooks/useOpportunities';
-import { useCategories, useServiceLineInternalServiceMappings } from '../hooks/useConfig';
+import { useCategories, useServiceLineOfferingMappings } from '../hooks/useConfig';
 import { useResourceTimeline, useCalculateResourceTimeline, useUpdateResourceTimelineData } from '../hooks/useResourceTimeline';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { OpportunityFormData, Opportunity, OpportunityCategory, OpportunityEffortPrediction } from '../types/index';
@@ -218,7 +218,7 @@ const OpportunityDetailV2: React.FC = () => {
   const { data: opportunity, isLoading: opportunityLoading, error: opportunityError } = useOpportunity(opportunityId);
   const { data: lineItems } = useOpportunityLineItems(opportunityId);
   const { data: categories = [], isLoading: categoriesLoading } = useCategories();
-  const { data: internalServiceMappings = [] } = useServiceLineInternalServiceMappings();
+  const { data: serviceLineOfferingMappings = [] } = useServiceLineOfferingMappings();
   const updateMutation = useUpdateOpportunity();
 
   // Resource Timeline hooks
@@ -1418,8 +1418,8 @@ const OpportunityDetailV2: React.FC = () => {
               const percentage = opportunity.tcv_millions ? (value / opportunity.tcv_millions * 100) : 0;
               
               // Count offerings for this service line if it has mappings
-              const offeringCount = internalServiceMappings && lineItems ? 
-                countServiceLineOfferings(lineItems, serviceLine, internalServiceMappings) : 0;
+              const offeringCount = serviceLineOfferingMappings && lineItems ? 
+                countServiceLineOfferings(lineItems, serviceLine, serviceLineOfferingMappings) : 0;
               
               // Show count only if there are mappings and offerings
               const showCount = offeringCount > 0;
@@ -1952,7 +1952,7 @@ const OpportunityDetailV2: React.FC = () => {
                       <tbody className="divide-y divide-gray-200">
                         {lineItems.map((item, index) => {
                           const percentage = totalTCV > 0 ? ((item.offering_tcv || 0) / totalTCV * 100) : 0;
-                          const serviceLineForItem = getLineItemServiceLine(item, internalServiceMappings);
+                          const serviceLineForItem = getLineItemServiceLine(item, serviceLineOfferingMappings);
                           return (
                             <tr key={index} className="hover:bg-gray-50">
                               <td className="px-3 py-2 text-xs text-gray-900">

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import type { OpportunityCategory, ServiceLineCategory, ServiceLineStageEffort, ServiceLineInternalServiceMapping } from '../types/index';
+import type { OpportunityCategory, ServiceLineCategory, ServiceLineStageEffort, ServiceLineOfferingMapping } from '../types/index';
 
 // API functions
 const configApi = {
@@ -42,16 +42,16 @@ const configApi = {
   bulkCreateServiceLineOfferingThresholds: (data: any[]) =>
     api.bulkCreateServiceLineOfferingThresholds(data),
     
-  // Service Line Internal Service Mappings
-  getServiceLineInternalServiceMappings: (serviceLine?: string) => 
-    api.getServiceLineInternalServiceMappings(serviceLine),
-  createServiceLineInternalServiceMapping: (data: Omit<ServiceLineInternalServiceMapping, 'id'>) =>
-    api.createServiceLineInternalServiceMapping(data),
-  updateServiceLineInternalServiceMapping: (id: number, data: Omit<ServiceLineInternalServiceMapping, 'id'>) =>
-    api.updateServiceLineInternalServiceMapping(id, data),
-  deleteServiceLineInternalServiceMapping: (id: number) => api.deleteServiceLineInternalServiceMapping(id),
-  bulkCreateServiceLineInternalServiceMappings: (data: Array<Omit<ServiceLineInternalServiceMapping, 'id'>>) =>
-    api.bulkCreateServiceLineInternalServiceMappings(data),
+  // Service Line Offering Mappings (Consolidated)
+  getServiceLineOfferingMappings: (serviceLine?: string) => 
+    api.getServiceLineOfferingMappings(serviceLine),
+  createServiceLineOfferingMapping: (data: Omit<ServiceLineOfferingMapping, 'id'>) =>
+    api.createServiceLineOfferingMapping(data),
+  updateServiceLineOfferingMapping: (id: number, data: Omit<ServiceLineOfferingMapping, 'id'>) =>
+    api.updateServiceLineOfferingMapping(id, data),
+  deleteServiceLineOfferingMapping: (id: number) => api.deleteServiceLineOfferingMapping(id),
+  getServiceLineOfferingOptions: (serviceLine?: string) => 
+    api.getServiceLineOfferingOptions(serviceLine),
 };
 
 // Hooks for Categories
@@ -246,55 +246,51 @@ export const useBulkCreateServiceLineOfferingThresholds = () => {
   });
 };
 
-// Service Line Internal Service Mappings Hooks
-export const useServiceLineInternalServiceMappings = (serviceLine?: string) => {
+// Hooks for Service Line Offering Mappings (Consolidated)
+export const useServiceLineOfferingMappings = (serviceLine?: string) => {
   return useQuery({
-    queryKey: ['config', 'service-line-internal-service-mappings', serviceLine],
-    queryFn: () => configApi.getServiceLineInternalServiceMappings(serviceLine),
+    queryKey: ['config', 'service-line-offering-mappings', serviceLine],
+    queryFn: () => configApi.getServiceLineOfferingMappings(serviceLine),
   });
 };
 
-export const useCreateServiceLineInternalServiceMapping = () => {
+export const useCreateServiceLineOfferingMapping = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: configApi.createServiceLineInternalServiceMapping,
+    mutationFn: configApi.createServiceLineOfferingMapping,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-internal-service-mappings'] });
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-offering-mappings'] });
     },
   });
 };
 
-export const useUpdateServiceLineInternalServiceMapping = () => {
+export const useUpdateServiceLineOfferingMapping = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Omit<ServiceLineInternalServiceMapping, 'id'> }) => 
-      configApi.updateServiceLineInternalServiceMapping(id, data),
+    mutationFn: ({ id, data }: { id: number; data: Omit<ServiceLineOfferingMapping, 'id'> }) =>
+      configApi.updateServiceLineOfferingMapping(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-internal-service-mappings'] });
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-offering-mappings'] });
     },
   });
 };
 
-export const useDeleteServiceLineInternalServiceMapping = () => {
+export const useDeleteServiceLineOfferingMapping = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: configApi.deleteServiceLineInternalServiceMapping,
+    mutationFn: configApi.deleteServiceLineOfferingMapping,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-internal-service-mappings'] });
+      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-offering-mappings'] });
     },
   });
 };
 
-export const useBulkCreateServiceLineInternalServiceMappings = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: configApi.bulkCreateServiceLineInternalServiceMappings,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['config', 'service-line-internal-service-mappings'] });
-    },
+export const useServiceLineOfferingOptions = (serviceLine?: string) => {
+  return useQuery({
+    queryKey: ['config', 'service-line-offering-options', serviceLine],
+    queryFn: () => configApi.getServiceLineOfferingOptions(serviceLine),
   });
 };

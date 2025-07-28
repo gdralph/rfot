@@ -1,25 +1,27 @@
-import type { OpportunityLineItem, ServiceLineInternalServiceMapping, ServiceLine } from '../types/index.js';
+import type { OpportunityLineItem, ServiceLineOfferingMapping, ServiceLine } from '../types/index.js';
 
 /**
- * Count unique offerings for a service line based on internal service mappings
+ * Count unique offerings for a service line based on consolidated offering mappings
  */
 export function countServiceLineOfferings(
   lineItems: OpportunityLineItem[],
   serviceLine: ServiceLine,
-  mappings: ServiceLineInternalServiceMapping[]
+  mappings: ServiceLineOfferingMapping[]
 ): number {
-  // Get all internal services mapped to this service line
-  const mappedInternalServices = mappings
-    .filter(mapping => mapping.service_line === serviceLine)
-    .map(mapping => mapping.internal_service);
+  // Get all internal service and simplified offering combinations for this service line
+  const serviceMappings = mappings.filter(mapping => mapping.service_line === serviceLine);
 
-  if (mappedInternalServices.length === 0) {
+  if (serviceMappings.length === 0) {
     return 0;
   }
 
-  // Find line items that match the mapped internal services
+  // Find line items that match the mapped combinations
   const matchingLineItems = lineItems.filter(item => 
-    item.internal_service && mappedInternalServices.includes(item.internal_service)
+    item.internal_service && item.simplified_offering &&
+    serviceMappings.some(mapping => 
+      mapping.internal_service === item.internal_service &&
+      mapping.simplified_offering === item.simplified_offering
+    )
   );
 
   // Count unique simplified offerings
@@ -33,25 +35,28 @@ export function countServiceLineOfferings(
 }
 
 /**
- * Determine which service line a line item belongs to based on internal service mappings
+ * Determine which service line a line item belongs to based on consolidated offering mappings
  */
 export function getLineItemServiceLine(
   lineItem: OpportunityLineItem,
-  mappings: ServiceLineInternalServiceMapping[]
+  mappings: ServiceLineOfferingMapping[]
 ): ServiceLine | null {
-  if (!lineItem.internal_service) {
+  if (!lineItem.internal_service || !lineItem.simplified_offering) {
     return null;
   }
 
-  const mapping = mappings.find(m => m.internal_service === lineItem.internal_service);
+  const mapping = mappings.find(m => 
+    m.internal_service === lineItem.internal_service &&
+    m.simplified_offering === lineItem.simplified_offering
+  );
   return mapping ? mapping.service_line as ServiceLine : null;
 }
 
 /**
- * Get all service lines that have internal service mappings configured
+ * Get all service lines that have offering mappings configured
  */
 export function getServiceLinesWithMappings(
-  mappings: ServiceLineInternalServiceMapping[]
+  mappings: ServiceLineOfferingMapping[]
 ): ServiceLine[] {
   const serviceLinesWithMappings = new Set(
     mappings.map(mapping => mapping.service_line as ServiceLine)

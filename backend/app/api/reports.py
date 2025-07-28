@@ -612,9 +612,10 @@ async def get_service_line_activity_timeline_report(
     session: Session = Depends(get_session),
     start_date: Optional[datetime] = Query(None, description="Start date for service line activity"),
     end_date: Optional[datetime] = Query(None, description="End date for service line activity"),
-    service_line: Optional[str] = Query(None, description="Filter by service line (MW, ITOC)"),
-    category: Optional[str] = Query(None, description="Filter by category (Sub $5M, Cat C, Cat B, Cat A)"),
-    sales_stage: Optional[str] = Query(None, description="Filter by current sales stage (01, 02, 03, 04A, 04B, 05A, 05B, 06)")
+    service_line: Optional[str] = Query(None, description="Filter by service lines (comma-separated: MW,ITOC,CES,INS,BPS,SEC)"),
+    category: Optional[str] = Query(None, description="Filter by categories (comma-separated: Sub $5M,Cat C,Cat B,Cat A)"),
+    sales_stage: Optional[str] = Query(None, description="Filter by current sales stages (comma-separated: 01,02,03,04A,04B,05A,05B,06)"),
+    sort_by: Optional[str] = Query("total_effort_weeks", description="Sort by: total_effort_weeks, opportunity_name, tcv_millions, decision_date, account_name")
 ) -> Dict[str, Any]:
     """
     Service Line Activity Timeline Report - Shows opportunity details with service line effort timelines.
@@ -656,14 +657,21 @@ async def get_service_line_activity_timeline_report(
             OpportunityResourceTimeline.stage_end_date >= start_date
         )
 
+        # Support multi-select filters (comma-separated values)
         if service_line:
-            query = query.where(OpportunityResourceTimeline.service_line == service_line)
+            service_lines = [sl.strip() for sl in service_line.split(',') if sl.strip()]
+            if service_lines:
+                query = query.where(OpportunityResourceTimeline.service_line.in_(service_lines))
         
         if category:
-            query = query.where(OpportunityResourceTimeline.category == category)
+            categories = [cat.strip() for cat in category.split(',') if cat.strip()]
+            if categories:
+                query = query.where(OpportunityResourceTimeline.category.in_(categories))
         
         if sales_stage:
-            query = query.where(Opportunity.sales_stage == sales_stage)
+            sales_stages = [stage.strip() for stage in sales_stage.split(',') if stage.strip()]
+            if sales_stages:
+                query = query.where(Opportunity.sales_stage.in_(sales_stages))
 
         query = query.order_by(
             OpportunityResourceTimeline.opportunity_id,
@@ -736,14 +744,17 @@ async def get_service_line_activity_timeline_report(
             opportunity_timelines[opp_id]["total_effort_weeks"] += stage_info["total_effort_weeks"]
             opportunity_timelines[opp_id]["total_fte_required"] += stage_info["fte_required"]
 
-            # Update activity period
+            # Update activity period (using datetime objects for comparison)
             stage_start = timeline.stage_start_date
             stage_end = timeline.stage_end_date
             
-            if not opportunity_timelines[opp_id]["activity_period"]["start"] or stage_start < datetime.fromisoformat(opportunity_timelines[opp_id]["activity_period"]["start"]):
+            current_start = opportunity_timelines[opp_id]["activity_period"]["start"]
+            current_end = opportunity_timelines[opp_id]["activity_period"]["end"]
+            
+            if not current_start or stage_start < datetime.fromisoformat(current_start):
                 opportunity_timelines[opp_id]["activity_period"]["start"] = stage_start.isoformat()
             
-            if not opportunity_timelines[opp_id]["activity_period"]["end"] or stage_end > datetime.fromisoformat(opportunity_timelines[opp_id]["activity_period"]["end"]):
+            if not current_end or stage_end > datetime.fromisoformat(current_end):
                 opportunity_timelines[opp_id]["activity_period"]["end"] = stage_end.isoformat()
 
             # Update summary stats
@@ -751,16 +762,30 @@ async def get_service_line_activity_timeline_report(
             summary_stats["total_fte_required"] += stage_info["fte_required"]
             summary_stats["service_lines_involved"].add(sl)
 
-            # Update date range
-            if not summary_stats["date_range_covered"]["earliest"] or stage_start < datetime.fromisoformat(summary_stats["date_range_covered"]["earliest"]):
+            # Update date range (using datetime objects for comparison)
+            current_earliest = summary_stats["date_range_covered"]["earliest"]
+            current_latest = summary_stats["date_range_covered"]["latest"]
+            
+            if not current_earliest or stage_start < datetime.fromisoformat(current_earliest):
                 summary_stats["date_range_covered"]["earliest"] = stage_start.isoformat()
             
-            if not summary_stats["date_range_covered"]["latest"] or stage_end > datetime.fromisoformat(summary_stats["date_range_covered"]["latest"]):
+            if not current_latest or stage_end > datetime.fromisoformat(current_latest):
                 summary_stats["date_range_covered"]["latest"] = stage_end.isoformat()
 
-        # Convert to list and sort by total effort
+        # Convert to list and sort based on sort_by parameter
         timeline_data = list(opportunity_timelines.values())
-        timeline_data.sort(key=lambda x: x["total_effort_weeks"], reverse=True)
+        
+        # Define sorting functions
+        if sort_by == "opportunity_name":
+            timeline_data.sort(key=lambda x: x["opportunity_name"].lower())
+        elif sort_by == "tcv_millions":
+            timeline_data.sort(key=lambda x: x["tcv_millions"], reverse=True)
+        elif sort_by == "decision_date":
+            timeline_data.sort(key=lambda x: x["decision_date"] or "9999-12-31")
+        elif sort_by == "account_name":
+            timeline_data.sort(key=lambda x: x["account_name"].lower() if x["account_name"] else "zzz")
+        else:  # default to total_effort_weeks
+            timeline_data.sort(key=lambda x: x["total_effort_weeks"], reverse=True)
         
         summary_stats["total_opportunities"] = len(timeline_data)
         summary_stats["service_lines_involved"] = list(summary_stats["service_lines_involved"])
@@ -775,12 +800,22 @@ async def get_service_line_activity_timeline_report(
                 "stage_count": 0
             }
 
+        # Count unique opportunities per service line to avoid double counting
+        service_line_opportunities = {}
         for opportunity in timeline_data:
             for sl, sl_data in opportunity["service_lines"].items():
-                service_line_breakdown[sl]["opportunity_count"] += 1
+                if sl not in service_line_opportunities:
+                    service_line_opportunities[sl] = set()
+                service_line_opportunities[sl].add(opportunity["opportunity_id"])
+                
                 service_line_breakdown[sl]["total_effort_weeks"] += sl_data["total_effort"]
                 service_line_breakdown[sl]["total_fte"] += sl_data["total_fte"]
                 service_line_breakdown[sl]["stage_count"] += len(sl_data["stages"])
+        
+        # Set unique opportunity counts
+        for sl in service_line_breakdown:
+            if sl in service_line_opportunities:
+                service_line_breakdown[sl]["opportunity_count"] = len(service_line_opportunities[sl])
 
         return {
             "report_name": "Service Line Activity Timeline Report",
@@ -791,7 +826,8 @@ async def get_service_line_activity_timeline_report(
             "filters": {
                 "service_line": service_line,
                 "category": category,
-                "sales_stage": sales_stage
+                "sales_stage": sales_stage,
+                "sort_by": sort_by
             },
             "timeline_data": timeline_data,
             "service_line_breakdown": service_line_breakdown,
@@ -840,12 +876,13 @@ async def get_configuration_summary_report(
             )
         ).all()
         
-        # Get internal service mappings (NEW)
-        from app.models.config import ServiceLineInternalServiceMapping
-        internal_service_mappings = session.exec(
-            select(ServiceLineInternalServiceMapping).order_by(
-                ServiceLineInternalServiceMapping.service_line,
-                ServiceLineInternalServiceMapping.internal_service
+        # Get offering mappings (consolidated)
+        from app.models.config import ServiceLineOfferingMapping
+        offering_mappings = session.exec(
+            select(ServiceLineOfferingMapping).order_by(
+                ServiceLineOfferingMapping.service_line,
+                ServiceLineOfferingMapping.internal_service,
+                ServiceLineOfferingMapping.simplified_offering
             )
         ).all()
         
@@ -1013,12 +1050,15 @@ async def get_configuration_summary_report(
                 "increment_multiplier": threshold.increment_multiplier
             }
         
-        # Format internal service mappings (NEW)
-        internal_service_mappings_data = {}
-        for mapping in internal_service_mappings:
-            if mapping.service_line not in internal_service_mappings_data:
-                internal_service_mappings_data[mapping.service_line] = []
-            internal_service_mappings_data[mapping.service_line].append(mapping.internal_service)
+        # Format offering mappings (consolidated)
+        offering_mappings_data = {}
+        for mapping in offering_mappings:
+            if mapping.service_line not in offering_mappings_data:
+                offering_mappings_data[mapping.service_line] = []
+            offering_mappings_data[mapping.service_line].append({
+                "internal_service": mapping.internal_service,
+                "simplified_offering": mapping.simplified_offering
+            })
         
         # Create calculation examples using sample opportunities
         calculation_examples = []
@@ -1135,9 +1175,9 @@ async def get_configuration_summary_report(
             "total_fte_configured": sum(effort.fte_required for effort in stage_efforts),
             "calculation_examples_generated": len(calculation_examples),
             "offering_thresholds_configured": len(offering_thresholds),
-            "internal_service_mappings_count": len(internal_service_mappings),
+            "offering_mappings_count": len(offering_mappings),
             "service_lines_with_thresholds": len(set(t.service_line for t in offering_thresholds)),
-            "service_lines_with_mappings": len(set(m.service_line for m in internal_service_mappings))
+            "service_lines_with_mappings": len(set(m.service_line for m in offering_mappings))
         }
         
         return {
@@ -1146,7 +1186,7 @@ async def get_configuration_summary_report(
             "service_line_categories": service_line_categories_data,
             "stage_efforts": stage_efforts_data,
             "offering_thresholds": offering_thresholds_data,
-            "internal_service_mappings": internal_service_mappings_data,
+            "offering_mappings": offering_mappings_data,
             "calculation_examples": calculation_examples,
             "configuration_statistics": config_stats,
             "generated_at": datetime.utcnow().isoformat(),
@@ -1221,7 +1261,7 @@ async def get_available_reports() -> Dict[str, Any]:
                 "name": "Service Line Activity Timeline Report",
                 "description": "Shows opportunity details with service line effort timelines for current and future activities",
                 "export_formats": ["excel", "pdf", "html"],
-                "filters": ["start_date", "end_date", "service_line", "category", "sales_stage"]
+                "filters": ["start_date", "end_date", "service_line", "category", "sales_stage", "sort_by"]
             }
         ]
     }
