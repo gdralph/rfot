@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, or_
 from typing import List, Optional, Union
 import structlog
+import re
 
 from app.models.database import engine
 from app.models.opportunity import (
@@ -9,9 +10,58 @@ from app.models.opportunity import (
     OpportunityLineItem, OpportunityLineItemRead
 )
 from app.models.config import OpportunityCategory
+from app.exceptions import (
+    ResourceNotFoundError, ValidationError, DatabaseError, 
+    handle_database_error, ErrorMessages
+)
+from app.logging_utils import log_safely, log_user_action, sanitize_dict
+from app.config import settings
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+
+def sanitize_search_input(search: str) -> str:
+    """
+    Sanitize search input to prevent SQL injection and malicious patterns.
+    
+    Args:
+        search: Raw search string from user input
+        
+    Returns:
+        Sanitized search string safe for database queries
+    """
+    if not search:
+        return ""
+    
+    # Remove any null bytes
+    search = search.replace('\x00', '')
+    
+    # Remove SQL injection patterns (case insensitive)
+    dangerous_patterns = [
+        r';',  # Statement terminator
+        r'--',  # SQL comments
+        r'/\*',  # Block comment start
+        r'\*/',  # Block comment end
+        r'\\',  # Backslash escape
+        r"'",   # Single quotes
+        r'"',   # Double quotes
+        r'`',   # Backticks
+        r'\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b',  # SQL keywords
+        r'\b(script|javascript|vbscript)\b',  # Script injection
+        r'[<>]',  # HTML/XML tags
+    ]
+    
+    for pattern in dangerous_patterns:
+        search = re.sub(pattern, '', search, flags=re.IGNORECASE)
+    
+    # Limit length to prevent buffer overflow attacks
+    search = search[:100]
+    
+    # Trim whitespace
+    search = search.strip()
+    
+    return search
 
 
 def get_session():
@@ -48,10 +98,20 @@ async def get_opportunities(
     categories = parse_multi_param(category)
     service_lines = parse_multi_param(service_line)
     
-    logger.info("Fetching opportunities", skip=skip, limit=limit, filters={
-        "stages": stages, "statuses": statuses, "categories": categories, 
-        "search": search, "service_lines": service_lines
-    })
+    # Use safe logging to avoid exposing sensitive search terms
+    log_safely(
+        logger, "info", "Fetching opportunities",
+        mask_financial=settings.mask_financial_data,
+        skip=skip, 
+        limit=limit, 
+        filters={
+            "stages": stages, 
+            "statuses": statuses, 
+            "categories": categories, 
+            "search": search,  # Will be sanitized if contains sensitive patterns
+            "service_lines": service_lines
+        }
+    )
     
     statement = select(Opportunity)
     
@@ -118,32 +178,45 @@ async def get_opportunities(
             statement = statement.where(or_(*category_conditions))
     
     if search:
-        statement = statement.where(
-            (Opportunity.opportunity_name.contains(search)) | 
-            (Opportunity.opportunity_id.contains(search)) |
-            (Opportunity.account_name.contains(search)) |
-            (Opportunity.lead_offering_l1.contains(search)) |
-            (Opportunity.sales_org_l1.contains(search))
-        )
+        # Sanitize search input to prevent SQL injection
+        sanitized_search = sanitize_search_input(search)
+        if sanitized_search:  # Only search if sanitized input is not empty
+            statement = statement.where(
+                (Opportunity.opportunity_name.contains(sanitized_search)) | 
+                (Opportunity.opportunity_id.contains(sanitized_search)) |
+                (Opportunity.account_name.contains(sanitized_search)) |
+                (Opportunity.lead_offering_l1.contains(sanitized_search)) |
+                (Opportunity.sales_org_l1.contains(sanitized_search))
+            )
     
     statement = statement.offset(skip)
     if limit is not None:
         statement = statement.limit(limit)
     opportunities = session.exec(statement).all()
     
-    logger.info("Retrieved opportunities", count=len(opportunities))
+    log_safely(
+        logger, "info", "Retrieved opportunities", 
+        mask_financial=settings.mask_financial_data,
+        count=len(opportunities),
+        total_tcv_millions=sum(opp.tcv_millions or 0 for opp in opportunities)
+    )
     return opportunities
 
 
 @router.get("/{opportunity_id}", response_model=OpportunityRead)
 async def get_opportunity(opportunity_id: int, session: Session = Depends(get_session)):
     """Get a specific opportunity by ID."""
-    opportunity = session.get(Opportunity, opportunity_id)
-    if not opportunity:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
-    
-    logger.info("Retrieved opportunity", opportunity_id=opportunity_id)
-    return opportunity
+    try:
+        opportunity = session.get(Opportunity, opportunity_id)
+        if not opportunity:
+            raise ResourceNotFoundError("Opportunity", str(opportunity_id))
+        
+        logger.info("Retrieved opportunity", opportunity_id=opportunity_id)
+        return opportunity
+    except Exception as e:
+        if isinstance(e, ResourceNotFoundError):
+            raise
+        raise handle_database_error(e, "read", "opportunity")
 
 
 @router.put("/{opportunity_id}", response_model=OpportunityRead)
@@ -153,20 +226,30 @@ async def update_opportunity(
     session: Session = Depends(get_session)
 ):
     """Update an opportunity."""
-    opportunity = session.get(Opportunity, opportunity_id)
-    if not opportunity:
-        raise HTTPException(status_code=404, detail="Opportunity not found")
-    
-    update_data = opportunity_update.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(opportunity, field, value)
-    
-    session.add(opportunity)
-    session.commit()
-    session.refresh(opportunity)
-    
-    logger.info("Updated opportunity", opportunity_id=opportunity_id, updates=update_data)
-    return opportunity
+    try:
+        opportunity = session.get(Opportunity, opportunity_id)
+        if not opportunity:
+            raise ResourceNotFoundError("Opportunity", str(opportunity_id))
+        
+        # Validate update data
+        update_data = opportunity_update.dict(exclude_unset=True)
+        if not update_data:
+            raise ValidationError("No fields provided for update")
+        
+        for field, value in update_data.items():
+            setattr(opportunity, field, value)
+        
+        session.add(opportunity)
+        session.commit()
+        session.refresh(opportunity)
+        
+        logger.info("Updated opportunity", opportunity_id=opportunity_id, updates=update_data)
+        return opportunity
+    except (ResourceNotFoundError, ValidationError):
+        raise
+    except Exception as e:
+        session.rollback()
+        raise handle_database_error(e, "update", "opportunity")
 
 
 @router.get("/{opportunity_id}/line-items", response_model=List[OpportunityLineItemRead])

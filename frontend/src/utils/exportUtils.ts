@@ -8,6 +8,62 @@ export interface ExportOptions {
   orientation?: 'portrait' | 'landscape';
 }
 
+interface ExcelColumn {
+  width: number;
+}
+
+interface ReportData {
+  utilization_data?: UtilizationItem[];
+  pipeline_data?: PipelineItem[];
+  service_line_performance?: Record<string, ServiceLinePerformance>;
+  stage_analysis?: Record<string, StageAnalysis>;
+  gaps_identified?: unknown[];
+  timeline_data?: unknown[];
+  opportunity_categories?: unknown[];
+  service_line_categories?: unknown[];
+  stage_efforts?: unknown[];
+  calculation_examples?: unknown[];
+}
+
+interface UtilizationItem {
+  service_line: string;
+  stage_name: string;
+  category: string;
+  opportunity_count: number;
+  avg_duration_weeks: number;
+  total_fte?: number;
+  total_effort_weeks?: number;
+}
+
+interface PipelineItem {
+  opportunity_id: string;
+  opportunity_name: string;
+  account_name: string;
+  sales_stage: string;
+  tcv_millions: number;
+  decision_date: string;
+  opportunity_owner: string;
+  primary_service_line: string;
+  days_to_decision: number;
+}
+
+interface ServiceLinePerformance {
+  opportunity_count: number;
+  total_tcv: number;
+  won_count: number;
+  won_tcv: number;
+  avg_deal_size: number;
+  win_rate: number;
+}
+
+interface StageAnalysis {
+  opportunity_count: number;
+  avg_duration: number;
+  min_duration: number;
+  max_duration: number;
+  median_duration: number;
+}
+
 export const exportToPDF = async (elementId: string, options: ExportOptions = {}) => {
   try {
     const element = document.getElementById(elementId);
@@ -80,8 +136,8 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
         
         // Ensure all text is visible
         const elements = clonedDoc.querySelectorAll('*');
-        elements.forEach((el: any) => {
-          if (el.style) {
+        elements.forEach((el: Element) => {
+          if (el instanceof HTMLElement && el.style) {
             el.style.overflow = 'visible';
             el.style.textOverflow = 'initial';
             el.style.whiteSpace = 'normal';
@@ -195,7 +251,7 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
   }
 };
 
-export const exportToExcel = (data: any[], filename?: string, sheetName?: string) => {
+export const exportToExcel = (data: Record<string, unknown>[], filename?: string, sheetName?: string) => {
   try {
     // Create workbook
     const workbook = XLSX.utils.book_new();
@@ -205,7 +261,7 @@ export const exportToExcel = (data: any[], filename?: string, sheetName?: string
 
     // Auto-size columns
     const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-    const columnWidths: any[] = [];
+    const columnWidths: ExcelColumn[] = [];
     
     for (let col = range.s.c; col <= range.e.c; col++) {
       let maxWidth = 10;
@@ -237,10 +293,10 @@ export const exportToExcel = (data: any[], filename?: string, sheetName?: string
   }
 };
 
-export const convertReportDataToExcel = (reportData: any, reportType: string) => {
+export const convertReportDataToExcel = (reportData: ReportData, reportType: string) => {
   switch (reportType) {
     case 'resource-utilization':
-      return reportData.utilization_data?.map((item: any) => ({
+      return reportData.utilization_data?.map((item: UtilizationItem) => ({
         'Service Line': item.service_line,
         'Stage': item.stage_name,
         'Category': item.category,
@@ -251,7 +307,7 @@ export const convertReportDataToExcel = (reportData: any, reportType: string) =>
       })) || [];
 
     case 'opportunity-pipeline':
-      return reportData.pipeline_data?.map((item: any) => ({
+      return reportData.pipeline_data?.map((item: PipelineItem) => ({
         'Opportunity ID': item.opportunity_id,
         'Opportunity Name': item.opportunity_name,
         'Account Name': item.account_name,
@@ -264,8 +320,8 @@ export const convertReportDataToExcel = (reportData: any, reportType: string) =>
       })) || [];
 
     case 'service-line-performance':
-      const serviceLineData: any[] = [];
-      Object.entries(reportData.service_line_performance || {}).forEach(([serviceLine, perf]: [string, any]) => {
+      const serviceLineData: Record<string, unknown>[] = [];
+      Object.entries(reportData.service_line_performance || {}).forEach(([serviceLine, perf]: [string, ServiceLinePerformance]) => {
         serviceLineData.push({
           'Service Line': serviceLine,
           'Opportunity Count': perf.opportunity_count,
@@ -279,8 +335,8 @@ export const convertReportDataToExcel = (reportData: any, reportType: string) =>
       return serviceLineData;
 
     case 'stage-duration-analysis':
-      const stageData: any[] = [];
-      Object.entries(reportData.stage_analysis || {}).forEach(([stage, analysis]: [string, any]) => {
+      const stageData: Record<string, unknown>[] = [];
+      Object.entries(reportData.stage_analysis || {}).forEach(([stage, analysis]: [string, StageAnalysis]) => {
         stageData.push({
           'Stage': stage,
           'Opportunity Count': analysis.opportunity_count,

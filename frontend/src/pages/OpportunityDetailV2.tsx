@@ -247,7 +247,6 @@ const OpportunityDetailV2: React.FC = () => {
   
   // Debug logging for timePeriod changes
   useEffect(() => {
-    console.log('🎯 OpportunityDetailV2: timePeriod state changed to:', timePeriod);
   }, [timePeriod]);
 
   // Tab state for Resource Analysis section
@@ -509,7 +508,6 @@ const OpportunityDetailV2: React.FC = () => {
       // Get the date range that corresponds to what's actually shown in the chart
       // First, let's log what periods we're actually getting (only for time-based charts)
       if (timePeriod === 'week' || timePeriod === 'month' || timePeriod === 'quarter') {
-        console.log('📊 Chart periods for', timePeriod + ':', chartData.map(d => 'period' in d ? d.period : 'N/A'));
       }
       
       if (timePeriod === 'quarter') {
@@ -538,7 +536,6 @@ const OpportunityDetailV2: React.FC = () => {
             return new Date(year, (quarter - 1) * 3, 1);
           }
           
-          console.log('⚠️ Could not parse quarter period:', periodStr);
           return null;
         };
         
@@ -548,7 +545,6 @@ const OpportunityDetailV2: React.FC = () => {
         const lastQuarter = 'period' in lastItem ? parseQuarterPeriod(lastItem.period) : null;
         
         if (!firstQuarter || !lastQuarter) {
-          console.log('❌ Failed to parse quarter periods');
           return null;
         }
         
@@ -564,7 +560,6 @@ const OpportunityDetailV2: React.FC = () => {
             const date = new Date(dateStr);
             return new Date(date.getFullYear(), date.getMonth(), 1);
           } catch {
-            console.log('⚠️ Could not parse month period:', periodStr);
             return null;
           }
         };
@@ -575,7 +570,6 @@ const OpportunityDetailV2: React.FC = () => {
         const lastMonth = 'period' in lastItem ? parseMonthPeriod(lastItem.period) : null;
         
         if (!firstMonth || !lastMonth) {
-          console.log('❌ Failed to parse month periods');
           return null;
         }
         
@@ -613,10 +607,8 @@ const OpportunityDetailV2: React.FC = () => {
             }
             
             // Try other formats if needed
-            console.log('⚠️ Could not parse week period:', periodStr);
             return null;
           } catch (e) {
-            console.log('⚠️ Error parsing week period:', periodStr, e);
             return null;
           }
         };
@@ -626,16 +618,8 @@ const OpportunityDetailV2: React.FC = () => {
         const firstWeek = 'period' in firstItem ? parseWeekPeriod(firstItem.period, true) : null;
         const lastWeek = 'period' in lastItem ? parseWeekPeriod(lastItem.period, false) : null;
         
-        console.log('📅 Week parsing results:', {
-          firstPeriod: 'period' in firstItem ? firstItem.period : 'N/A',
-          lastPeriod: 'period' in lastItem ? lastItem.period : 'N/A',
-          firstWeek,
-          lastWeek,
-          currentYear: new Date().getFullYear()
-        });
         
         if (!firstWeek || !lastWeek) {
-          console.log('❌ Failed to parse week periods - using fallback');
           // Fallback: use current date +/- some weeks
           const now = new Date();
           chartStartDate = new Date(now);
@@ -648,11 +632,6 @@ const OpportunityDetailV2: React.FC = () => {
           chartEndDate.setDate(chartEndDate.getDate() + 6); // Add 6 days for end of week
         }
         
-        console.log('📅 Final week date range:', {
-          chartStartDate,
-          chartEndDate,
-          spanDays: (chartEndDate.getTime() - chartStartDate.getTime()) / (1000 * 60 * 60 * 24)
-        });
       }
       
       // Now calculate where the target date falls within this visible chart range
@@ -682,15 +661,6 @@ const OpportunityDetailV2: React.FC = () => {
     const currentDatePos = calculateDatePosition(currentDate);
     const closeDatePos = closeDate ? calculateDatePosition(closeDate) : null;
     
-    // Debug logging
-    console.log('📅 Date Markers Debug:', {
-      timePeriod,
-      currentDate: currentDate.toISOString(),
-      closeDate: closeDate?.toISOString(),
-      currentDatePos,
-      closeDatePos,
-      chartDataLength: chartData.length
-    });
     
     return {
       currentDatePos,
@@ -1488,7 +1458,6 @@ const OpportunityDetailV2: React.FC = () => {
                       <button
                         key={period}
                         onClick={() => {
-                          console.log('🔄 OpportunityDetailV2: Time period clicked:', period);
                           setTimePeriod(period);
                         }}
                         className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
@@ -1581,7 +1550,6 @@ const OpportunityDetailV2: React.FC = () => {
               }
 
               // Chart data is now calculated at component level via useMemo
-              console.log('📊 OpportunityDetailV2: Using chartData from useMemo, length:', chartData.length);
 
               return (
                 <div className="space-y-4">

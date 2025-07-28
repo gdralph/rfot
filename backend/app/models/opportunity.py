@@ -11,10 +11,10 @@ class OpportunityBase(SQLModel):
     """Base opportunity model with shared fields based on Opportunities.xlsx."""
     opportunity_id: str = Field(unique=True, index=True)
     sfdc_url: Optional[str] = None
-    account_name: Optional[str] = None
-    opportunity_name: str
+    account_name: Optional[str] = Field(default=None, index=True)
+    opportunity_name: str = Field(index=True)
     opportunity_type: Optional[str] = None
-    tcv_millions: Optional[float] = None
+    tcv_millions: Optional[float] = Field(default=None, index=True)
     margin_percentage: Optional[float] = None
     first_year_q1_rev: Optional[float] = None
     first_year_q2_rev: Optional[float] = None
@@ -27,20 +27,20 @@ class OpportunityBase(SQLModel):
     second_year_q4_rev: Optional[float] = None
     second_year_fy_rev: Optional[float] = None
     fy_rev_beyond_yr2: Optional[float] = None
-    sales_stage: Optional[str] = None
-    decision_date: Optional[datetime] = None
+    sales_stage: Optional[str] = Field(default=None, index=True)
+    decision_date: Optional[datetime] = Field(default=None, index=True)
     master_period: Optional[str] = None
     contract_length: Optional[float] = None
-    in_forecast: Optional[str] = None
-    opportunity_owner: Optional[str] = None
-    lead_offering_l1: Optional[str] = None
+    in_forecast: Optional[str] = Field(default=None, index=True)
+    opportunity_owner: Optional[str] = Field(default=None, index=True)
+    lead_offering_l1: Optional[str] = Field(default=None, index=True)
     ces_millions: Optional[float] = None
     ins_millions: Optional[float] = None
     bps_millions: Optional[float] = None
     sec_millions: Optional[float] = None
     itoc_millions: Optional[float] = None
     mw_millions: Optional[float] = None
-    sales_org_l1: Optional[str] = None
+    sales_org_l1: Optional[str] = Field(default=None, index=True)
     
     # User-managed fields (not overwritten by Excel imports)
     security_clearance: Optional[str] = Field(default=None, description="Security clearance requirement: BPSS, SC, or DV")
@@ -111,7 +111,7 @@ class OpportunityRead(OpportunityBase):
 
 class OpportunityLineItemBase(SQLModel):
     """Base opportunity line item model based on Opportunities Items.xlsx columns G-AC."""
-    opportunity_id: str = Field(foreign_key="opportunity.opportunity_id")
+    opportunity_id: str = Field(foreign_key="opportunity.opportunity_id", index=True)
     offering_tcv: Optional[float] = None
     offering_abr: Optional[float] = None
     offering_iyr: Optional[float] = None
@@ -121,7 +121,7 @@ class OpportunityLineItemBase(SQLModel):
     decision_date: Optional[datetime] = None
     master_period: Optional[str] = None
     lead_offering_l2: Optional[str] = None
-    internal_service: Optional[str] = None
+    internal_service: Optional[str] = Field(default=None, index=True)
     simplified_offering: Optional[str] = None
     product_name: Optional[str] = None
     first_year_q1_rev: Optional[float] = None

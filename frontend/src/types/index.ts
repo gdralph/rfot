@@ -304,7 +304,7 @@ export interface OpportunityEffortPrediction {
   category: string;
   tcv_millions?: number;
   decision_date: string;
-  service_line_timelines: Record<string, any[]>;
+  service_line_timelines: Record<string, StageTimelineData[]>;
   total_remaining_effort_weeks: number;
   earliest_stage_start?: string;
   supported_service_lines: string[];
@@ -318,6 +318,7 @@ export interface StageTimelineData {
   fte_required: number;
   total_effort_weeks: number;
   resource_status: string;
+  status: string;
   last_updated: string;
 }
 
