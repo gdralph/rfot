@@ -593,8 +593,9 @@ def _generate_time_period_forecast(
     stage_filter: List[str] = None
 ) -> List[dict]:
     """
-    Generate resource forecast using average daily FTE for headcount planning.
-    Calculates daily concurrent FTE requirements and averages within time periods.
+    Generate resource forecast using mean concurrent headcount for accurate capacity planning.
+    Calculates daily concurrent FTE requirements and averages within time periods to ensure
+    consistent peak numbers regardless of time period granularity.
     
     Args:
         timeline_records: Timeline records to aggregate
@@ -602,22 +603,75 @@ def _generate_time_period_forecast(
         end_date: End date for forecast
         time_period: "week", "month", or "quarter"
     """
+    import calendar
+    from collections import defaultdict
+    
+    # Apply filters to get the relevant records
+    filtered_records = timeline_records
+    if service_line_filter:
+        filtered_records = [r for r in filtered_records if r.service_line in service_line_filter]
+    if category_filter:
+        filtered_records = [r for r in filtered_records if r.category in category_filter]
+    if stage_filter:
+        filtered_records = [r for r in filtered_records if r.stage_name in stage_filter]
+    
+    # Group records by opportunity + service line for sequential stage handling
+    opportunity_service_groups = defaultdict(list)
+    for record in filtered_records:
+        group_key = f"{record.opportunity_id}_{record.service_line}"
+        opportunity_service_groups[group_key].append(record)
+    
+    # Calculate daily concurrent FTE for the entire date range
+    current_date = start_date
+    daily_fte = {}
+    
+    while current_date <= end_date:
+        daily_fte[current_date] = {
+            "total_fte": 0.0,
+            "service_line_breakdown": defaultdict(float)
+        }
+        
+        # For each opportunity+service line group, find concurrent FTE on this day
+        for group_key, group_records in opportunity_service_groups.items():
+            # Find the stage that is active on this date (sequential stages, not concurrent)
+            active_stage = None
+            for record in group_records:
+                record_start = record.stage_start_date.replace(tzinfo=None) if record.stage_start_date.tzinfo else record.stage_start_date
+                record_end = record.stage_end_date.replace(tzinfo=None) if record.stage_end_date.tzinfo else record.stage_end_date
+                current_date_naive = current_date.replace(tzinfo=None) if current_date.tzinfo else current_date
+                
+                # Check if this stage is active on current_date
+                if record_start <= current_date_naive <= record_end and record.duration_weeks > 0:
+                    # Take the stage with highest FTE if multiple overlap (edge case)
+                    if active_stage is None or record.fte_required > active_stage.fte_required:
+                        active_stage = record
+            
+            # Add the active stage's FTE to daily totals
+            if active_stage:
+                daily_fte[current_date]["total_fte"] += active_stage.fte_required
+                daily_fte[current_date]["service_line_breakdown"][active_stage.service_line] += active_stage.fte_required
+        
+        current_date += timedelta(days=1)
+    
+    # Generate time periods and calculate mean FTE for each period
     period_totals = {}
     
-    # Generate period keys based on time_period
     if time_period == "week":
-        # Align start_date to Monday BEFORE the loop
-        current_date = start_date - timedelta(days=start_date.weekday())
+        # Align start_date to Monday
+        week_start = start_date - timedelta(days=start_date.weekday())
+        current_date = week_start
         while current_date <= end_date:
-            # Use ISO week numbering to avoid conflicts
             year, week_num, _ = current_date.isocalendar()
             week_key = f"{year}-W{week_num:02d}"
+            week_end = current_date + timedelta(days=6)
+            
             period_totals[week_key] = {
-                "period": current_date.strftime("%m/%d"),  # MM/DD format for display
+                "period": current_date.strftime("%m/%d"),
                 "period_start": current_date,
-                "total_fte": 0,
-                "opportunities_count": set(),
-                "service_line_breakdown": {sl: 0 for sl in ["CES", "INS", "BPS", "SEC", "ITOC", "MW"]}
+                "period_end": week_end,
+                "total_fte": 0.0,
+                "service_line_breakdown": defaultdict(float),
+                "days_count": 0
             }
             current_date += timedelta(weeks=1)
             
@@ -628,13 +682,25 @@ def _generate_time_period_forecast(
         while current_date <= end_date:
             quarter_num = ((current_date.month - 1) // 3) + 1
             quarter_key = f"{current_date.year}-Q{quarter_num}"
+            
+            # Calculate end of quarter
+            end_month = current_date.month + 2  # 3 months - 1
+            if end_month > 12:
+                quarter_end = current_date.replace(year=current_date.year + 1, month=end_month - 12)
+            else:
+                quarter_end = current_date.replace(month=end_month)
+            _, last_day = calendar.monthrange(quarter_end.year, quarter_end.month)
+            quarter_end = quarter_end.replace(day=last_day)
+            
             period_totals[quarter_key] = {
                 "period": quarter_key,
                 "period_start": current_date,
-                "total_fte": 0,
-                "opportunities_count": set(),
-                "service_line_breakdown": {sl: 0 for sl in ["CES", "INS", "BPS", "SEC", "ITOC", "MW"]}
+                "period_end": quarter_end,
+                "total_fte": 0.0,
+                "service_line_breakdown": defaultdict(float),
+                "days_count": 0
             }
+            
             # Move to next quarter
             next_quarter_month = current_date.month + 3
             if next_quarter_month > 12:
@@ -643,94 +709,60 @@ def _generate_time_period_forecast(
                 current_date = current_date.replace(month=next_quarter_month)
                 
     else:  # Default to month
-        current_date = start_date.replace(day=1)  # First day of start month
+        current_date = start_date.replace(day=1)
         while current_date <= end_date:
             month_key = current_date.strftime("%Y-%m")
+            _, last_day = calendar.monthrange(current_date.year, current_date.month)
+            month_end = current_date.replace(day=last_day)
+            
             period_totals[month_key] = {
-                "period": current_date.strftime("%b %y"),  # Short month year format
+                "period": current_date.strftime("%b %y"),
                 "period_start": current_date,
-                "total_fte": 0,
-                "opportunities_count": set(),
-                "service_line_breakdown": {sl: 0 for sl in ["CES", "INS", "BPS", "SEC", "ITOC", "MW"]}
+                "period_end": month_end,
+                "total_fte": 0.0,
+                "service_line_breakdown": defaultdict(float),
+                "days_count": 0
             }
+            
             # Move to next month
             if current_date.month == 12:
                 current_date = current_date.replace(year=current_date.year + 1, month=1)
             else:
                 current_date = current_date.replace(month=current_date.month + 1)
     
-    # Apply filters to get the relevant records for proportional FTE calculation
-    filtered_records = timeline_records
-    if service_line_filter:
-        filtered_records = [r for r in filtered_records if r.service_line in service_line_filter]
-    if category_filter:
-        filtered_records = [r for r in filtered_records if r.category in category_filter]
-    if stage_filter:
-        filtered_records = [r for r in filtered_records if r.stage_name in stage_filter]
-    
-    # Group records by opportunity + service line to handle sequential stages correctly
-    opportunity_service_groups = defaultdict(list)
-    for record in filtered_records:
-        group_key = f"{record.opportunity_id}_{record.service_line}"
-        opportunity_service_groups[group_key].append(record)
-    
-    # Process each period
+    # Calculate mean FTE for each period using daily data
     for period_key, period_data in period_totals.items():
         period_start = period_data["period_start"]
+        period_end = period_data["period_end"]
         
-        # Calculate period end based on time_period
-        if time_period == "week":
-            period_end = period_start + timedelta(days=6)
-        elif time_period == "quarter":
-            # End of quarter (last day of 3rd month)
-            month_offset = 2  # 3 months - 1
-            end_month = period_start.month + month_offset
-            if end_month > 12:
-                period_end = period_start.replace(year=period_start.year + 1, month=end_month - 12)
-            else:
-                period_end = period_start.replace(month=end_month)
-            # Last day of the month
-            import calendar
-            _, last_day = calendar.monthrange(period_end.year, period_end.month)
-            period_end = period_end.replace(day=last_day)
-        else:  # month
-            # Last day of month
-            import calendar
-            _, last_day = calendar.monthrange(period_start.year, period_start.month)
-            period_end = period_start.replace(day=last_day)
+        # Sum daily FTE values for this period
+        total_daily_fte = 0.0
+        service_line_daily_totals = defaultdict(float)
+        days_in_period = 0
         
-        # For each opportunity+service line group, find max FTE during this period
-        for group_key, group_records in opportunity_service_groups.items():
-            # Find all stages within this group that overlap with this period
-            overlapping_stages = []
-            for record in group_records:
-                # Make sure all dates are timezone-naive for comparison
-                record_start = record.stage_start_date.replace(tzinfo=None) if record.stage_start_date.tzinfo else record.stage_start_date
-                record_end = record.stage_end_date.replace(tzinfo=None) if record.stage_end_date.tzinfo else record.stage_end_date
-                period_start_naive = period_start.replace(tzinfo=None) if period_start.tzinfo else period_start
-                period_end_naive = period_end.replace(tzinfo=None) if period_end.tzinfo else period_end
-                
-                # Check if timeline record overlaps with this period
-                if (record_start <= period_end_naive and record_end >= period_start_naive):
-                    # Skip zero-duration stages
-                    if record.duration_weeks > 0:
-                        overlapping_stages.append(record)
-            
-            # Take maximum FTE from overlapping stages (not sum) - stages are sequential, not concurrent
-            if overlapping_stages:
-                max_fte = max(stage.fte_required for stage in overlapping_stages)
-                representative_stage = max(overlapping_stages, key=lambda s: s.fte_required)
-                
-                # Add to period totals
-                period_data["total_fte"] += max_fte
-                period_data["service_line_breakdown"][representative_stage.service_line] += max_fte
+        current_day = max(period_start, start_date)
+        while current_day <= min(period_end, end_date):
+            if current_day in daily_fte:
+                total_daily_fte += daily_fte[current_day]["total_fte"]
+                for sl, fte in daily_fte[current_day]["service_line_breakdown"].items():
+                    service_line_daily_totals[sl] += fte
+                days_in_period += 1
+            current_day += timedelta(days=1)
+        
+        # Calculate mean FTE for the period
+        if days_in_period > 0:
+            period_data["total_fte"] = total_daily_fte / days_in_period
+            for sl in ["CES", "INS", "BPS", "SEC", "ITOC", "MW"]:
+                period_data["service_line_breakdown"][sl] = service_line_daily_totals[sl] / days_in_period
+        
+        period_data["days_count"] = days_in_period
     
-    # Convert to list format with correct structure
+    # Convert to list format for frontend
     time_period_forecast = []
     for period_key in sorted(period_totals.keys()):
         period_data = period_totals[period_key]
         
-        # Since we applied filters during daily FTE calculation, just format the output
+        # Format service line data
         all_service_lines = ["CES", "INS", "BPS", "SEC", "ITOC", "MW"]
         service_lines_data = {}
         for sl in all_service_lines:
