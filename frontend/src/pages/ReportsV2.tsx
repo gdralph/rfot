@@ -109,6 +109,7 @@ const ReportsV2: React.FC = () => {
   });
 
   const reportIcons = {
+    'top-average-headcount': Users,
     'configuration-summary': Settings,
     'resource-utilization': Users,
     'opportunity-pipeline': TrendingUp,
@@ -162,6 +163,13 @@ const ReportsV2: React.FC = () => {
           );
         } else if (selectedReport === 'configuration-summary') {
           await exportConfigurationToPDF(
+            reportData,
+            `${reportName}_report_${timestamp}.pdf`
+          );
+        } else if (selectedReport === 'top-average-headcount') {
+          // Use direct jsPDF approach for top-average-headcount to avoid html2canvas issues
+          const { exportTopAverageHeadcountToPDF } = await import('../utils/exportUtils.js');
+          await exportTopAverageHeadcountToPDF(
             reportData,
             `${reportName}_report_${timestamp}.pdf`
           );
@@ -582,7 +590,9 @@ const ReportsV2: React.FC = () => {
     if (!data) return null;
 
     // Different rendering based on report type - full original functionality
-    if (data.opportunity_categories && data.service_line_categories) {
+    if (data.category_data && data.report_name === "Top ITOC + MW Revenue Report") {
+      return renderTopAverageHeadcountReport(data);
+    } else if (data.opportunity_categories && data.service_line_categories) {
       return renderConfigurationReport(data);
     } else if (data.utilization_data) {
       return renderUtilizationReport(data);
@@ -1955,6 +1965,314 @@ const ReportsV2: React.FC = () => {
           )}
         </div>
       </div>
+    </div>
+  );
+
+  const renderTopAverageHeadcountReport = (data: any) => (
+    <div className="mt-6 space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="card p-4">
+          <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Total Opportunities</h4>
+          <p className="text-2xl font-bold text-dxc-bright-purple">{data.summary.total_opportunities}</p>
+        </div>
+        <div className="card p-4">
+          <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Categories Analyzed</h4>
+          <p className="text-2xl font-bold text-dxc-bright-purple">{data.summary.categories_analyzed.length}</p>
+        </div>
+        <div className="card p-4">
+          <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Sales Stages</h4>
+          <p className="text-sm text-dxc-dark-gray">{data.filters_applied.sales_stages.join(', ')}</p>
+        </div>
+      </div>
+
+      {/* Category-based Results */}
+      {Object.entries(data.category_data).map(([category, opportunities]: [string, any]) => (
+        <div key={category} className="card">
+          <div className="p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-dxc-dark-gray">{category} - Top 10 by ITOC + MW Revenue</h3>
+              <div className="text-sm text-dxc-dark-gray">
+                ITOC+MW Range: ${data.summary.itoc_mw_revenue_range?.[category]?.lowest?.toFixed(1) || '0.0'}M - ${data.summary.itoc_mw_revenue_range?.[category]?.highest?.toFixed(1) || '0.0'}M
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {opportunities.map((opp: any, index: number) => (
+                <div key={opp.opportunity_id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  {/* Enhanced Opportunity Header */}
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs bg-dxc-bright-purple text-white px-2 py-1 rounded">#{index + 1}</span>
+                        <h4 className="font-semibold text-dxc-dark-gray text-lg">{opp.opportunity_name}</h4>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 text-sm text-dxc-dark-gray mb-2">
+                        <div><strong>ID:</strong> {opp.opportunity_id}</div>
+                        <div><strong>Account:</strong> {opp.account_name}</div>
+                        <div><strong>Stage:</strong> {opp.sales_stage}</div>
+                        <div><strong>Category:</strong> {opp.opportunity_category}</div>
+                        <div><strong>TCV:</strong> ${opp.tcv_millions?.toFixed(1)}M</div>
+                        <div><strong>Owner:</strong> {opp.opportunity_owner}</div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm text-dxc-dark-gray">
+                        <div><strong>Close Date:</strong> {opp.close_date ? new Date(opp.close_date).toLocaleDateString() : 'TBD'}</div>
+                        <div><strong>Lead Offering:</strong> {opp.lead_offering_l1 || 'N/A'}</div>
+                        <div><strong>Total Effort:</strong> {opp.total_effort_weeks.toFixed(1)} weeks</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-dxc-bright-purple">{opp.avg_headcount.toFixed(1)}</div>
+                      <div className="text-xs text-dxc-dark-gray">Avg FTE</div>
+                      <div className="text-lg font-bold text-green-600 mt-1">
+                        ${opp.itoc_mw_total_revenue?.toFixed(1) || '0.0'}M
+                      </div>
+                      <div className="text-xs text-dxc-dark-gray">ITOC + MW</div>
+                    </div>
+                  </div>
+
+                  {/* Service Line Revenue Breakdown */}
+                  <div className="mb-4">
+                    <h5 className="text-sm font-medium text-dxc-dark-gray mb-2">Service Line Revenue Breakdown</h5>
+                    <div className="bg-white rounded p-3">
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                        {Object.entries(opp.service_line_revenue).map(([serviceLine, revenue]: [string, any]) => (
+                          <div key={serviceLine} className="text-center p-2 bg-gray-50 rounded">
+                            <div className="text-xs font-medium text-dxc-bright-purple">{serviceLine}</div>
+                            <div className="text-sm font-bold text-dxc-dark-gray">
+                              ${revenue.opportunity_tcv?.toFixed(1) || '0.0'}M
+                            </div>
+                            {revenue.line_items_tcv > 0 && (
+                              <div className="text-xs text-dxc-dark-gray">
+                                Items: ${revenue.line_items_tcv.toFixed(1)}M ({revenue.line_items_count})
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Enhanced Stage Timeline with Visual Timeline */}
+                  <div className="mb-4">
+                    <h5 className="text-sm font-medium text-dxc-dark-gray mb-3">Stage Timeline & Headcount</h5>
+                    <div className="bg-white rounded p-4">
+                      {Object.entries(opp.timeline_by_service_line || {}).map(([serviceLine, stages]: [string, any]) => (
+                        <div key={serviceLine} className="mb-4 last:mb-0">
+                          <div className="flex items-center mb-2">
+                            <h6 className="font-medium text-dxc-bright-purple">{serviceLine} Service Line</h6>
+                            <div className="flex-1 h-px bg-gray-200 ml-3"></div>
+                          </div>
+                          
+                          {/* Compact Timeline visualization */}
+                          <div className="relative">
+                            <div className="flex flex-col space-y-1">
+                              {stages.map((stage: any, stageIndex: number) => (
+                                <div key={`${serviceLine}-${stage.stage_name}`} className="relative">
+                                  <div className="flex items-center">
+                                    {/* Timeline marker */}
+                                    <div className="flex flex-col items-center mr-3">
+                                      <div className="w-2 h-2 bg-dxc-bright-purple rounded-full"></div>
+                                      {stageIndex < stages.length - 1 && (
+                                        <div className="w-px h-4 bg-gray-300 mt-1"></div>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Compact Stage content - everything on one line */}
+                                    <div className="flex-1 bg-gray-50 rounded p-2">
+                                      <div className="flex justify-between items-center text-xs">
+                                        <div className="flex-1">
+                                          <span className="font-medium text-sm">Stage {stage.stage_name}</span>
+                                          <span className="ml-3 text-dxc-dark-gray">
+                                            {new Date(stage.stage_start_date).toLocaleDateString()} → {new Date(stage.stage_end_date).toLocaleDateString()}
+                                          </span>
+                                          <span className="ml-3 text-dxc-dark-gray">
+                                            {stage.duration_weeks}w duration
+                                          </span>
+                                          <span className="ml-3 text-dxc-dark-gray">
+                                            {stage.resource_category}
+                                          </span>
+                                        </div>
+                                        <div className="text-right ml-4 flex items-center space-x-3">
+                                          <div>
+                                            <span className="font-bold text-dxc-bright-purple text-sm">
+                                              {stage.fte_required.toFixed(1)} FTE
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span className="text-dxc-dark-gray text-xs">
+                                              {stage.total_effort_weeks.toFixed(1)}w effort
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Enhanced Mapped Offerings with Usage Highlights */}
+                  <div className="mb-4">
+                    <h5 className="text-sm font-medium text-dxc-dark-gray mb-2">
+                      Mapped Offerings ({opp.mapped_offerings.length})
+                      <span className="ml-2 text-xs text-dxc-bright-purple">
+                        ({opp.mapped_offerings.filter((o: any) => o.used_in_calculation).length} used in calculation)
+                      </span>
+                    </h5>
+                    <div className="bg-white rounded p-3">
+                      <div className="space-y-2">
+                        {/* Group by service line */}
+                        {Object.entries(
+                          opp.mapped_offerings.reduce((acc: any, offering: any) => {
+                            const sl = offering.mapped_service_line;
+                            if (!acc[sl]) acc[sl] = [];
+                            acc[sl].push(offering);
+                            return acc;
+                          }, {})
+                        ).map(([serviceLine, offerings]: [string, any]) => (
+                          <div key={serviceLine} className="border-l-2 border-gray-200 pl-3">
+                            <div className="text-xs font-medium text-dxc-bright-purple mb-1">{serviceLine}</div>
+                            <div className="flex flex-wrap gap-1">
+                              {offerings.map((offering: any, offerIndex: number) => (
+                                <span
+                                  key={offerIndex}
+                                  className={`text-xs px-2 py-1 rounded ${
+                                    offering.used_in_calculation
+                                      ? 'bg-green-100 text-green-800 border border-green-300 font-medium'
+                                      : 'bg-gray-100 text-gray-600'
+                                  }`}
+                                  title={`${offering.used_in_calculation ? 'Used in timeline calculation' : 'Not used in calculation'} - ${offering.line_item_count || 1} line item(s) - Internal services: ${offering.internal_services?.join(', ')}`}
+                                >
+                                  {offering.used_in_calculation && '✓ '}
+                                  {offering.simplified_offering}
+                                  {offering.offering_tcv > 0 && ` ($${offering.offering_tcv.toFixed(1)}M)`}
+                                  {offering.line_item_count > 1 && (
+                                    <span className="ml-1 text-xs opacity-75">
+                                      ({offering.line_item_count})
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Comprehensive Calculation Breakdown */}
+                  <div>
+                    <h5 className="text-sm font-medium text-dxc-dark-gray mb-3">Timeline Calculation Breakdown & Math</h5>
+                    <div className="bg-white rounded p-4">
+                      <div className="space-y-4">
+                        {Object.entries(opp.calculation_breakdown).map(([serviceLine, breakdown]: [string, any]) => (
+                          <div key={serviceLine} className="border border-gray-200 rounded p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <h6 className="font-medium text-dxc-bright-purple text-base">{serviceLine} Service Line</h6>
+                              <div className="text-right">
+                                <div className="text-lg font-bold text-dxc-bright-purple">
+                                  {breakdown.total_final_fte?.toFixed(1)} FTE
+                                </div>
+                                <div className="text-xs text-dxc-dark-gray">
+                                  {breakdown.total_effort_weeks?.toFixed(1)} total effort weeks
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Configuration Summary */}
+                            <div className="bg-gray-50 rounded p-3 mb-3">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                <div>
+                                  <span className="text-dxc-dark-gray">Service Line TCV:</span>
+                                  <div className="font-medium">${breakdown.service_line_tcv?.toFixed(1)}M</div>
+                                </div>
+                                <div>
+                                  <span className="text-dxc-dark-gray">Resource Category:</span>
+                                  <div className="font-medium">{breakdown.resource_category}</div>
+                                </div>
+                                <div>
+                                  <span className="text-dxc-dark-gray">TCV Range:</span>
+                                  <div className="font-medium">{breakdown.resource_category_range}</div>
+                                </div>
+                                <div>
+                                  <span className="text-dxc-dark-gray">Unique Offerings:</span>
+                                  <div className="font-medium">
+                                    {breakdown.unique_offerings_count} (threshold: {breakdown.offering_threshold})
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Offering Multiplier Calculation */}
+                            <div className="bg-blue-50 rounded p-3 mb-3">
+                              <div className="text-xs font-medium text-blue-800 mb-2">Offering Multiplier Calculation:</div>
+                              <div className="text-xs text-blue-700">
+                                {breakdown.unique_offerings_count > breakdown.offering_threshold ? (
+                                  <div>
+                                    Base: 1.0 + ({breakdown.unique_offerings_count} offerings - {breakdown.offering_threshold} threshold) × {breakdown.increment_multiplier} increment = <strong>{breakdown.offering_multiplier?.toFixed(3)}</strong>
+                                  </div>
+                                ) : (
+                                  <div>Base multiplier: 1.0 (offerings below threshold)</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Compact Stage-by-Stage Calculation */}
+                            <div className="space-y-1">
+                              <div className="text-xs font-medium text-dxc-dark-gray mb-2">Stage-by-Stage Calculation:</div>
+                              {breakdown.calculation_steps?.map((step: any, stepIndex: number) => (
+                                <div key={stepIndex} className="bg-gray-50 rounded p-2 text-xs">
+                                  <div className="flex justify-between items-center">
+                                    <div className="flex-1">
+                                      <span className="font-medium">Stage {step.stage}:</span>
+                                      <span className="ml-2 text-dxc-dark-gray">
+                                        Base {step.base_fte_configured?.toFixed(1)} FTE × {step.offering_multiplier_applied?.toFixed(2)} multiplier × {step.duration_weeks}w = {step.total_effort_weeks?.toFixed(1)} effort weeks
+                                      </span>
+                                    </div>
+                                    <div className="text-right ml-4">
+                                      <span className="font-bold text-dxc-bright-purple">
+                                        {step.final_fte_calculated?.toFixed(1)} FTE
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Summary Totals */}
+                            <div className="border-t mt-3 pt-3">
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                <div className="text-center">
+                                  <div className="text-dxc-dark-gray">Total Base FTE</div>
+                                  <div className="font-bold">{breakdown.total_base_fte?.toFixed(1)}</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-dxc-dark-gray">After Multiplier</div>
+                                  <div className="font-bold text-dxc-bright-purple">{breakdown.total_final_fte?.toFixed(1)}</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-dxc-dark-gray">Total Effort</div>
+                                  <div className="font-bold">{breakdown.total_effort_weeks?.toFixed(1)}w</div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 

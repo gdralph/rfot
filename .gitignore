@@ -48,3 +48,23 @@ htmlcov/
 *.tmp
 *.bak
 *.orig
+
+# Analysis and business documents
+*.pdf
+*.pptx
+*.xlsx
+*.numbers
+*.csv
+*Analysis*.md
+
+# Temporary Python scripts
+*_pptx_data.py
+*inspect*.py
+*update_*_from_*.py
+*compare_*.py
+*migrate_*.py
+*analyze_*.py
+
+# Lookup files
+*_lookup*.json
+*_analysis*.json

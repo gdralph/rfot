@@ -1207,6 +1207,426 @@ async def get_configuration_summary_report(
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 
+@router.get("/top-average-headcount")
+async def get_top_average_headcount_report(
+    session: Session = Depends(get_session)
+) -> Dict[str, Any]:
+    """
+    Top Average Headcount Report - Shows top 10 opportunities by average headcount 
+    for each category (A, B, C) from sales stage 02 and above.
+    """
+    try:
+        # Get opportunities from stage 02+ with resource timelines
+        query = select(
+            Opportunity.opportunity_id,
+            Opportunity.opportunity_name,
+            Opportunity.account_name,
+            Opportunity.sales_stage,
+            Opportunity.tcv_millions,
+            Opportunity.decision_date,
+            Opportunity.opportunity_owner,
+            func.avg(OpportunityResourceTimeline.fte_required).label("avg_headcount"),
+            func.sum(OpportunityResourceTimeline.total_effort_weeks).label("total_effort"),
+            OpportunityResourceTimeline.category
+        ).join(
+            OpportunityResourceTimeline, 
+            Opportunity.opportunity_id == OpportunityResourceTimeline.opportunity_id
+        ).where(
+            Opportunity.sales_stage.in_(["02", "03", "04A", "04B", "05A", "05B", "06"]),
+            OpportunityResourceTimeline.category.in_(["Cat A", "Cat B", "Cat C"])
+        ).group_by(
+            Opportunity.opportunity_id,
+            Opportunity.opportunity_name,
+            Opportunity.account_name,
+            Opportunity.sales_stage,
+            Opportunity.tcv_millions,
+            Opportunity.decision_date,
+            Opportunity.opportunity_owner,
+            OpportunityResourceTimeline.category
+        ).order_by(
+            OpportunityResourceTimeline.category,
+            func.avg(OpportunityResourceTimeline.fte_required).desc()
+        )
+
+        results = session.exec(query).all()
+
+        # Group by category and get top 10 for each
+        category_data = {}
+        for result in results:
+            category = result.category
+            if category not in category_data:
+                category_data[category] = []
+            
+            if len(category_data[category]) < 10:  # Top 10 per category
+                # Get detailed timeline and offering data for this opportunity
+                timeline_query = select(OpportunityResourceTimeline).where(
+                    OpportunityResourceTimeline.opportunity_id == result.opportunity_id
+                ).order_by(OpportunityResourceTimeline.service_line, OpportunityResourceTimeline.stage_name)
+                
+                timelines = session.exec(timeline_query).all()
+                
+                # Get the full opportunity record for additional details
+                opp_query = select(Opportunity).where(Opportunity.opportunity_id == result.opportunity_id)
+                full_opp = session.exec(opp_query).first()
+                
+                # Get line items to identify mapped offerings
+                line_items_query = select(OpportunityLineItem).where(
+                    OpportunityLineItem.opportunity_id == result.opportunity_id,
+                    OpportunityLineItem.internal_service.isnot(None)
+                )
+                line_items = session.exec(line_items_query).all()
+                
+                # Get ALL line items for service line revenue breakdown
+                all_line_items_query = select(OpportunityLineItem).where(
+                    OpportunityLineItem.opportunity_id == result.opportunity_id
+                )
+                all_line_items = session.exec(all_line_items_query).all()
+                
+                # Build service line revenue breakdown
+                service_line_revenue = {
+                    "CES": {"opportunity_tcv": full_opp.ces_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                    "INS": {"opportunity_tcv": full_opp.ins_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                    "BPS": {"opportunity_tcv": full_opp.bps_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                    "SEC": {"opportunity_tcv": full_opp.sec_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                    "ITOC": {"opportunity_tcv": full_opp.itoc_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                    "MW": {"opportunity_tcv": full_opp.mw_millions or 0, "line_items_tcv": 0, "line_items_count": 0}
+                }
+                
+                # Calculate line items TCV by service line mapping
+                for item in all_line_items:
+                    tcv = item.offering_tcv or 0
+                    if item.internal_service:
+                        # Map internal service to service line
+                        service_line_key = None
+                        internal_service_lower = item.internal_service.lower()
+                        
+                        if any(term in internal_service_lower for term in ["modern workplace", "mw", "workplace", "collaboration", "endpoint"]):
+                            service_line_key = "MW"
+                        elif any(term in internal_service_lower for term in ["infrastructure", "itoc", "cloud", "data center", "network", "platform"]):
+                            service_line_key = "ITOC"
+                        elif any(term in internal_service_lower for term in ["ces", "consulting", "enterprise", "strategy"]):
+                            service_line_key = "CES"
+                        elif any(term in internal_service_lower for term in ["ins", "industry", "sector"]):
+                            service_line_key = "INS"
+                        elif any(term in internal_service_lower for term in ["bps", "business", "process"]):
+                            service_line_key = "BPS"
+                        elif any(term in internal_service_lower for term in ["sec", "security", "cyber"]):
+                            service_line_key = "SEC"
+                        
+                        if service_line_key and service_line_key in service_line_revenue:
+                            service_line_revenue[service_line_key]["line_items_tcv"] += tcv
+                            service_line_revenue[service_line_key]["line_items_count"] += 1
+
+                # Build stage timeline with headcount and enhanced details
+                stage_timeline = []
+                timeline_by_service_line = {}
+                
+                for timeline in timelines:
+                    stage_info = {
+                        "stage_name": timeline.stage_name,
+                        "service_line": timeline.service_line,
+                        "fte_required": float(timeline.fte_required),
+                        "duration_weeks": float(timeline.duration_weeks),
+                        "total_effort_weeks": float(timeline.total_effort_weeks),
+                        "stage_start_date": timeline.stage_start_date.isoformat(),
+                        "stage_end_date": timeline.stage_end_date.isoformat(),
+                        "resource_category": timeline.resource_category,
+                        "category": timeline.category
+                    }
+                    stage_timeline.append(stage_info)
+                    
+                    # Group by service line for timeline visualization
+                    if timeline.service_line not in timeline_by_service_line:
+                        timeline_by_service_line[timeline.service_line] = []
+                    timeline_by_service_line[timeline.service_line].append(stage_info)
+                
+                # Get service line offering mappings for filtering
+                from app.models.config import ServiceLineOfferingMapping
+                offering_mappings = session.exec(
+                    select(ServiceLineOfferingMapping)
+                ).all()
+                
+                # Create mapping dictionary for quick lookup
+                internal_service_to_sl = {}
+                for mapping in offering_mappings:
+                    internal_service_to_sl[mapping.internal_service] = mapping.service_line
+
+                # Build deduplicated mapped offerings list with usage indicators
+                mapped_offerings = []
+                service_line_offerings = {}
+                offering_used_in_calculation = set()
+                
+                # Identify which offerings are used in timeline calculations
+                active_service_lines = set(timeline.service_line for timeline in timelines)
+                for item in line_items:
+                    if item.internal_service in internal_service_to_sl:
+                        sl = internal_service_to_sl[item.internal_service]
+                        if sl in active_service_lines:
+                            offering_used_in_calculation.add(item.internal_service)
+                
+                # Build set of valid (internal_service, simplified_offering) combinations from ServiceLineOfferingMapping
+                # This will be used to determine which offerings are used in calculations
+                from app.models.config import ServiceLineOfferingMapping
+                all_mappings = session.exec(select(ServiceLineOfferingMapping)).all()
+                
+                valid_combinations = set()
+                for mapping in all_mappings:
+                    valid_combinations.add((mapping.internal_service, mapping.simplified_offering))
+                
+                # Show ALL offerings but mark which ones are mapped/used in calculations
+                offerings_by_simplified = {}
+                for item in line_items:
+                    simplified = item.simplified_offering or "N/A"
+                    internal_service = item.internal_service
+                    
+                    # Check if this exact combination is mapped for calculations
+                    is_mapped = (internal_service, simplified) in valid_combinations
+                    
+                    if simplified not in offerings_by_simplified:
+                        # Determine if this simplified offering is used based on its internal service
+                        is_used = is_mapped and internal_service in offering_used_in_calculation
+                        service_line = internal_service_to_sl.get(internal_service, "Unmapped") if is_mapped else "Unmapped"
+                        
+                        offerings_by_simplified[simplified] = {
+                            "simplified_offering": simplified,
+                            "internal_services": set(),
+                            "total_tcv": 0,
+                            "line_item_count": 0,
+                            "used_in_calculation": is_used,
+                            "mapped_service_line": service_line,
+                            "is_mapped": is_mapped
+                        }
+                    
+                    # Aggregate data
+                    offerings_by_simplified[simplified]["total_tcv"] += float(item.offering_tcv) if item.offering_tcv else 0
+                    offerings_by_simplified[simplified]["line_item_count"] += 1
+                    offerings_by_simplified[simplified]["internal_services"].add(internal_service)
+                    
+                    # Update usage status if any internal service for this simplified offering is used AND mapped
+                    if is_mapped and internal_service in offering_used_in_calculation:
+                        offerings_by_simplified[simplified]["used_in_calculation"] = True
+                        offerings_by_simplified[simplified]["is_mapped"] = True
+                        # Update service line to the one that's actually used in calculation
+                        offerings_by_simplified[simplified]["mapped_service_line"] = internal_service_to_sl.get(internal_service, "Unmapped")
+                    
+                    # Track if this offering has any mapped internal services (even if not used in timeline)
+                    if is_mapped:
+                        offerings_by_simplified[simplified]["is_mapped"] = True
+                        if offerings_by_simplified[simplified]["mapped_service_line"] == "Unmapped":
+                            offerings_by_simplified[simplified]["mapped_service_line"] = internal_service_to_sl.get(internal_service, "Unmapped")
+                
+                # Convert to final format
+                for simplified_offering, data in offerings_by_simplified.items():
+                    # Create internal services list for reference
+                    internal_services_list = sorted(list(data["internal_services"]))
+                    
+                    offering_info = {
+                        "simplified_offering": simplified_offering,
+                        "internal_services": internal_services_list,
+                        "offering_tcv": data["total_tcv"],
+                        "line_item_count": data["line_item_count"],
+                        "used_in_calculation": data["used_in_calculation"],
+                        "mapped_service_line": data["mapped_service_line"],
+                        "is_mapped": data.get("is_mapped", False)
+                    }
+                    mapped_offerings.append(offering_info)
+                    
+                    # Group by service line
+                    sl = data["mapped_service_line"]
+                    if sl not in service_line_offerings:
+                        service_line_offerings[sl] = []
+                    service_line_offerings[sl].append(offering_info)
+                
+                # Get offering thresholds for comprehensive calculation explanation
+                from app.models.config import ServiceLineOfferingThreshold
+                offering_thresholds = session.exec(
+                    select(ServiceLineOfferingThreshold)
+                ).all()
+                
+                # Create threshold mapping
+                threshold_map = {}
+                for threshold in offering_thresholds:
+                    key = f"{threshold.service_line}_{threshold.stage_name}"
+                    threshold_map[key] = {
+                        "threshold_count": threshold.threshold_count,
+                        "increment_multiplier": threshold.increment_multiplier
+                    }
+
+                # Calculate comprehensive breakdown by service line
+                calculation_breakdown = {}
+                for timeline in timelines:
+                    sl = timeline.service_line
+                    stage = timeline.stage_name
+                    
+                    if sl not in calculation_breakdown:
+                        # Get service line TCV from opportunity
+                        if sl == "MW":
+                            sl_tcv = full_opp.mw_millions or 0
+                        elif sl == "ITOC":
+                            sl_tcv = full_opp.itoc_millions or 0
+                        else:
+                            sl_tcv = 0
+                        
+                        # Get service line category and base FTE configuration
+                        from app.models.config import ServiceLineCategory, ServiceLineStageEffort
+                        sl_category_query = select(ServiceLineCategory).where(
+                            ServiceLineCategory.service_line == sl,
+                            ServiceLineCategory.min_tcv <= sl_tcv
+                        ).order_by(ServiceLineCategory.min_tcv.desc())
+                        sl_category = session.exec(sl_category_query).first()
+                        
+                        # Use the same offering multiplier calculation as timeline generation
+                        from app.services.resource_calculation import calculate_offering_multiplier
+                        offering_multiplier = calculate_offering_multiplier(
+                            full_opp.opportunity_id, sl, stage, session
+                        )
+                        
+                        # Get unique offerings count for display (but use the actual multiplier calculation above)
+                        unique_offerings_used = len([
+                            off for off in service_line_offerings.get(sl, [])
+                            if off["used_in_calculation"]
+                        ])
+                        
+                        # Get threshold data for display
+                        threshold_key = f"{sl}_{stage}"
+                        threshold_data = threshold_map.get(threshold_key, {"threshold_count": 4, "increment_multiplier": 0.2})
+                        
+                        calculation_breakdown[sl] = {
+                            "service_line_tcv": sl_tcv,
+                            "resource_category": sl_category.name if sl_category else "Unknown",
+                            "resource_category_range": f"${sl_category.min_tcv}M{' - $' + str(sl_category.max_tcv) + 'M' if sl_category and sl_category.max_tcv else '+'}" if sl_category else "N/A",
+                            "total_base_fte": 0,
+                            "total_final_fte": 0,
+                            "total_effort_weeks": 0,
+                            "unique_offerings_count": unique_offerings_used,
+                            "offering_threshold": threshold_data["threshold_count"],
+                            "increment_multiplier": threshold_data["increment_multiplier"],
+                            "offering_multiplier": offering_multiplier,
+                            "calculation_steps": [],
+                            "stages": []
+                        }
+                    
+                    # Get base FTE for this stage from configuration
+                    stage_effort_query = select(ServiceLineStageEffort).where(
+                        ServiceLineStageEffort.service_line == sl,
+                        ServiceLineStageEffort.stage_name == stage
+                    )
+                    stage_effort = session.exec(stage_effort_query).first()
+                    
+                    final_fte = float(timeline.fte_required)
+                    duration = float(timeline.duration_weeks)
+                    effort_weeks = final_fte * duration
+                    
+                    # Calculate base FTE correctly
+                    multiplier = calculation_breakdown[sl]["offering_multiplier"]
+                    if stage_effort and stage_effort.fte_required > 0:
+                        # Use configured base FTE
+                        base_fte = float(stage_effort.fte_required)
+                        # Verify: base_fte * multiplier should equal final_fte
+                        expected_final = base_fte * multiplier
+                        if abs(expected_final - final_fte) > 0.1:  # Allow small rounding differences
+                            # If there's a significant difference, use reverse calculation
+                            base_fte = final_fte / multiplier if multiplier > 0 else final_fte
+                    else:
+                        # Reverse calculate from final FTE
+                        base_fte = final_fte / multiplier if multiplier > 0 else final_fte
+                    
+                    # Add calculation step explanation
+                    step_explanation = {
+                        "stage": stage,
+                        "base_fte_configured": base_fte,
+                        "offering_multiplier_applied": multiplier,
+                        "final_fte_calculated": final_fte,
+                        "duration_weeks": duration,
+                        "total_effort_weeks": effort_weeks,
+                        "formula": f"{base_fte:.1f} FTE × {multiplier:.2f} multiplier × {duration} weeks = {effort_weeks:.1f} effort weeks"
+                    }
+                    calculation_breakdown[sl]["calculation_steps"].append(step_explanation)
+                    
+                    # Add stage details
+                    calculation_breakdown[sl]["stages"].append({
+                        "stage_name": stage,
+                        "base_fte": base_fte,
+                        "final_fte": final_fte,
+                        "duration_weeks": duration,
+                        "total_effort_weeks": effort_weeks
+                    })
+                    
+                    # Update totals
+                    calculation_breakdown[sl]["total_base_fte"] += base_fte
+                    calculation_breakdown[sl]["total_final_fte"] += final_fte
+                    calculation_breakdown[sl]["total_effort_weeks"] += effort_weeks
+
+                # Calculate total ITOC + MW revenue for sorting (the service lines with resource planning)
+                itoc_mw_total_revenue = (
+                    service_line_revenue.get("ITOC", {}).get("opportunity_tcv", 0) +
+                    service_line_revenue.get("MW", {}).get("opportunity_tcv", 0)
+                )
+
+                category_data[category].append({
+                    "opportunity_id": result.opportunity_id,
+                    "opportunity_name": result.opportunity_name,
+                    "account_name": result.account_name,
+                    "sales_stage": result.sales_stage,
+                    "tcv_millions": float(result.tcv_millions) if result.tcv_millions else 0,
+                    "decision_date": result.decision_date.isoformat() if result.decision_date else None,
+                    "close_date": full_opp.decision_date.isoformat() if full_opp and full_opp.decision_date else None,
+                    "opportunity_owner": result.opportunity_owner,
+                    "opportunity_category": result.category,
+                    "lead_offering_l1": full_opp.lead_offering_l1 if full_opp else None,
+                    "avg_headcount": float(result.avg_headcount),
+                    "total_effort_weeks": float(result.total_effort),
+                    "category": result.category,
+                    "itoc_mw_total_revenue": itoc_mw_total_revenue,
+                    "service_line_revenue": service_line_revenue,
+                    "stage_timeline": stage_timeline,
+                    "timeline_by_service_line": timeline_by_service_line,
+                    "mapped_offerings": mapped_offerings,
+                    "calculation_breakdown": calculation_breakdown
+                })
+
+        # Sort each category by ITOC + MW total revenue descending (the service lines with resource planning), then take top 10
+        for category in category_data:
+            category_data[category] = sorted(
+                category_data[category], 
+                key=lambda x: x["itoc_mw_total_revenue"], 
+                reverse=True
+            )[:10]
+
+        return {
+            "report_name": "Top ITOC + MW Revenue Report",
+            "description": "Top 10 opportunities by ITOC + MW service line revenue for each category (A, B, C) from sales stage 02+",
+            "filters_applied": {
+                "sales_stages": ["02", "03", "04A", "04B", "05A", "05B", "06"],
+                "categories": ["Cat A", "Cat B", "Cat C"],
+                "limit_per_category": 10,
+                "sort_criteria": "ITOC + MW total revenue (service lines with resource planning)"
+            },
+            "category_data": category_data,
+            "summary": {
+                "total_opportunities": sum(len(opps) for opps in category_data.values()),
+                "categories_analyzed": list(category_data.keys()),
+                "avg_headcount_range": {
+                    category: {
+                        "highest": max((opp["avg_headcount"] for opp in opps), default=0),
+                        "lowest": min((opp["avg_headcount"] for opp in opps), default=0)
+                    } for category, opps in category_data.items()
+                },
+                "itoc_mw_revenue_range": {
+                    category: {
+                        "highest": max((opp["itoc_mw_total_revenue"] for opp in opps), default=0),
+                        "lowest": min((opp["itoc_mw_total_revenue"] for opp in opps), default=0)
+                    } for category, opps in category_data.items()
+                }
+            },
+            "generated_at": datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        logger.error("Error generating top average headcount report", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+
 @router.get("/available-reports")
 async def get_available_reports() -> Dict[str, Any]:
     """
@@ -1214,6 +1634,13 @@ async def get_available_reports() -> Dict[str, Any]:
     """
     return {
         "available_reports": [
+            {
+                "id": "top-average-headcount",
+                "name": "Top ITOC + MW Revenue Report",
+                "description": "Top 10 opportunities by ITOC + MW service line revenue for each category (A, B, C) from sales stage 02+",
+                "export_formats": ["excel", "pdf", "html"],
+                "filters": []
+            },
             {
                 "id": "configuration-summary",
                 "name": "Configuration Summary Report",

@@ -23,6 +23,7 @@ interface ReportData {
   service_line_categories?: unknown[];
   stage_efforts?: unknown[];
   calculation_examples?: unknown[];
+  category_data?: Record<string, unknown[]>;
 }
 
 interface UtilizationItem {
@@ -71,11 +72,14 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
       throw new Error(`Element with ID "${elementId}" not found`);
     }
 
+    // Wait a bit for any dynamic content to finish rendering
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     // Enhanced canvas settings for better quality and layout preservation
     const canvasOptions = {
-      scale: 3, // Higher scale for better quality
+      scale: 2, // Reduced scale to avoid memory issues
       useCORS: true,
-      allowTaint: false,
+      allowTaint: true, // Allow cross-origin images
       backgroundColor: '#ffffff',
       width: element.scrollWidth || element.offsetWidth,
       height: element.scrollHeight || element.offsetHeight,
@@ -83,6 +87,13 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
       y: 0,
       scrollX: 0,
       scrollY: 0,
+      ignoreElements: (element: Element) => {
+        // Skip problematic elements that might cause canvas issues
+        return element.tagName === 'IFRAME' || 
+               element.tagName === 'VIDEO' || 
+               element.tagName === 'AUDIO' ||
+               element.classList.contains('no-export');
+      },
       // Force consistent rendering
       onclone: (clonedDoc: Document) => {
         // Apply print styles to the cloned document
@@ -146,10 +157,26 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
       }
     };
 
-    // Create canvas from HTML element
+    // Create canvas from HTML element with better error handling
     const canvas = await html2canvas(element, canvasOptions);
+    
+    // Validate the canvas
+    if (!canvas || canvas.width === 0 || canvas.height === 0) {
+      throw new Error('Failed to create valid canvas from HTML element');
+    }
 
-    // const imgData = canvas.toDataURL('image/png', 1.0);
+    // Test canvas data conversion before PDF creation
+    let testImgData;
+    try {
+      testImgData = canvas.toDataURL('image/png', 0.95);
+      if (!testImgData || testImgData === 'data:,') {
+        throw new Error('Canvas produced empty image data');
+      }
+    } catch (canvasError) {
+      console.error('Canvas conversion error:', canvasError);
+      throw new Error('Failed to convert HTML to image data');
+    }
+
     const pdf = new jsPDF({
       orientation: options.orientation || 'landscape',
       unit: 'mm',
@@ -221,8 +248,27 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
           canvas.width, tempCanvas.height
         );
         
-        const pageImgData = tempCanvas.toDataURL('image/png', 1.0);
-        pdf.addImage(pageImgData, 'PNG', margin, position, imgWidth, heightToUse);
+        // Convert canvas to image data with error handling
+        let pageImgData;
+        try {
+          pageImgData = tempCanvas.toDataURL('image/png', 0.95);
+          if (!pageImgData || pageImgData === 'data:,') {
+            throw new Error('Failed to generate page image data');
+          }
+        } catch (imgError) {
+          console.error('Page image conversion error:', imgError);
+          // Skip this page rather than failing the entire export
+          continue;
+        }
+        
+        // Safely add image to PDF
+        try {
+          pdf.addImage(pageImgData, 'PNG', margin, position, imgWidth, heightToUse);
+        } catch (pdfError) {
+          console.error('PDF addImage error:', pdfError);
+          // Continue with next page rather than failing
+          continue;
+        }
       }
 
       heightLeft -= heightToUse;
@@ -247,7 +293,15 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
     pdf.save(filename);
   } catch (error) {
     console.error('Error exporting to PDF:', error);
-    throw new Error('Failed to export PDF');
+    
+    // Provide more helpful error messages
+    if (error.message?.includes('PNG') || error.message?.includes('image')) {
+      throw new Error('PDF export failed due to image rendering issues. Try refreshing the page and export again.');
+    } else if (error.message?.includes('canvas') || error.message?.includes('Canvas')) {
+      throw new Error('PDF export failed due to content rendering issues. The report may be too complex for PDF export. Try using Excel or HTML export instead.');
+    } else {
+      throw new Error(`PDF export failed: ${error.message || 'Unknown error'}`);
+    }
   }
 };
 
@@ -295,6 +349,69 @@ export const exportToExcel = (data: Record<string, unknown>[], filename?: string
 
 export const convertReportDataToExcel = (reportData: ReportData, reportType: string) => {
   switch (reportType) {
+    case 'top-average-headcount':
+      // Flatten category data into comprehensive Excel export with all details
+      const headcountData: any[] = [];
+      if (reportData.category_data) {
+        Object.entries(reportData.category_data).forEach(([category, opportunities]: [string, any]) => {
+          opportunities.forEach((opp: any, index: number) => {
+            // Calculate service line revenue breakdown
+            const serviceLineRevenue: string[] = [];
+            Object.entries(opp.service_line_revenue || {}).forEach(([sl, data]: [string, any]) => {
+              if (data.opportunity_tcv > 0) {
+                serviceLineRevenue.push(`${sl}: $${data.opportunity_tcv.toFixed(1)}M`);
+              }
+            });
+            
+            // Offerings breakdown
+            const usedOfferings = opp.mapped_offerings.filter((o: any) => o.used_in_calculation);
+            const mappedNotUsed = opp.mapped_offerings.filter((o: any) => o.is_mapped && !o.used_in_calculation);
+            const unmappedOfferings = opp.mapped_offerings.filter((o: any) => !o.is_mapped);
+            
+            // Stage timeline summary
+            const stageTimelines: string[] = [];
+            Object.entries(opp.timeline_by_service_line || {}).forEach(([sl, stages]: [string, any]) => {
+              stages.forEach((stage: any) => {
+                stageTimelines.push(`${sl}-${stage.stage_name}: ${stage.fte_required}FTE/${stage.duration_weeks}w`);
+              });
+            });
+            
+            // Calculation breakdown summary
+            const calcSummary: string[] = [];
+            Object.entries(opp.calculation_breakdown || {}).forEach(([sl, calc]: [string, any]) => {
+              calcSummary.push(`${sl}: ${calc.unique_offerings_count} offerings × ${calc.offering_multiplier} multiplier`);
+            });
+            
+            headcountData.push({
+              'Rank': index + 1,
+              'Category': category,
+              'Opportunity ID': opp.opportunity_id,
+              'Opportunity Name': opp.opportunity_name,
+              'Account Name': opp.account_name,
+              'Sales Stage': opp.sales_stage,
+              'Opportunity Category': opp.opportunity_category,
+              'TCV (Millions)': opp.tcv_millions?.toFixed(1),
+              'ITOC + MW Revenue': opp.itoc_mw_total_revenue?.toFixed(1),
+              'Close Date': opp.close_date,
+              'Lead Offering': opp.lead_offering_l1,
+              'Opportunity Owner': opp.opportunity_owner,
+              'Average Headcount (FTE)': opp.avg_headcount?.toFixed(1),
+              'Total Effort Weeks': opp.total_effort_weeks?.toFixed(1),
+              'Service Line Revenue': serviceLineRevenue.join('; '),
+              'Active Service Lines': Object.keys(opp.timeline_by_service_line || {}).join(', '),
+              'Stage Timeline Summary': stageTimelines.join('; '),
+              'Used Offerings': usedOfferings.map((o: any) => o.simplified_offering).join('; '),
+              'Mapped Not Used': mappedNotUsed.map((o: any) => o.simplified_offering).join('; '),
+              'Unmapped Offerings': unmappedOfferings.map((o: any) => o.simplified_offering).join('; '),
+              'Total Offerings': opp.mapped_offerings.length,
+              'Used in Calculation': usedOfferings.length,
+              'Calculation Summary': calcSummary.join('; ')
+            });
+          });
+        });
+      }
+      return headcountData;
+
     case 'resource-utilization':
       return reportData.utilization_data?.map((item: UtilizationItem) => ({
         'Service Line': item.service_line,
@@ -1330,6 +1447,10 @@ const generateGenericReportHTML = (reportData: any, reportType: string): string 
     return generateConfigurationHTML(reportData);
   }
   
+  if (reportType === 'top-average-headcount') {
+    return generateTopAverageHeadcountHTML(reportData);
+  }
+  
   return `
     <div class="summary-cards">
         <div class="card">
@@ -1898,6 +2019,590 @@ const generateConfigurationHTML = (reportData: any): string => {
   }
 
   return html;
+};
+
+const generateTopAverageHeadcountHTML = (reportData: any): string => {
+  let html = `
+    <!-- Summary Statistics -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #4B5563; font-size: 0.875rem;">Total Opportunities</h4>
+            <p style="margin: 0; color: #5F249F; font-size: 2rem; font-weight: bold;">
+                ${reportData.summary?.total_opportunities || 0}
+            </p>
+        </div>
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #4B5563; font-size: 0.875rem;">Categories Analyzed</h4>
+            <p style="margin: 0; color: #5F249F; font-size: 2rem; font-weight: bold;">
+                ${reportData.summary?.categories_analyzed?.length || 0}
+            </p>
+        </div>
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #4B5563; font-size: 0.875rem;">Sales Stages</h4>
+            <p style="margin: 0; color: #16A34A; font-size: 1rem; font-weight: bold;">
+                ${reportData.filters_applied?.sales_stages?.join(', ') || 'N/A'}
+            </p>
+        </div>
+    </div>`;
+
+  // Generate content for each category
+  if (reportData.category_data) {
+    Object.entries(reportData.category_data).forEach(([category, opportunities]: [string, any]) => {
+      html += `
+        <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #5F249F, #7C3AED); color: white; padding: 20px;">
+                <h3 style="margin: 0; font-size: 1.5rem; font-weight: 600;">${category} - Top 10 by ITOC + MW Revenue</h3>
+                <p style="margin: 8px 0 0 0; opacity: 0.9;">
+                    ITOC+MW Range: $${reportData.summary?.itoc_mw_revenue_range?.[category]?.lowest?.toFixed(1) || '0.0'}M - 
+                    $${reportData.summary?.itoc_mw_revenue_range?.[category]?.highest?.toFixed(1) || '0.0'}M
+                </p>
+            </div>
+            <div style="padding: 24px;">`;
+
+      opportunities.forEach((opp: any, index: number) => {
+        const usedOfferings = opp.mapped_offerings?.filter((o: any) => o.used_in_calculation) || [];
+        const unmappedOfferings = opp.mapped_offerings?.filter((o: any) => !o.is_mapped) || [];
+        
+        html += `
+                <div style="border: 1px solid #E5E7EB; border-radius: 8px; padding: 20px; margin-bottom: 16px; background: #F9FAFB;">
+                    <div style="display: flex; justify-content: between; align-items: start; margin-bottom: 16px;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <span style="background: #5F249F; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">
+                                    #${index + 1}
+                                </span>
+                                <h4 style="margin: 0; font-size: 1.125rem; font-weight: 600; color: #111827;">
+                                    ${opp.opportunity_name}
+                                </h4>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; font-size: 0.875rem;">
+                                <div><strong>ID:</strong> ${opp.opportunity_id}</div>
+                                <div><strong>Account:</strong> ${opp.account_name}</div>
+                                <div><strong>Stage:</strong> ${opp.sales_stage}</div>
+                                <div><strong>Category:</strong> ${opp.opportunity_category}</div>
+                                <div><strong>TCV:</strong> $${opp.tcv_millions?.toFixed(1)}M</div>
+                                <div><strong>Owner:</strong> ${opp.opportunity_owner}</div>
+                            </div>
+                        </div>
+                        <div style="text-align: right; margin-left: 16px;">
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #5F249F;">
+                                ${opp.avg_headcount?.toFixed(1)} FTE
+                            </div>
+                            <div style="font-size: 1rem; font-weight: bold; color: #16A34A; margin-top: 4px;">
+                                $${opp.itoc_mw_total_revenue?.toFixed(1) || '0.0'}M
+                            </div>
+                            <div style="font-size: 0.75rem; color: #6B7280;">ITOC + MW</div>
+                        </div>
+                    </div>
+
+                    <!-- Offerings Section -->
+                    <div style="margin-bottom: 16px;">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.875rem; font-weight: 600; color: #374151;">Mapped Offerings</h5>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">`;
+        
+        usedOfferings.forEach((offering: any) => {
+          html += `
+                            <span style="background: #10B981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">
+                                ✓ ${offering.simplified_offering} (${offering.mapped_service_line})
+                            </span>`;
+        });
+        
+        unmappedOfferings.forEach((offering: any) => {
+          html += `
+                            <span style="background: #6B7280; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">
+                                ${offering.simplified_offering}
+                            </span>`;
+        });
+
+        html += `
+                        </div>
+                    </div>
+
+                    <!-- Service Line Revenue Breakdown -->
+                    <div style="background: white; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+                        <h5 style="margin: 0 0 8px 0; font-size: 0.875rem; font-weight: 600; color: #374151;">Service Line Revenue Breakdown</h5>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px;">`;
+        
+        // Add service line revenue breakdown
+        if (opp.service_line_revenue) {
+          Object.entries(opp.service_line_revenue).forEach(([serviceLine, revenue]: [string, any]) => {
+            html += `
+                            <div style="text-align: center; background: #F9FAFB; border-radius: 4px; padding: 8px;">
+                                <div style="font-size: 0.75rem; font-weight: 600; color: #5F249F; margin-bottom: 4px;">${serviceLine}</div>
+                                <div style="font-size: 0.875rem; font-weight: bold; color: #374151;">
+                                    $${revenue.opportunity_tcv?.toFixed(1) || '0.0'}M
+                                </div>`;
+            
+            if (revenue.line_items_tcv > 0) {
+              html += `
+                                <div style="font-size: 0.75rem; color: #6B7280;">
+                                    Items: $${revenue.line_items_tcv.toFixed(1)}M (${revenue.line_items_count})
+                                </div>`;
+            }
+            
+            html += `
+                            </div>`;
+          });
+        }
+
+        html += `
+                        </div>
+                    </div>
+
+                    <!-- Enhanced Stage Timeline with Visual Timeline -->
+                    <div style="background: white; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
+                        <h5 style="margin: 0 0 12px 0; font-size: 0.875rem; font-weight: 600; color: #374151;">Stage Timeline & Headcount</h5>`;
+        
+        // Add enhanced stage timeline
+        if (opp.timeline_by_service_line) {
+          Object.entries(opp.timeline_by_service_line).forEach(([serviceLine, stages]: [string, any]) => {
+            html += `
+                        <div style="margin-bottom: 16px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                                <h6 style="margin: 0; font-weight: 600; color: #5F249F; font-size: 0.875rem;">${serviceLine} Service Line</h6>
+                                <div style="flex: 1; height: 1px; background: #E5E7EB; margin-left: 12px;"></div>
+                            </div>
+                            
+                            <div style="position: relative;">
+                                <div style="display: flex; flex-direction: column; gap: 4px;">`;
+            
+            stages.forEach((stage: any, stageIndex: number) => {
+              const stageStartDate = new Date(stage.stage_start_date).toLocaleDateString();
+              const stageEndDate = new Date(stage.stage_end_date).toLocaleDateString();
+              
+              html += `
+                                    <div style="position: relative;">
+                                        <div style="display: flex; align-items: center;">
+                                            <div style="display: flex; flex-direction: column; align-items: center; margin-right: 12px;">
+                                                <div style="width: 8px; height: 8px; background: #5F249F; border-radius: 50%;"></div>`;
+              
+              if (stageIndex < stages.length - 1) {
+                html += `
+                                                <div style="width: 1px; height: 16px; background: #D1D5DB; margin-top: 4px;"></div>`;
+              }
+              
+              html += `
+                                            </div>
+                                            
+                                            <div style="flex: 1; background: #F9FAFB; border-radius: 4px; padding: 8px;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
+                                                    <div style="flex: 1;">
+                                                        <span style="font-weight: 600; font-size: 0.875rem;">Stage ${stage.stage_name}</span>
+                                                        <span style="margin-left: 12px; color: #6B7280;">
+                                                            ${stageStartDate} → ${stageEndDate}
+                                                        </span>
+                                                        <span style="margin-left: 12px; color: #6B7280;">
+                                                            ${stage.duration_weeks}w duration
+                                                        </span>
+                                                        <span style="margin-left: 12px; color: #6B7280;">
+                                                            ${stage.resource_category}
+                                                        </span>
+                                                    </div>
+                                                    <div style="text-align: right; margin-left: 16px; display: flex; align-items: center; gap: 12px;">
+                                                        <div>
+                                                            <span style="font-weight: bold; color: #5F249F; font-size: 0.875rem;">
+                                                                ${stage.fte_required.toFixed(1)} FTE
+                                                            </span>
+                                                        </div>
+                                                        <div>
+                                                            <span style="color: #6B7280; font-size: 0.75rem;">
+                                                                ${stage.total_effort_weeks.toFixed(1)}w effort
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>`;
+            });
+            
+            html += `
+                                </div>
+                            </div>
+                        </div>`;
+          });
+        }
+
+        html += `
+                    </div>
+
+                    <!-- Timeline Calculation Breakdown & Math -->
+                    <div style="background: white; border-radius: 6px; padding: 12px;">
+                        <h5 style="margin: 0 0 12px 0; font-size: 0.875rem; font-weight: 600; color: #374151;">Timeline Calculation Breakdown & Math</h5>
+                        <div style="display: flex; flex-direction: column; gap: 16px;">`;
+        
+        // Add comprehensive calculation breakdown for each service line
+        Object.entries(opp.calculation_breakdown || {}).forEach(([serviceLine, breakdown]: [string, any]) => {
+          html += `
+                            <div style="border: 1px solid #E5E7EB; border-radius: 4px; padding: 16px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                                    <h6 style="margin: 0; font-weight: 600; color: #5F249F; font-size: 1rem;">${serviceLine} Service Line</h6>
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 1.125rem; font-weight: bold; color: #5F249F;">
+                                            ${breakdown.total_final_fte?.toFixed(1)} FTE
+                                        </div>
+                                        <div style="font-size: 0.75rem; color: #6B7280;">
+                                            ${breakdown.total_effort_weeks?.toFixed(1)} total effort weeks
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Configuration Summary -->
+                                <div style="background: #F9FAFB; border-radius: 4px; padding: 12px; margin-bottom: 12px;">
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-size: 0.75rem;">
+                                        <div>
+                                            <span style="color: #6B7280;">Service Line TCV:</span>
+                                            <div style="font-weight: 500;">$${breakdown.service_line_tcv?.toFixed(1)}M</div>
+                                        </div>
+                                        <div>
+                                            <span style="color: #6B7280;">Resource Category:</span>
+                                            <div style="font-weight: 500;">${breakdown.resource_category}</div>
+                                        </div>
+                                        <div>
+                                            <span style="color: #6B7280;">TCV Range:</span>
+                                            <div style="font-weight: 500;">${breakdown.resource_category_range}</div>
+                                        </div>
+                                        <div>
+                                            <span style="color: #6B7280;">Unique Offerings:</span>
+                                            <div style="font-weight: 500;">
+                                                ${breakdown.unique_offerings_count} (threshold: ${breakdown.offering_threshold})
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Offering Multiplier Calculation -->
+                                <div style="background: #EFF6FF; border-radius: 4px; padding: 12px; margin-bottom: 12px;">
+                                    <div style="font-size: 0.75rem; font-weight: 600; color: #1E40AF; margin-bottom: 8px;">Offering Multiplier Calculation:</div>
+                                    <div style="font-size: 0.75rem; color: #1E40AF;">`;
+          
+          if (breakdown.unique_offerings_count > breakdown.offering_threshold) {
+            html += `
+                                        Base: 1.0 + (${breakdown.unique_offerings_count} offerings - ${breakdown.offering_threshold} threshold) × ${breakdown.increment_multiplier} increment = <strong>${breakdown.offering_multiplier?.toFixed(3)}</strong>`;
+          } else {
+            html += `
+                                        Base multiplier: 1.0 (offerings below threshold)`;
+          }
+          
+          html += `
+                                    </div>
+                                </div>
+
+                                <!-- Stage-by-Stage Calculation -->
+                                <div style="margin-bottom: 12px;">
+                                    <div style="font-size: 0.75rem; font-weight: 600; color: #6B7280; margin-bottom: 8px;">Stage-by-Stage Calculation:</div>`;
+          
+          breakdown.calculation_steps?.forEach((step: any, stepIndex: number) => {
+            html += `
+                                    <div style="background: #F9FAFB; border-radius: 4px; padding: 8px; margin-bottom: 4px; font-size: 0.75rem;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="flex: 1;">
+                                                <span style="font-weight: 600;">Stage ${step.stage}:</span>
+                                                <span style="margin-left: 8px; color: #6B7280;">
+                                                    Base ${step.base_fte_configured?.toFixed(1)} FTE × ${step.offering_multiplier_applied?.toFixed(2)} multiplier × ${step.duration_weeks}w = ${step.total_effort_weeks?.toFixed(1)} effort weeks
+                                                </span>
+                                            </div>
+                                            <div style="text-align: right; margin-left: 16px;">
+                                                <span style="font-weight: bold; color: #5F249F;">
+                                                    ${step.final_fte_calculated?.toFixed(1)} FTE
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>`;
+          });
+          
+          html += `
+                                </div>
+
+                                <!-- Summary Totals -->
+                                <div style="border-top: 1px solid #E5E7EB; padding-top: 12px;">
+                                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 0.75rem;">
+                                        <div style="text-align: center;">
+                                            <div style="color: #6B7280;">Total Base FTE</div>
+                                            <div style="font-weight: bold;">${breakdown.total_base_fte?.toFixed(1)}</div>
+                                        </div>
+                                        <div style="text-align: center;">
+                                            <div style="color: #6B7280;">After Multiplier</div>
+                                            <div style="font-weight: bold; color: #5F249F;">${breakdown.total_final_fte?.toFixed(1)}</div>
+                                        </div>
+                                        <div style="text-align: center;">
+                                            <div style="color: #6B7280;">Total Effort</div>
+                                            <div style="font-weight: bold;">${breakdown.total_effort_weeks?.toFixed(1)}w</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>`;
+        });
+
+        html += `
+                        </div>
+                    </div>
+                </div>`;
+      });
+
+      html += `
+            </div>
+        </div>`;
+    });
+  }
+
+  return html;
+};
+
+export const exportTopAverageHeadcountToPDF = async (reportData: any, filename: string) => {
+  try {
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 15;
+    const contentWidth = pageWidth - (2 * margin);
+    let currentY = margin;
+
+    // Helper function to add a new page if needed
+    const checkPageBreak = (requiredHeight: number) => {
+      if (currentY + requiredHeight > pageHeight - margin) {
+        pdf.addPage();
+        currentY = margin;
+        return true;
+      }
+      return false;
+    };
+
+    // Helper function to wrap text
+    const wrapText = (text: string, maxWidth: number, fontSize: number) => {
+      pdf.setFontSize(fontSize);
+      return pdf.splitTextToSize(text, maxWidth);
+    };
+
+    // Title
+    pdf.setFontSize(20);
+    pdf.setFont('helvetica', 'bold');
+    const title = reportData.report_name || 'Top ITOC + MW Revenue Report';
+    pdf.text(title, margin, currentY);
+    currentY += 15;
+
+    // Summary information
+    pdf.setFontSize(12);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(`Generated: ${new Date().toLocaleString()}`, margin, currentY);
+    currentY += 6;
+    pdf.text(`Total Opportunities: ${reportData.summary?.total_opportunities || 0}`, margin, currentY);
+    currentY += 6;
+    pdf.text(`Categories: ${reportData.summary?.categories_analyzed?.join(', ') || 'N/A'}`, margin, currentY);
+    currentY += 15;
+
+    // Process each category
+    if (reportData.category_data) {
+      Object.entries(reportData.category_data).forEach(([category, opportunities]: [string, any]) => {
+        checkPageBreak(20);
+        
+        // Category header
+        pdf.setFontSize(16);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(`${category} - Top 10 by ITOC + MW Revenue`, margin, currentY);
+        currentY += 10;
+
+        // Category summary
+        pdf.setFontSize(10);
+        pdf.setFont('helvetica', 'normal');
+        const range = reportData.summary?.itoc_mw_revenue_range?.[category];
+        if (range) {
+          pdf.text(`ITOC+MW Range: $${range.lowest?.toFixed(1)}M - $${range.highest?.toFixed(1)}M`, margin, currentY);
+          currentY += 8;
+        }
+
+        // Opportunities
+        opportunities.forEach((opp: any, index: number) => {
+          checkPageBreak(35);
+
+          // Opportunity header
+          pdf.setFontSize(12);
+          pdf.setFont('helvetica', 'bold');
+          const oppTitle = `#${index + 1}: ${opp.opportunity_name}`;
+          const wrappedTitle = wrapText(oppTitle, contentWidth - 60, 12);
+          pdf.text(wrappedTitle, margin, currentY);
+          
+          // FTE and Revenue on the right
+          pdf.text(`${opp.avg_headcount?.toFixed(1)} FTE`, pageWidth - margin - 40, currentY);
+          pdf.text(`$${opp.itoc_mw_total_revenue?.toFixed(1)}M`, pageWidth - margin - 40, currentY + 5);
+          
+          currentY += Math.max(wrappedTitle.length * 5, 10);
+
+          // Opportunity details
+          pdf.setFontSize(9);
+          pdf.setFont('helvetica', 'normal');
+          
+          const details = [
+            `ID: ${opp.opportunity_id}`,
+            `Account: ${opp.account_name}`,
+            `Stage: ${opp.sales_stage}`,
+            `TCV: $${opp.tcv_millions?.toFixed(1)}M`,
+            `Owner: ${opp.opportunity_owner}`
+          ];
+          
+          // Split details into two columns
+          const col1 = details.slice(0, 3);
+          const col2 = details.slice(3);
+          
+          col1.forEach((detail, i) => {
+            pdf.text(detail, margin, currentY + (i * 4));
+          });
+          
+          col2.forEach((detail, i) => {
+            pdf.text(detail, margin + (contentWidth / 2), currentY + (i * 4));
+          });
+          
+          currentY += 14;
+
+          // Stage Timeline & Headcount
+          const timelineData = opp.timeline_by_service_line || {};
+          if (Object.keys(timelineData).length > 0) {
+            checkPageBreak(25);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text('Stage Timeline & Headcount:', margin, currentY);
+            currentY += 6;
+
+            Object.entries(timelineData).forEach(([serviceLine, stages]: [string, any]) => {
+              pdf.setFontSize(9);
+              pdf.setFont('helvetica', 'bold');
+              pdf.text(`${serviceLine} Service Line:`, margin + 5, currentY);
+              currentY += 5;
+
+              pdf.setFont('helvetica', 'normal');
+              stages.forEach((stage: any) => {
+                checkPageBreak(8);
+                const stageText = `Stage ${stage.stage_name}: ${new Date(stage.stage_start_date).toLocaleDateString()} → ${new Date(stage.stage_end_date).toLocaleDateString()} (${stage.duration_weeks}w) - ${stage.fte_required?.toFixed(1)} FTE, ${stage.total_effort_weeks?.toFixed(1)}w effort`;
+                const wrappedStage = wrapText(stageText, contentWidth - 10, 8);
+                wrappedStage.forEach((line: string) => {
+                  pdf.text(line, margin + 10, currentY);
+                  currentY += 4;
+                });
+              });
+              currentY += 3;
+            });
+          }
+
+          // Enhanced Mapped Offerings
+          if (opp.mapped_offerings && opp.mapped_offerings.length > 0) {
+            checkPageBreak(20);
+            pdf.setFontSize(9);
+            pdf.setFont('helvetica', 'bold');
+            pdf.text(`Mapped Offerings (${opp.mapped_offerings.length}):`, margin, currentY);
+            currentY += 5;
+
+            // Group by service line
+            const groupedOfferings = opp.mapped_offerings.reduce((acc: any, offering: any) => {
+              const sl = offering.mapped_service_line;
+              if (!acc[sl]) acc[sl] = [];
+              acc[sl].push(offering);
+              return acc;
+            }, {});
+
+            Object.entries(groupedOfferings).forEach(([serviceLine, offerings]: [string, any]) => {
+              pdf.setFont('helvetica', 'bold');
+              pdf.text(`${serviceLine}:`, margin + 5, currentY);
+              currentY += 4;
+
+              pdf.setFont('helvetica', 'normal');
+              offerings.forEach((offering: any) => {
+                const status = offering.used_in_calculation ? '✓ [USED]' : offering.is_mapped ? '[MAPPED]' : '[UNMAPPED]';
+                const offeringText = `  ${status} ${offering.simplified_offering}`;
+                pdf.text(offeringText, margin + 10, currentY);
+                currentY += 3;
+              });
+              currentY += 2;
+            });
+          }
+
+          // Comprehensive Calculation Breakdown
+          const calcBreakdown = opp.calculation_breakdown || {};
+          if (Object.keys(calcBreakdown).length > 0) {
+            Object.entries(calcBreakdown).forEach(([sl, breakdown]: [string, any]) => {
+              checkPageBreak(35);
+              pdf.setFontSize(10);
+              pdf.setFont('helvetica', 'bold');
+              pdf.text(`${sl} Timeline Calculation Breakdown:`, margin, currentY);
+              currentY += 6;
+
+              // Configuration details
+              pdf.setFontSize(8);
+              pdf.setFont('helvetica', 'normal');
+              pdf.text(`Service Line TCV: $${breakdown.service_line_tcv?.toFixed(1)}M`, margin + 5, currentY);
+              pdf.text(`Resource Category: ${breakdown.resource_category}`, margin + 80, currentY);
+              currentY += 4;
+              pdf.text(`TCV Range: ${breakdown.resource_category_range}`, margin + 5, currentY);
+              pdf.text(`Unique Offerings: ${breakdown.unique_offerings_count} (threshold: ${breakdown.offering_threshold})`, margin + 80, currentY);
+              currentY += 6;
+
+              // Offering multiplier calculation
+              pdf.setFont('helvetica', 'bold');
+              pdf.text('Offering Multiplier Calculation:', margin + 5, currentY);
+              currentY += 4;
+              pdf.setFont('helvetica', 'normal');
+              if (breakdown.unique_offerings_count > breakdown.offering_threshold) {
+                const multiplierText = `1.0 + (${breakdown.unique_offerings_count} - ${breakdown.offering_threshold}) × ${breakdown.increment_multiplier} = ${breakdown.offering_multiplier?.toFixed(3)}`;
+                pdf.text(multiplierText, margin + 10, currentY);
+              } else {
+                pdf.text('Base multiplier: 1.0 (offerings below threshold)', margin + 10, currentY);
+              }
+              currentY += 6;
+
+              // Stage-by-stage calculations
+              pdf.setFont('helvetica', 'bold');
+              pdf.text('Stage-by-Stage Calculation:', margin + 5, currentY);
+              currentY += 4;
+
+              if (breakdown.calculation_steps) {
+                breakdown.calculation_steps.forEach((step: any) => {
+                  checkPageBreak(4);
+                  pdf.setFont('helvetica', 'normal');
+                  const stepText = `Stage ${step.stage}: Base ${step.base_fte_configured?.toFixed(1)} FTE × ${step.offering_multiplier_applied?.toFixed(2)} × ${step.duration_weeks}w = ${step.final_fte_calculated?.toFixed(1)} FTE (${step.total_effort_weeks?.toFixed(1)}w effort)`;
+                  const wrappedStep = wrapText(stepText, contentWidth - 15, 8);
+                  wrappedStep.forEach((line: string) => {
+                    pdf.text(line, margin + 10, currentY);
+                    currentY += 3;
+                  });
+                });
+              }
+
+              // Summary totals
+              currentY += 3;
+              pdf.setFont('helvetica', 'bold');
+              pdf.text(`Total: Base ${breakdown.total_base_fte?.toFixed(1)} FTE → After Multiplier ${breakdown.total_final_fte?.toFixed(1)} FTE (${breakdown.total_effort_weeks?.toFixed(1)}w effort)`, margin + 5, currentY);
+              currentY += 8;
+            });
+          }
+
+          currentY += 8; // Space between opportunities
+        });
+        
+        currentY += 10; // Space between categories
+      });
+    }
+
+    // Add footer
+    const pageCount = pdf.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(
+        `Generated by Resource Forecasting & Opportunity Tracker - Page ${i} of ${pageCount}`,
+        margin,
+        pageHeight - 5
+      );
+    }
+
+    pdf.save(filename);
+  } catch (error) {
+    console.error('Error exporting to PDF:', error);
+    throw new Error(`PDF export failed: ${error.message || 'Unknown error'}`);
+  }
 };
 
 // Helper function to generate timeline chart HTML
@@ -2944,6 +3649,13 @@ export const generateReportSummary = (reportData: any, reportType: string): stri
   const generatedAt = new Date().toLocaleString();
   
   switch (reportType) {
+    case 'top-average-headcount':
+      return `Top ITOC + MW Revenue Report
+Generated: ${generatedAt}
+Total Opportunities: ${reportData.summary?.total_opportunities || 0}
+Categories Analyzed: ${reportData.summary?.categories_analyzed?.length || 0}
+Sales Stages: ${reportData.filters_applied?.sales_stages?.join(', ') || 'N/A'}`;
+
     case 'resource-utilization':
       return `Resource Utilization Report
 Generated: ${generatedAt}
