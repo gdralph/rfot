@@ -89,7 +89,8 @@ async def get_opportunities(
     status: Optional[Union[str, List[str]]] = Query(None),
     category: Optional[Union[str, List[str]]] = Query(None),
     search: Optional[str] = Query(None),
-    service_line: Optional[Union[str, List[str]]] = Query(None)
+    service_line: Optional[Union[str, List[str]]] = Query(None),
+    custom_tracking_field_2: Optional[Union[str, List[str]]] = Query(None)
 ):
     """Get opportunities with optional filtering."""
     # Parse multi-select parameters
@@ -97,6 +98,7 @@ async def get_opportunities(
     statuses = parse_multi_param(status)
     categories = parse_multi_param(category)
     service_lines = parse_multi_param(service_line)
+    tracking_colors = parse_multi_param(custom_tracking_field_2)
     
     # Use safe logging to avoid exposing sensitive search terms
     log_safely(
@@ -109,7 +111,8 @@ async def get_opportunities(
             "statuses": statuses, 
             "categories": categories, 
             "search": search,  # Will be sanitized if contains sensitive patterns
-            "service_lines": service_lines
+            "service_lines": service_lines,
+            "tracking_colors": tracking_colors
         }
     )
     
@@ -176,6 +179,9 @@ async def get_opportunities(
         
         if category_conditions:
             statement = statement.where(or_(*category_conditions))
+    
+    if tracking_colors:
+        statement = statement.where(Opportunity.custom_tracking_field_2.in_(tracking_colors))
     
     if search:
         # Sanitize search input to prevent SQL injection

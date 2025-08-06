@@ -174,6 +174,7 @@ export interface OpportunityFilters {
   service_line?: string | string[];
   status?: string | string[];
   category?: string | string[];
+  custom_tracking_field_2?: string | string[];
 }
 
 // Response Types

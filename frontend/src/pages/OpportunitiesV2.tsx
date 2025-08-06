@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Filter, Eye, Edit, Grid, List, Star, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Search, Filter, Eye, Edit, Grid, List, Star, AlertCircle, CheckCircle2, Clock, Circle } from 'lucide-react';
 import { useOpportunities } from '../hooks/useOpportunities';
 import { useCategories } from '../hooks/useConfig';
 import type { OpportunityFilters, Opportunity, OpportunityCategory } from '../types/index.js';
@@ -31,6 +31,20 @@ const getOpportunityCategory = (tcvMillions: number | undefined, categories: Opp
   // If no category matches, return the highest category (usually Cat A)
   const highestCategory = categories.find(cat => cat.max_tcv === null);
   return highestCategory?.name || 'Uncategorized';
+};
+
+// Helper function to get color indicator based on custom_tracking_field_2
+const getColorIndicator = (colorValue: string | undefined) => {
+  if (!colorValue) return null;
+  
+  const colorMap = {
+    'RED': 'text-red-500',
+    'GREEN': 'text-green-500',
+    'AMBER': 'text-amber-500',
+    'BLACK': 'text-gray-800'
+  };
+  
+  return colorMap[colorValue.toUpperCase() as keyof typeof colorMap] || null;
 };
 
 // Helper function to map API opportunity to display format
@@ -446,14 +460,20 @@ const OpportunitiesV2: React.FC = () => {
               
               <div>
                 <label className="block text-xs font-medium text-dxc-dark-gray mb-1">
-                  Value Range
+                  Tracking Color
                 </label>
-                <select className="w-full text-sm border border-gray-300 rounded px-2 py-1.5">
-                  <option value="">All Values</option>
-                  <option value="high">$5M+</option>
-                  <option value="medium">$1M - $5M</option>
-                  <option value="low">Under $1M</option>
-                </select>
+                <MultiSelect
+                  options={[
+                    { value: 'RED', label: '🔴 Red' },
+                    { value: 'GREEN', label: '🟢 Green' },
+                    { value: 'AMBER', label: '🟡 Amber' },
+                    { value: 'BLACK', label: '⚫ Black' }
+                  ]}
+                  selected={Array.isArray(filters.custom_tracking_field_2) ? filters.custom_tracking_field_2 : (filters.custom_tracking_field_2 ? [filters.custom_tracking_field_2] : [])}
+                  onChange={(values) => handleFilterChange('custom_tracking_field_2', values)}
+                  placeholder="All Colors"
+                  className="w-full text-sm"
+                />
               </div>
             </div>
           </div>
@@ -484,7 +504,10 @@ const OpportunitiesV2: React.FC = () => {
                 label: 'Account', 
                 sortable: true,
                 render: (value: string, item: any) => (
-                  <div className={`font-semibold ${getSecurityClearanceColorClass(item.security_clearance) || 'text-dxc-dark-gray'}`}>
+                  <div className={`font-semibold ${getSecurityClearanceColorClass(item.security_clearance) || 'text-dxc-dark-gray'} flex items-center gap-2`}>
+                    {getColorIndicator(item.custom_tracking_field_2) && (
+                      <Circle className={`w-3 h-3 fill-current ${getColorIndicator(item.custom_tracking_field_2)}`} />
+                    )}
                     {value || <span className="text-dxc-medium-gray italic">No account</span>}
                   </div>
                 )
@@ -508,12 +531,17 @@ const OpportunitiesV2: React.FC = () => {
             <div key={opportunity.id || Math.random()} className="bg-white rounded-lg border shadow-sm p-4 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <Link 
-                    to={`/v2/opportunity/${opportunity.id || 0}`}
-                    className="font-medium text-dxc-bright-purple hover:text-dxc-dark-purple text-sm"
-                  >
-                    {opportunity.name}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    {getColorIndicator(opportunity.custom_tracking_field_2) && (
+                      <Circle className={`w-3 h-3 fill-current ${getColorIndicator(opportunity.custom_tracking_field_2)}`} />
+                    )}
+                    <Link 
+                      to={`/v2/opportunity/${opportunity.id || 0}`}
+                      className="font-medium text-dxc-bright-purple hover:text-dxc-dark-purple text-sm"
+                    >
+                      {opportunity.name}
+                    </Link>
+                  </div>
                   <p className="text-xs text-gray-500 mt-1">{opportunity.account_name}</p>
                 </div>
                 <input

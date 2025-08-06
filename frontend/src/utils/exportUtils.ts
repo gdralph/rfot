@@ -24,6 +24,7 @@ interface ReportData {
   stage_efforts?: unknown[];
   calculation_examples?: unknown[];
   category_data?: Record<string, unknown[]>;
+  opportunity_data?: unknown[];
 }
 
 interface UtilizationItem {
@@ -295,12 +296,13 @@ export const exportToPDF = async (elementId: string, options: ExportOptions = {}
     console.error('Error exporting to PDF:', error);
     
     // Provide more helpful error messages
-    if (error.message?.includes('PNG') || error.message?.includes('image')) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage?.includes('PNG') || errorMessage?.includes('image')) {
       throw new Error('PDF export failed due to image rendering issues. Try refreshing the page and export again.');
-    } else if (error.message?.includes('canvas') || error.message?.includes('Canvas')) {
+    } else if (errorMessage?.includes('canvas') || errorMessage?.includes('Canvas')) {
       throw new Error('PDF export failed due to content rendering issues. The report may be too complex for PDF export. Try using Excel or HTML export instead.');
     } else {
-      throw new Error(`PDF export failed: ${error.message || 'Unknown error'}`);
+      throw new Error(`PDF export failed: ${errorMessage || 'Unknown error'}`);
     }
   }
 };
@@ -411,6 +413,71 @@ export const convertReportDataToExcel = (reportData: ReportData, reportType: str
         });
       }
       return headcountData;
+
+    case 'top-itoc-mw-revenue-with-status':
+      // Flatten category data with RAG status indicators (same structure as original report)
+      const ragStatusData: any[] = [];
+      if (reportData.category_data) {
+        Object.entries(reportData.category_data).forEach(([category, opportunities]: [string, any]) => {
+          opportunities.forEach((opp: any, index: number) => {
+            // Calculate service line revenue breakdown
+            const serviceLineRevenue: string[] = [];
+            Object.entries(opp.service_line_revenue || {}).forEach(([sl, data]: [string, any]) => {
+              if (data.opportunity_tcv > 0) {
+                serviceLineRevenue.push(`${sl}: $${data.opportunity_tcv.toFixed(1)}M`);
+              }
+            });
+            
+            // Offerings breakdown
+            const usedOfferings = opp.mapped_offerings.filter((o: any) => o.used_in_calculation);
+            const mappedNotUsed = opp.mapped_offerings.filter((o: any) => o.is_mapped && !o.used_in_calculation);
+            const unmappedOfferings = opp.mapped_offerings.filter((o: any) => !o.is_mapped);
+            
+            // Stage timeline summary
+            const stageTimelines: string[] = [];
+            Object.entries(opp.timeline_by_service_line || {}).forEach(([sl, stages]: [string, any]) => {
+              stages.forEach((stage: any) => {
+                stageTimelines.push(`${sl}-${stage.stage_name}: ${stage.fte_required}FTE/${stage.duration_weeks}w`);
+              });
+            });
+            
+            // Calculation breakdown summary
+            const calcSummary: string[] = [];
+            Object.entries(opp.calculation_breakdown || {}).forEach(([sl, calc]: [string, any]) => {
+              calcSummary.push(`${sl}: ${calc.unique_offerings_count} offerings × ${calc.offering_multiplier} multiplier`);
+            });
+            
+            ragStatusData.push({
+              'Rank': index + 1,
+              'Category': category,
+              'RAG Status': opp.rag_status,
+              'Opportunity ID': opp.opportunity_id,
+              'Opportunity Name': opp.opportunity_name,
+              'Account Name': opp.account_name,
+              'Sales Stage': opp.sales_stage,
+              'Opportunity Category': opp.opportunity_category,
+              'TCV (Millions)': opp.tcv_millions?.toFixed(1),
+              'ITOC + MW Revenue': opp.itoc_mw_total_revenue?.toFixed(1),
+              'Close Date': opp.close_date,
+              'Lead Offering': opp.lead_offering_l1,
+              'Opportunity Owner': opp.opportunity_owner,
+              'Average Headcount (FTE)': opp.avg_headcount?.toFixed(1),
+              'Total Effort Weeks': opp.total_effort_weeks?.toFixed(1),
+              'Service Line Revenue': serviceLineRevenue.join('; '),
+              'Active Service Lines': Object.keys(opp.timeline_by_service_line || {}).join(', '),
+              'Stage Timeline Summary': stageTimelines.join('; '),
+              'Used Offerings': usedOfferings.map((o: any) => o.simplified_offering).join('; '),
+              'Mapped Not Used': mappedNotUsed.map((o: any) => o.simplified_offering).join('; '),
+              'Unmapped Offerings': unmappedOfferings.map((o: any) => o.simplified_offering).join('; '),
+              'Total Offerings': opp.mapped_offerings.length,
+              'Used in Calculation': usedOfferings.length,
+              'Calculation Summary': calcSummary.join('; '),
+              'Custom Tracking Field 2': opp.custom_tracking_field_2_raw || ''
+            });
+          });
+        });
+      }
+      return ragStatusData;
 
     case 'resource-utilization':
       return reportData.utilization_data?.map((item: UtilizationItem) => ({
@@ -1447,7 +1514,7 @@ const generateGenericReportHTML = (reportData: any, reportType: string): string 
     return generateConfigurationHTML(reportData);
   }
   
-  if (reportType === 'top-average-headcount') {
+  if (reportType === 'top-average-headcount' || reportType === 'top-itoc-mw-revenue-with-status') {
     return generateTopAverageHeadcountHTML(reportData);
   }
   
@@ -2043,6 +2110,26 @@ const generateTopAverageHeadcountHTML = (reportData: any): string => {
                 ${reportData.filters_applied?.sales_stages?.join(', ') || 'N/A'}
             </p>
         </div>
+        ${reportData.summary?.rag_status_distribution ? `
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #DC2626; font-size: 0.875rem;">RED Opportunities</h4>
+            <p style="margin: 0; color: #DC2626; font-size: 2rem; font-weight: bold;">
+                ${reportData.summary.rag_status_distribution.RED || 0}
+            </p>
+        </div>
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #D97706; font-size: 0.875rem;">AMBER Opportunities</h4>
+            <p style="margin: 0; color: #D97706; font-size: 2rem; font-weight: bold;">
+                ${reportData.summary.rag_status_distribution.AMBER || 0}
+            </p>
+        </div>
+        <div style="background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center;">
+            <h4 style="margin: 0 0 8px 0; color: #16A34A; font-size: 0.875rem;">GREEN Opportunities</h4>
+            <p style="margin: 0; color: #16A34A; font-size: 2rem; font-weight: bold;">
+                ${reportData.summary.rag_status_distribution.GREEN || 0}
+            </p>
+        </div>
+        ` : ''}
     </div>`;
 
   // Generate content for each category
@@ -2051,7 +2138,7 @@ const generateTopAverageHeadcountHTML = (reportData: any): string => {
       html += `
         <div style="background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 24px; overflow: hidden;">
             <div style="background: linear-gradient(135deg, #5F249F, #7C3AED); color: white; padding: 20px;">
-                <h3 style="margin: 0; font-size: 1.5rem; font-weight: 600;">${category} - Top 10 by ITOC + MW Revenue</h3>
+                <h3 style="margin: 0; font-size: 1.5rem; font-weight: 600;">${category} - ${reportData.summary?.rag_status_distribution ? 'All RED/AMBER/GREEN' : 'Top 10'} by ITOC + MW Revenue</h3>
                 <p style="margin: 8px 0 0 0; opacity: 0.9;">
                     ITOC+MW Range: $${reportData.summary?.itoc_mw_revenue_range?.[category]?.lowest?.toFixed(1) || '0.0'}M - 
                     $${reportData.summary?.itoc_mw_revenue_range?.[category]?.highest?.toFixed(1) || '0.0'}M
@@ -2071,22 +2158,32 @@ const generateTopAverageHeadcountHTML = (reportData: any): string => {
                                 <span style="background: #5F249F; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">
                                     #${index + 1}
                                 </span>
+                                ${opp.rag_status ? `
+                                <span style="background: ${opp.rag_status === 'RED' ? '#FEE2E2' : opp.rag_status === 'AMBER' ? '#FEF3C7' : opp.rag_status === 'GREEN' ? '#D1FAE5' : '#F3F4F6'}; color: ${opp.rag_status === 'RED' ? '#DC2626' : opp.rag_status === 'AMBER' ? '#D97706' : opp.rag_status === 'GREEN' ? '#16A34A' : '#6B7280'}; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">
+                                    ${opp.rag_status}
+                                </span>
+                                ` : ''}
                                 <h4 style="margin: 0; font-size: 1.125rem; font-weight: 600; color: #111827;">
                                     ${opp.opportunity_name}
                                 </h4>
                             </div>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 12px; font-size: 0.875rem;">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 12px; font-size: 0.875rem; color: #6B7280;">
                                 <div><strong>ID:</strong> ${opp.opportunity_id}</div>
                                 <div><strong>Account:</strong> ${opp.account_name}</div>
                                 <div><strong>Stage:</strong> ${opp.sales_stage}</div>
                                 <div><strong>Category:</strong> ${opp.opportunity_category}</div>
-                                <div><strong>TCV:</strong> $${opp.tcv_millions?.toFixed(1)}M</div>
+                                <div><strong>TCV:</strong> $${opp.tcv_millions?.toFixed(1) || '0.0'}M</div>
                                 <div><strong>Owner:</strong> ${opp.opportunity_owner}</div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; font-size: 0.875rem; color: #6B7280;">
+                                <div><strong>Close Date:</strong> ${opp.close_date ? new Date(opp.close_date).toLocaleDateString() : 'TBD'}</div>
+                                <div><strong>Lead Offering:</strong> ${opp.lead_offering_l1 || 'N/A'}</div>
+                                <div><strong>Total Effort:</strong> ${opp.total_effort_weeks?.toFixed(1) || '0.0'} weeks</div>
                             </div>
                         </div>
                         <div style="text-align: right; margin-left: 16px;">
                             <div style="font-size: 1.5rem; font-weight: bold; color: #5F249F;">
-                                ${opp.avg_headcount?.toFixed(1)} FTE
+                                ${opp.avg_headcount?.toFixed(1) || '0.0'} FTE
                             </div>
                             <div style="font-size: 1rem; font-weight: bold; color: #16A34A; margin-top: 4px;">
                                 $${opp.itoc_mw_total_revenue?.toFixed(1) || '0.0'}M
@@ -2149,11 +2246,20 @@ const generateTopAverageHeadcountHTML = (reportData: any): string => {
                         </div>
                     </div>
 
-                    <!-- Enhanced Stage Timeline with Visual Timeline -->
+                    <!-- Enhanced Stage Timeline with Editable Fields -->
                     <div style="background: white; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
-                        <h5 style="margin: 0 0 12px 0; font-size: 0.875rem; font-weight: 600; color: #374151;">Stage Timeline & Headcount</h5>`;
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h5 style="margin: 0; font-size: 0.875rem; font-weight: 600; color: #374151;">Stage Timeline & Headcount</h5>
+                            <button 
+                                onclick="exportTimelineChanges('${opp.opportunity_id}')" 
+                                style="background: #5F249F; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 4px;"
+                                title="Export timeline changes as JSON for database update"
+                            >
+                                <span>📁</span> Export Changes
+                            </button>
+                        </div>`;
         
-        // Add enhanced stage timeline
+        // Add interactive stage timeline
         if (opp.timeline_by_service_line) {
           Object.entries(opp.timeline_by_service_line).forEach(([serviceLine, stages]: [string, any]) => {
             html += `
@@ -2163,61 +2269,61 @@ const generateTopAverageHeadcountHTML = (reportData: any): string => {
                                 <div style="flex: 1; height: 1px; background: #E5E7EB; margin-left: 12px;"></div>
                             </div>
                             
-                            <div style="position: relative;">
-                                <div style="display: flex; flex-direction: column; gap: 4px;">`;
+                            <div style="overflow-x: auto;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                                    <thead>
+                                        <tr style="background: #F3F4F6;">
+                                            <th style="padding: 8px; text-align: left; border: 1px solid #E5E7EB; font-weight: 600;">Stage</th>
+                                            <th style="padding: 8px; text-align: left; border: 1px solid #E5E7EB; font-weight: 600;">Date Range</th>
+                                            <th style="padding: 8px; text-align: center; border: 1px solid #E5E7EB; font-weight: 600;">Duration (weeks)</th>
+                                            <th style="padding: 8px; text-align: center; border: 1px solid #E5E7EB; font-weight: 600;">Average FTE</th>
+                                            <th style="padding: 8px; text-align: center; border: 1px solid #E5E7EB; font-weight: 600;">Total Effort</th>
+                                            <th style="padding: 8px; text-align: left; border: 1px solid #E5E7EB; font-weight: 600;">Category</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
             
-            stages.forEach((stage: any, stageIndex: number) => {
+            stages.forEach((stage: any, _stageIndex: number) => {
               const stageStartDate = new Date(stage.stage_start_date).toLocaleDateString();
               const stageEndDate = new Date(stage.stage_end_date).toLocaleDateString();
+              const stageId = `${opp.opportunity_id}_${serviceLine}_${stage.stage_name}`;
               
               html += `
-                                    <div style="position: relative;">
-                                        <div style="display: flex; align-items: center;">
-                                            <div style="display: flex; flex-direction: column; align-items: center; margin-right: 12px;">
-                                                <div style="width: 8px; height: 8px; background: #5F249F; border-radius: 50%;"></div>`;
-              
-              if (stageIndex < stages.length - 1) {
-                html += `
-                                                <div style="width: 1px; height: 16px; background: #D1D5DB; margin-top: 4px;"></div>`;
-              }
-              
-              html += `
-                                            </div>
-                                            
-                                            <div style="flex: 1; background: #F9FAFB; border-radius: 4px; padding: 8px;">
-                                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem;">
-                                                    <div style="flex: 1;">
-                                                        <span style="font-weight: 600; font-size: 0.875rem;">Stage ${stage.stage_name}</span>
-                                                        <span style="margin-left: 12px; color: #6B7280;">
-                                                            ${stageStartDate} → ${stageEndDate}
-                                                        </span>
-                                                        <span style="margin-left: 12px; color: #6B7280;">
-                                                            ${stage.duration_weeks}w duration
-                                                        </span>
-                                                        <span style="margin-left: 12px; color: #6B7280;">
-                                                            ${stage.resource_category}
-                                                        </span>
-                                                    </div>
-                                                    <div style="text-align: right; margin-left: 16px; display: flex; align-items: center; gap: 12px;">
-                                                        <div>
-                                                            <span style="font-weight: bold; color: #5F249F; font-size: 0.875rem;">
-                                                                ${stage.fte_required.toFixed(1)} FTE
-                                                            </span>
-                                                        </div>
-                                                        <div>
-                                                            <span style="color: #6B7280; font-size: 0.75rem;">
-                                                                ${stage.total_effort_weeks.toFixed(1)}w effort
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>`;
+                                        <tr data-opportunity-id="${opp.opportunity_id}" data-service-line="${serviceLine}" data-stage="${stage.stage_name}">
+                                            <td style="padding: 8px; border: 1px solid #E5E7EB; font-weight: 600;">${stage.stage_name}</td>
+                                            <td style="padding: 8px; border: 1px solid #E5E7EB; color: #6B7280;">${stageStartDate} → ${stageEndDate}</td>
+                                            <td style="padding: 8px; border: 1px solid #E5E7EB; text-align: center;">
+                                                <input 
+                                                    type="number" 
+                                                    id="duration_${stageId}" 
+                                                    value="${stage.duration_weeks}" 
+                                                    step="0.1" 
+                                                    min="0.1"
+                                                    style="width: 60px; padding: 4px; border: 1px solid #D1D5DB; border-radius: 3px; text-align: center; font-size: 0.75rem;"
+                                                    onchange="updateCalculations('${stageId}')"
+                                                />
+                                            </td>
+                                            <td style="padding: 8px; border: 1px solid #E5E7EB; text-align: center;">
+                                                <input 
+                                                    type="number" 
+                                                    id="fte_${stageId}" 
+                                                    value="${stage.fte_required.toFixed(1)}" 
+                                                    step="0.1" 
+                                                    min="0.1"
+                                                    style="width: 60px; padding: 4px; border: 1px solid #D1D5DB; border-radius: 3px; text-align: center; font-size: 0.75rem;"
+                                                    onchange="updateCalculations('${stageId}')"
+                                                />
+                                            </td>
+                                            <td style="padding: 8px; border: 1px solid #E5E7EB; text-align: center;">
+                                                <span id="effort_${stageId}" style="font-weight: bold; color: #5F249F;">${stage.total_effort_weeks.toFixed(1)}w</span>
+                                            </td>
+                                            <td style="padding: 8px; border: 1px solid #E5E7EB; color: #6B7280;">${stage.resource_category}</td>
+                                        </tr>`;
             });
             
             html += `
-                                </div>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>`;
           });
@@ -2292,7 +2398,7 @@ const generateTopAverageHeadcountHTML = (reportData: any): string => {
                                 <div style="margin-bottom: 12px;">
                                     <div style="font-size: 0.75rem; font-weight: 600; color: #6B7280; margin-bottom: 8px;">Stage-by-Stage Calculation:</div>`;
           
-          breakdown.calculation_steps?.forEach((step: any, stepIndex: number) => {
+          breakdown.calculation_steps?.forEach((step: any) => {
             html += `
                                     <div style="background: #F9FAFB; border-radius: 4px; padding: 8px; margin-bottom: 4px; font-size: 0.75rem;">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -2346,8 +2452,132 @@ const generateTopAverageHeadcountHTML = (reportData: any): string => {
     });
   }
 
+  // Add JavaScript for interactive functionality
+  html += `
+    <script>
+        // Function to update total effort calculations when duration or FTE changes
+        function updateCalculations(stageId) {
+            const durationInput = document.getElementById('duration_' + stageId);
+            const fteInput = document.getElementById('fte_' + stageId);
+            const effortSpan = document.getElementById('effort_' + stageId);
+            
+            const duration = parseFloat(durationInput.value) || 0;
+            const fte = parseFloat(fteInput.value) || 0;
+            const totalEffort = duration * fte;
+            
+            effortSpan.textContent = totalEffort.toFixed(1) + 'w';
+            
+            // Visual feedback for changes
+            effortSpan.style.background = '#FEF3C7';
+            effortSpan.style.padding = '2px 4px';
+            effortSpan.style.borderRadius = '3px';
+            setTimeout(() => {
+                effortSpan.style.background = '';
+                effortSpan.style.padding = '';
+                effortSpan.style.borderRadius = '';
+            }, 1000);
+        }
+        
+        // Function to export timeline changes as JSON
+        function exportTimelineChanges(opportunityId) {
+            const changes = {
+                opportunity_id: opportunityId,
+                updated_at: new Date().toISOString(),
+                timeline_updates: []
+            };
+            
+            // Find all rows for this opportunity
+            const rows = document.querySelectorAll('[data-opportunity-id="' + opportunityId + '"]');
+            
+            rows.forEach(row => {
+                const serviceLine = row.getAttribute('data-service-line');
+                const stage = row.getAttribute('data-stage');
+                const stageId = opportunityId + '_' + serviceLine + '_' + stage;
+                
+                const durationInput = document.getElementById('duration_' + stageId);
+                const fteInput = document.getElementById('fte_' + stageId);
+                
+                if (durationInput && fteInput) {
+                    const duration = parseFloat(durationInput.value) || 0;
+                    const fte = parseFloat(fteInput.value) || 0;
+                    
+                    changes.timeline_updates.push({
+                        service_line: serviceLine,
+                        stage_name: stage,
+                        duration_weeks: duration,
+                        fte_required: fte,
+                        total_effort_weeks: duration * fte
+                    });
+                }
+            });
+            
+            // Create and download JSON file
+            const jsonString = JSON.stringify(changes, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = opportunityId + '_timeline_updates.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            // Show success message
+            alert('Timeline changes exported as ' + opportunityId + '_timeline_updates.json');
+        }
+        
+        // Add visual indicators for changed fields
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('input[type="number"]');
+            inputs.forEach(input => {
+                const originalValue = input.value;
+                input.addEventListener('input', function() {
+                    if (this.value !== originalValue) {
+                        this.style.background = '#FEF3C7';
+                        this.style.borderColor = '#F59E0B';
+                    } else {
+                        this.style.background = '';
+                        this.style.borderColor = '#D1D5DB';
+                    }
+                });
+            });
+        });
+    </script>
+    
+    <style>
+        /* Ensure inputs are styled consistently */
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #5F249F;
+            box-shadow: 0 0 0 2px rgba(95, 36, 159, 0.2);
+        }
+        
+        /* Hover effects for better UX */
+        input[type="number"]:hover {
+            border-color: #9CA3AF;
+        }
+        
+        /* Button hover effect */
+        button:hover {
+            background: #4C1D95 !important;
+        }
+        
+        /* Table responsive styling */
+        @media (max-width: 768px) {
+            table {
+                font-size: 0.7rem;
+            }
+            input[type="number"] {
+                width: 50px;
+            }
+        }
+    </style>`;
+
   return html;
 };
+
 
 export const exportTopAverageHeadcountToPDF = async (reportData: any, filename: string) => {
   try {
@@ -2601,7 +2831,8 @@ export const exportTopAverageHeadcountToPDF = async (reportData: any, filename: 
     pdf.save(filename);
   } catch (error) {
     console.error('Error exporting to PDF:', error);
-    throw new Error(`PDF export failed: ${error.message || 'Unknown error'}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`PDF export failed: ${errorMessage || 'Unknown error'}`);
   }
 };
 
@@ -3655,6 +3886,14 @@ Generated: ${generatedAt}
 Total Opportunities: ${reportData.summary?.total_opportunities || 0}
 Categories Analyzed: ${reportData.summary?.categories_analyzed?.length || 0}
 Sales Stages: ${reportData.filters_applied?.sales_stages?.join(', ') || 'N/A'}`;
+
+    case 'top-itoc-mw-revenue-with-status':
+      return `Top ITOC + MW Revenue Report with RAG Status
+Generated: ${generatedAt}
+Total RED/AMBER/GREEN Opportunities: ${reportData.summary?.total_opportunities || 0}
+Categories Analyzed: ${reportData.summary?.categories_analyzed?.length || 0}
+RAG Status Filter: Only RED, AMBER, GREEN opportunities included
+RED=${reportData.summary?.rag_status_distribution?.RED || 0}, AMBER=${reportData.summary?.rag_status_distribution?.AMBER || 0}, GREEN=${reportData.summary?.rag_status_distribution?.GREEN || 0}`;
 
     case 'resource-utilization':
       return `Resource Utilization Report

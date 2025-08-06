@@ -808,13 +808,27 @@ class TimelineGenerationResult(BaseModel):
 
 
 @router.get("/timeline-generation/stats", response_model=TimelineGenerationStats)
-def get_timeline_generation_stats(session: Session = Depends(get_session)):
+def get_timeline_generation_stats(
+    custom_tracking_filter: Optional[str] = Query(None, description="Comma-separated list of custom_tracking_field_2 values to filter by"),
+    session: Session = Depends(get_session)
+):
     """
     Get statistics for timeline generation - how many opportunities are eligible,
     have existing timelines, etc.
+    
+    - custom_tracking_filter: Optional comma-separated list of custom_tracking_field_2 values (e.g., "GREEN,AMBER,RED")
     """
-    # Get all opportunities
-    opportunities = session.exec(select(Opportunity)).all()
+    # Parse custom tracking filter
+    tracking_values = []
+    if custom_tracking_filter:
+        tracking_values = [v.strip() for v in custom_tracking_filter.split(',') if v.strip()]
+    
+    # Get opportunities based on custom tracking filter
+    query = select(Opportunity)
+    if tracking_values:
+        query = query.where(Opportunity.custom_tracking_field_2.in_(tracking_values))
+    
+    opportunities = session.exec(query).all()
     total_opportunities = len(opportunities)
     
     eligible_count = 0
@@ -891,11 +905,17 @@ def generate_bulk_timelines(
     
     - regenerateAll: If True, regenerates timelines for opportunities with 'Predicted' status
     - If False, only generates timelines for opportunities without existing timelines
+    - customTrackingFilter: If provided, only processes opportunities with matching custom_tracking_field_2 values
     """
     regenerate_all = request_data.get("regenerateAll", False)
+    custom_tracking_filter = request_data.get("customTrackingFilter", [])
     
-    # Get all opportunities
-    opportunities = session.exec(select(Opportunity)).all()
+    # Get opportunities based on custom tracking filter
+    query = select(Opportunity)
+    if custom_tracking_filter:
+        query = query.where(Opportunity.custom_tracking_field_2.in_(custom_tracking_filter))
+    
+    opportunities = session.exec(query).all()
     
     stats = TimelineGenerationStats(
         total_opportunities=len(opportunities),

@@ -1627,6 +1627,450 @@ async def get_top_average_headcount_report(
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 
+@router.get("/top-itoc-mw-revenue-with-status")
+async def get_top_itoc_mw_revenue_with_status_report(
+    session: Session = Depends(get_session)
+) -> Dict[str, Any]:
+    """
+    Top ITOC + MW Revenue Report with RED/AMBER/GREEN Status - Shows opportunities with 
+    RED, AMBER, or GREEN status from custom_tracking_field_2, with same detail as the 
+    original "Top ITOC + MW Revenue Report" but filtered to only include RAG status opportunities.
+    """
+    try:
+        # Get ALL opportunities with RED, AMBER, or GREEN status from any sales stage
+        # Include both opportunities with and without calculated timelines
+        base_query = select(Opportunity).where(
+            # FILTER: Only include opportunities with RED, AMBER, or GREEN status
+            Opportunity.custom_tracking_field_2.isnot(None),
+            (
+                (Opportunity.custom_tracking_field_2.ilike('%RED%')) |
+                (Opportunity.custom_tracking_field_2.ilike('%AMBER%')) |
+                (Opportunity.custom_tracking_field_2.ilike('%GREEN%')) |
+                (Opportunity.custom_tracking_field_2.ilike('%YELLOW%'))  # YELLOW maps to AMBER
+            )
+        ).order_by(Opportunity.tcv_millions.desc())
+
+        opportunities = session.exec(base_query).all()
+
+        # If no opportunities found, return empty report
+        if not opportunities:
+            return {
+                "report_name": "UK&I ITOC & MW Priority Pipeline Report",
+                "description": "UK&I opportunities with RED/AMBER/GREEN status from custom_tracking_field_2, prioritized by risk level and ITOC + MW revenue",
+                "filters_applied": {
+                    "sales_stages": ["All stages included"],
+                    "categories": ["All categories based on TCV"],
+                    "rag_status_filter": "Only RED, AMBER, GREEN opportunities",
+                    "timeline_requirement": "Includes opportunities with and without calculated timelines",
+                    "sort_criteria": "RAG status priority (RED → AMBER → GREEN), then ITOC + MW revenue descending"
+                },
+                "category_data": {},
+                "summary": {
+                    "total_opportunities": 0,
+                    "categories_analyzed": [],
+                    "avg_headcount_range": {},
+                    "itoc_mw_revenue_range": {},
+                    "rag_status_distribution": {
+                        "RED": 0,
+                        "AMBER": 0,
+                        "GREEN": 0
+                    }
+                },
+                "generated_at": datetime.utcnow().isoformat()
+            }
+
+        # Process each opportunity and determine category
+        category_data = {}
+        for opp in opportunities:
+            # Determine category based on TCV (same logic as timeline generation)
+            category = "Unknown"
+            if opp.tcv_millions:
+                if opp.tcv_millions >= 25:
+                    category = "Cat A"
+                elif opp.tcv_millions >= 5:
+                    category = "Cat B"
+                elif opp.tcv_millions >= 1:
+                    category = "Cat C"
+                else:
+                    category = "Sub $5M"
+            
+            if category not in category_data:
+                category_data[category] = []
+            
+            # Get detailed timeline data for this opportunity (may be empty)
+            timeline_query = select(OpportunityResourceTimeline).where(
+                OpportunityResourceTimeline.opportunity_id == opp.opportunity_id
+            ).order_by(OpportunityResourceTimeline.service_line, OpportunityResourceTimeline.stage_name)
+            
+            timelines = session.exec(timeline_query).all()
+            
+            # Calculate average headcount and total effort from timelines (if any)
+            avg_headcount = 0
+            total_effort = 0
+            if timelines:
+                avg_headcount = sum(float(t.fte_required) for t in timelines) / len(timelines)
+                total_effort = sum(float(t.total_effort_weeks) for t in timelines)
+            
+            # Get line items to identify mapped offerings
+            line_items_query = select(OpportunityLineItem).where(
+                OpportunityLineItem.opportunity_id == opp.opportunity_id,
+                OpportunityLineItem.internal_service.isnot(None)
+            )
+            line_items = session.exec(line_items_query).all()
+            
+            # Get ALL line items for service line revenue breakdown
+            all_line_items_query = select(OpportunityLineItem).where(
+                OpportunityLineItem.opportunity_id == opp.opportunity_id
+            )
+            all_line_items = session.exec(all_line_items_query).all()
+            
+            # Build service line revenue breakdown
+            service_line_revenue = {
+                "CES": {"opportunity_tcv": opp.ces_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                "INS": {"opportunity_tcv": opp.ins_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                "BPS": {"opportunity_tcv": opp.bps_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                "SEC": {"opportunity_tcv": opp.sec_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                "ITOC": {"opportunity_tcv": opp.itoc_millions or 0, "line_items_tcv": 0, "line_items_count": 0},
+                "MW": {"opportunity_tcv": opp.mw_millions or 0, "line_items_tcv": 0, "line_items_count": 0}
+            }
+            
+            # Calculate line items TCV by service line mapping (same as original report)
+            for item in all_line_items:
+                tcv = item.offering_tcv or 0
+                if item.internal_service:
+                    # Map internal service to service line
+                    service_line_key = None
+                    internal_service_lower = item.internal_service.lower()
+                    
+                    if any(term in internal_service_lower for term in ["modern workplace", "mw", "workplace", "collaboration", "endpoint"]):
+                        service_line_key = "MW"
+                    elif any(term in internal_service_lower for term in ["infrastructure", "itoc", "cloud", "data center", "network", "platform"]):
+                        service_line_key = "ITOC"
+                    elif any(term in internal_service_lower for term in ["ces", "consulting", "enterprise", "strategy"]):
+                        service_line_key = "CES"
+                    elif any(term in internal_service_lower for term in ["ins", "industry", "sector"]):
+                        service_line_key = "INS"
+                    elif any(term in internal_service_lower for term in ["bps", "business", "process"]):
+                        service_line_key = "BPS"
+                    elif any(term in internal_service_lower for term in ["sec", "security", "cyber"]):
+                        service_line_key = "SEC"
+                    
+                    if service_line_key and service_line_key in service_line_revenue:
+                        service_line_revenue[service_line_key]["line_items_tcv"] += tcv
+                        service_line_revenue[service_line_key]["line_items_count"] += 1
+
+            # Build stage timeline with headcount and enhanced details (same as original report)
+            stage_timeline = []
+            timeline_by_service_line = {}
+            
+            for timeline in timelines:
+                stage_info = {
+                    "stage_name": timeline.stage_name,
+                    "service_line": timeline.service_line,
+                    "fte_required": float(timeline.fte_required),
+                    "duration_weeks": float(timeline.duration_weeks),
+                    "total_effort_weeks": float(timeline.total_effort_weeks),
+                    "stage_start_date": timeline.stage_start_date.isoformat(),
+                    "stage_end_date": timeline.stage_end_date.isoformat(),
+                    "resource_category": timeline.resource_category,
+                    "category": timeline.category
+                }
+                stage_timeline.append(stage_info)
+                
+                # Group by service line for timeline visualization
+                if timeline.service_line not in timeline_by_service_line:
+                    timeline_by_service_line[timeline.service_line] = []
+                timeline_by_service_line[timeline.service_line].append(stage_info)
+            
+            # Get service line offering mappings for filtering (same as original report)
+            from app.models.config import ServiceLineOfferingMapping
+            offering_mappings = session.exec(
+                select(ServiceLineOfferingMapping)
+            ).all()
+            
+            # Create mapping dictionary for quick lookup
+            internal_service_to_sl = {}
+            for mapping in offering_mappings:
+                internal_service_to_sl[mapping.internal_service] = mapping.service_line
+
+            # Build deduplicated mapped offerings list with usage indicators (same as original report)
+            mapped_offerings = []
+            service_line_offerings = {}
+            offering_used_in_calculation = set()
+            
+            # Identify which offerings are used in timeline calculations
+            active_service_lines = set(timeline.service_line for timeline in timelines)
+            for item in line_items:
+                if item.internal_service in internal_service_to_sl:
+                    sl = internal_service_to_sl[item.internal_service]
+                    if sl in active_service_lines:
+                        offering_used_in_calculation.add(item.internal_service)
+            
+            # Build set of valid combinations from ServiceLineOfferingMapping
+            from app.models.config import ServiceLineOfferingMapping
+            all_mappings = session.exec(select(ServiceLineOfferingMapping)).all()
+            
+            valid_combinations = set()
+            for mapping in all_mappings:
+                valid_combinations.add((mapping.internal_service, mapping.simplified_offering))
+            
+            # Show ALL offerings but mark which ones are mapped/used in calculations
+            offerings_by_simplified = {}
+            for item in line_items:
+                simplified = item.simplified_offering or "N/A"
+                internal_service = item.internal_service
+                
+                # Check if this exact combination is mapped for calculations
+                is_mapped = (internal_service, simplified) in valid_combinations
+                
+                if simplified not in offerings_by_simplified:
+                    # Determine if this simplified offering is used based on its internal service
+                    is_used = is_mapped and internal_service in offering_used_in_calculation
+                    service_line = internal_service_to_sl.get(internal_service, "Unmapped") if is_mapped else "Unmapped"
+                    
+                    offerings_by_simplified[simplified] = {
+                        "simplified_offering": simplified,
+                        "internal_services": set(),
+                        "total_tcv": 0,
+                        "line_item_count": 0,
+                        "used_in_calculation": is_used,
+                        "mapped_service_line": service_line,
+                        "is_mapped": is_mapped
+                    }
+                
+                # Aggregate data
+                offerings_by_simplified[simplified]["total_tcv"] += float(item.offering_tcv) if item.offering_tcv else 0
+                offerings_by_simplified[simplified]["line_item_count"] += 1
+                offerings_by_simplified[simplified]["internal_services"].add(internal_service)
+                
+                # Update usage status if any internal service for this simplified offering is used AND mapped
+                if is_mapped and internal_service in offering_used_in_calculation:
+                    offerings_by_simplified[simplified]["used_in_calculation"] = True
+                    offerings_by_simplified[simplified]["is_mapped"] = True
+                    # Update service line to the one that's actually used in calculation
+                    offerings_by_simplified[simplified]["mapped_service_line"] = internal_service_to_sl.get(internal_service, "Unmapped")
+                
+                # Track if this offering has any mapped internal services (even if not used in timeline)
+                if is_mapped:
+                    offerings_by_simplified[simplified]["is_mapped"] = True
+                    if offerings_by_simplified[simplified]["mapped_service_line"] == "Unmapped":
+                        offerings_by_simplified[simplified]["mapped_service_line"] = internal_service_to_sl.get(internal_service, "Unmapped")
+            
+            # Convert to final format
+            for simplified_offering, data in offerings_by_simplified.items():
+                # Create internal services list for reference
+                internal_services_list = sorted(list(data["internal_services"]))
+                
+                offering_info = {
+                    "simplified_offering": simplified_offering,
+                    "internal_services": internal_services_list,
+                    "offering_tcv": data["total_tcv"],
+                    "line_item_count": data["line_item_count"],
+                    "used_in_calculation": data["used_in_calculation"],
+                    "mapped_service_line": data["mapped_service_line"],
+                    "is_mapped": data.get("is_mapped", False)
+                }
+                mapped_offerings.append(offering_info)
+                
+                # Group by service line
+                sl = data["mapped_service_line"]
+                if sl not in service_line_offerings:
+                    service_line_offerings[sl] = []
+                service_line_offerings[sl].append(offering_info)
+            
+            # Get calculation breakdown (same as original report)
+            calculation_breakdown = {}
+            for timeline in timelines:
+                sl = timeline.service_line
+                stage = timeline.stage_name
+                
+                if sl not in calculation_breakdown:
+                    # Get service line TCV from opportunity
+                    if sl == "MW":
+                        sl_tcv = opp.mw_millions or 0
+                    elif sl == "ITOC":
+                        sl_tcv = opp.itoc_millions or 0
+                    else:
+                        sl_tcv = 0
+                    
+                    # Get service line category and base FTE configuration
+                    from app.models.config import ServiceLineCategory, ServiceLineStageEffort
+                    sl_category_query = select(ServiceLineCategory).where(
+                        ServiceLineCategory.service_line == sl,
+                        ServiceLineCategory.min_tcv <= sl_tcv
+                    ).order_by(ServiceLineCategory.min_tcv.desc())
+                    sl_category = session.exec(sl_category_query).first()
+                    
+                    # Use the same offering multiplier calculation as timeline generation
+                    from app.services.resource_calculation import calculate_offering_multiplier
+                    offering_multiplier = calculate_offering_multiplier(
+                        opp.opportunity_id, sl, stage, session
+                    )
+                    
+                    # Get unique offerings count for display
+                    unique_offerings_used = len([
+                        off for off in service_line_offerings.get(sl, [])
+                        if off["used_in_calculation"]
+                    ])
+                    
+                    calculation_breakdown[sl] = {
+                        "service_line_tcv": sl_tcv,
+                        "resource_category": sl_category.name if sl_category else "Unknown",
+                        "resource_category_range": f"${sl_category.min_tcv}M{' - $' + str(sl_category.max_tcv) + 'M' if sl_category and sl_category.max_tcv else '+'}" if sl_category else "N/A",
+                        "total_base_fte": 0,
+                        "total_final_fte": 0,
+                        "total_effort_weeks": 0,
+                        "unique_offerings_count": unique_offerings_used,
+                        "offering_multiplier": offering_multiplier,
+                        "calculation_steps": [],
+                        "stages": []
+                    }
+                
+                # Calculate base FTE and detailed breakdown (same as original report)
+                final_fte = float(timeline.fte_required)
+                duration = float(timeline.duration_weeks)
+                effort_weeks = final_fte * duration
+                
+                # Get base FTE from service line stage effort configuration
+                stage_effort = session.exec(
+                    select(ServiceLineStageEffort).where(
+                        ServiceLineStageEffort.service_line == sl,
+                        ServiceLineStageEffort.stage_name == stage,
+                        ServiceLineStageEffort.service_line_category_id == (sl_category.id if sl_category else None)
+                    )
+                ).first()
+                
+                # Calculate base FTE correctly
+                multiplier = calculation_breakdown[sl]["offering_multiplier"]
+                if stage_effort and stage_effort.fte_required > 0:
+                    # Use configured base FTE
+                    base_fte = float(stage_effort.fte_required)
+                    # Verify: base_fte * multiplier should equal final_fte
+                    expected_final = base_fte * multiplier
+                    if abs(expected_final - final_fte) > 0.1:  # Allow small rounding differences
+                        # If there's a significant difference, use reverse calculation
+                        base_fte = final_fte / multiplier if multiplier > 0 else final_fte
+                else:
+                    # Reverse calculate from final FTE
+                    base_fte = final_fte / multiplier if multiplier > 0 else final_fte
+                
+                # Add calculation step explanation
+                step_explanation = {
+                    "stage": stage,
+                    "base_fte_configured": base_fte,
+                    "offering_multiplier_applied": multiplier,
+                    "final_fte_calculated": final_fte,
+                    "duration_weeks": duration,
+                    "total_effort_weeks": effort_weeks,
+                    "formula": f"{base_fte:.1f} FTE × {multiplier:.2f} multiplier × {duration} weeks = {effort_weeks:.1f} effort weeks"
+                }
+                calculation_breakdown[sl]["calculation_steps"].append(step_explanation)
+                
+                # Add stage details
+                calculation_breakdown[sl]["stages"].append({
+                    "stage_name": stage,
+                    "base_fte": base_fte,
+                    "final_fte": final_fte,
+                    "duration_weeks": duration,
+                    "total_effort_weeks": effort_weeks
+                })
+                
+                # Update totals
+                calculation_breakdown[sl]["total_base_fte"] += base_fte
+                calculation_breakdown[sl]["total_final_fte"] += final_fte
+                calculation_breakdown[sl]["total_effort_weeks"] += effort_weeks
+
+            # Calculate total ITOC + MW revenue for sorting (same as original report)
+            itoc_mw_total_revenue = (
+                service_line_revenue.get("ITOC", {}).get("opportunity_tcv", 0) +
+                service_line_revenue.get("MW", {}).get("opportunity_tcv", 0)
+            )
+
+            # Determine RAG status from custom_tracking_field_2
+            rag_status = "UNKNOWN"
+            if opp.custom_tracking_field_2:
+                status_upper = opp.custom_tracking_field_2.upper().strip()
+                if status_upper in ["RED", "AMBER", "GREEN"]:
+                    rag_status = status_upper
+                elif "RED" in status_upper:
+                    rag_status = "RED"
+                elif "AMBER" in status_upper or "YELLOW" in status_upper:
+                    rag_status = "AMBER"
+                elif "GREEN" in status_upper:
+                    rag_status = "GREEN"
+
+            category_data[category].append({
+                "opportunity_id": opp.opportunity_id,
+                "opportunity_name": opp.opportunity_name,
+                "account_name": opp.account_name,
+                "sales_stage": opp.sales_stage,
+                "tcv_millions": float(opp.tcv_millions) if opp.tcv_millions else 0,
+                "decision_date": opp.decision_date.isoformat() if opp.decision_date else None,
+                "close_date": opp.decision_date.isoformat() if opp.decision_date else None,
+                "opportunity_owner": opp.opportunity_owner,
+                "opportunity_category": category,  # Use calculated category
+                "lead_offering_l1": opp.lead_offering_l1,
+                "avg_headcount": avg_headcount,  # From calculated timelines
+                "total_effort_weeks": total_effort,  # From calculated timelines
+                "category": category,
+                "itoc_mw_total_revenue": itoc_mw_total_revenue,
+                "service_line_revenue": service_line_revenue,
+                "stage_timeline": stage_timeline,
+                "timeline_by_service_line": timeline_by_service_line,
+                "mapped_offerings": mapped_offerings,
+                "calculation_breakdown": calculation_breakdown,
+                "rag_status": rag_status,
+                "custom_tracking_field_2_raw": opp.custom_tracking_field_2
+            })
+
+        # Sort each category by RAG status priority first (RED → AMBER → GREEN), then by ITOC + MW revenue descending
+        rag_priority = {"RED": 1, "AMBER": 2, "GREEN": 3, "UNKNOWN": 4}
+        for category in category_data:
+            category_data[category] = sorted(
+                category_data[category], 
+                key=lambda x: (rag_priority.get(x["rag_status"], 4), -x["itoc_mw_total_revenue"])
+            )
+
+        return {
+            "report_name": "UK&I ITOC & MW Priority Pipeline Report",
+            "description": "UK&I opportunities with RED/AMBER/GREEN status from custom_tracking_field_2, prioritized by risk level and ITOC + MW revenue",
+            "filters_applied": {
+                "sales_stages": ["All stages included"],
+                "categories": ["All categories based on TCV"],
+                "rag_status_filter": "Only RED, AMBER, GREEN opportunities",
+                "timeline_requirement": "Includes opportunities with and without calculated timelines",
+                "sort_criteria": "RAG status priority (RED → AMBER → GREEN), then ITOC + MW revenue descending"
+            },
+            "category_data": category_data,
+            "summary": {
+                "total_opportunities": sum(len(opps) for opps in category_data.values()),
+                "categories_analyzed": list(category_data.keys()),
+                "avg_headcount_range": {
+                    category: {
+                        "highest": max((opp["avg_headcount"] for opp in opps), default=0),
+                        "lowest": min((opp["avg_headcount"] for opp in opps), default=0)
+                    } for category, opps in category_data.items()
+                },
+                "itoc_mw_revenue_range": {
+                    category: {
+                        "highest": max((opp["itoc_mw_total_revenue"] for opp in opps), default=0),
+                        "lowest": min((opp["itoc_mw_total_revenue"] for opp in opps), default=0)
+                    } for category, opps in category_data.items()
+                },
+                "rag_status_distribution": {
+                    "RED": sum(len([opp for opp in opps if opp["rag_status"] == "RED"]) for opps in category_data.values()),
+                    "AMBER": sum(len([opp for opp in opps if opp["rag_status"] == "AMBER"]) for opps in category_data.values()),
+                    "GREEN": sum(len([opp for opp in opps if opp["rag_status"] == "GREEN"]) for opps in category_data.values())
+                }
+            },
+            "generated_at": datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        logger.error("Error generating top ITOC + MW revenue with status report", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
+
 @router.get("/available-reports")
 async def get_available_reports() -> Dict[str, Any]:
     """
@@ -1638,6 +2082,13 @@ async def get_available_reports() -> Dict[str, Any]:
                 "id": "top-average-headcount",
                 "name": "Top ITOC + MW Revenue Report",
                 "description": "Top 10 opportunities by ITOC + MW service line revenue for each category (A, B, C) from sales stage 02+",
+                "export_formats": ["excel", "pdf", "html"],
+                "filters": []
+            },
+            {
+                "id": "top-itoc-mw-revenue-with-status",
+                "name": "UK&I ITOC & MW Priority Pipeline Report",
+                "description": "UK&I opportunities with RED/AMBER/GREEN priority status, sorted by risk level and ITOC + MW revenue. Includes interactive HTML export for timeline adjustments.",
                 "export_formats": ["excel", "pdf", "html"],
                 "filters": []
             },

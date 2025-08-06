@@ -110,6 +110,7 @@ const ReportsV2: React.FC = () => {
 
   const reportIcons = {
     'top-average-headcount': Users,
+    'top-itoc-mw-revenue-with-status': Users,
     'configuration-summary': Settings,
     'resource-utilization': Users,
     'opportunity-pipeline': TrendingUp,
@@ -168,6 +169,13 @@ const ReportsV2: React.FC = () => {
           );
         } else if (selectedReport === 'top-average-headcount') {
           // Use direct jsPDF approach for top-average-headcount to avoid html2canvas issues
+          const { exportTopAverageHeadcountToPDF } = await import('../utils/exportUtils.js');
+          await exportTopAverageHeadcountToPDF(
+            reportData,
+            `${reportName}_report_${timestamp}.pdf`
+          );
+        } else if (selectedReport === 'top-itoc-mw-revenue-with-status') {
+          // Use same enhanced PDF approach as the original report
           const { exportTopAverageHeadcountToPDF } = await import('../utils/exportUtils.js');
           await exportTopAverageHeadcountToPDF(
             reportData,
@@ -590,7 +598,7 @@ const ReportsV2: React.FC = () => {
     if (!data) return null;
 
     // Different rendering based on report type - full original functionality
-    if (data.category_data && data.report_name === "Top ITOC + MW Revenue Report") {
+    if (data.category_data && (data.report_name === "Top ITOC + MW Revenue Report" || data.report_name === "Top ITOC + MW Revenue Report with RAG Status" || data.report_name === "UK&I ITOC & MW Priority Pipeline Report")) {
       return renderTopAverageHeadcountReport(data);
     } else if (data.opportunity_categories && data.service_line_categories) {
       return renderConfigurationReport(data);
@@ -1971,7 +1979,7 @@ const ReportsV2: React.FC = () => {
   const renderTopAverageHeadcountReport = (data: any) => (
     <div className="mt-6 space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <div className="card p-4">
           <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Total Opportunities</h4>
           <p className="text-2xl font-bold text-dxc-bright-purple">{data.summary.total_opportunities}</p>
@@ -1982,8 +1990,25 @@ const ReportsV2: React.FC = () => {
         </div>
         <div className="card p-4">
           <h4 className="text-sm font-medium text-dxc-dark-gray mb-2">Sales Stages</h4>
-          <p className="text-sm text-dxc-dark-gray">{data.filters_applied.sales_stages.join(', ')}</p>
+          <p className="text-sm text-dxc-dark-gray">{data.filters_applied?.sales_stages?.join(', ') || 'N/A'}</p>
         </div>
+        {/* RAG Status Cards - Show only if this is the RAG status report */}
+        {data.summary?.rag_status_distribution && (
+          <>
+            <div className="card p-4 border-l-4 border-red-500">
+              <h4 className="text-sm font-medium text-red-600 mb-2">RED Opportunities</h4>
+              <p className="text-2xl font-bold text-red-600">{data.summary.rag_status_distribution.RED || 0}</p>
+            </div>
+            <div className="card p-4 border-l-4 border-yellow-500">
+              <h4 className="text-sm font-medium text-yellow-600 mb-2">AMBER Opportunities</h4>
+              <p className="text-2xl font-bold text-yellow-600">{data.summary.rag_status_distribution.AMBER || 0}</p>
+            </div>
+            <div className="card p-4 border-l-4 border-green-500">
+              <h4 className="text-sm font-medium text-green-600 mb-2">GREEN Opportunities</h4>
+              <p className="text-2xl font-bold text-green-600">{data.summary.rag_status_distribution.GREEN || 0}</p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Category-based Results */}
@@ -2005,6 +2030,16 @@ const ReportsV2: React.FC = () => {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs bg-dxc-bright-purple text-white px-2 py-1 rounded">#{index + 1}</span>
+                        {opp.rag_status && (
+                          <span className={`text-xs px-2 py-1 rounded font-bold ${
+                            opp.rag_status === 'RED' ? 'bg-red-100 text-red-800' :
+                            opp.rag_status === 'AMBER' ? 'bg-yellow-100 text-yellow-800' :
+                            opp.rag_status === 'GREEN' ? 'bg-green-100 text-green-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {opp.rag_status}
+                          </span>
+                        )}
                         <h4 className="font-semibold text-dxc-dark-gray text-lg">{opp.opportunity_name}</h4>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 text-sm text-dxc-dark-gray mb-2">

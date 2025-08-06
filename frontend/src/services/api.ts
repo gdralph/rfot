@@ -564,8 +564,13 @@ class ApiClient {
   }
 
   // Timeline Generation APIs
-  async getTimelineGenerationStats() {
-    return this.request('/api/resources/timeline-generation/stats');
+  async getTimelineGenerationStats(customTrackingFilter?: string[]) {
+    const params = new URLSearchParams();
+    if (customTrackingFilter && customTrackingFilter.length > 0) {
+      params.set('custom_tracking_filter', customTrackingFilter.join(','));
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request(`/api/resources/timeline-generation/stats${query}`);
   }
 
   // Get date bounds of actual timeline data
@@ -573,7 +578,7 @@ class ApiClient {
     return this.request('/api/resources/timeline-data-bounds');
   }
 
-  async generateBulkTimelines(options: { regenerateAll?: boolean } = {}) {
+  async generateBulkTimelines(options: { regenerateAll?: boolean, customTrackingFilter?: string[] } = {}) {
     return this.request('/api/resources/timeline-generation/bulk', {
       method: 'POST',
       headers: {

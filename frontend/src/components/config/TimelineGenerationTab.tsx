@@ -30,12 +30,13 @@ interface TimelineGenerationResult {
 const TimelineGenerationTab: React.FC = () => {
   const [showDetails, setShowDetails] = useState(false);
   const [lastResult, setLastResult] = useState<TimelineGenerationResult | null>(null);
+  const [customTrackingFilter, setCustomTrackingFilter] = useState<string[]>([]);
 
   // Get current timeline statistics
   const { data: currentStats, isLoading: statsLoading, refetch: refetchStats } = useQuery({
-    queryKey: ['timeline-generation-stats'],
+    queryKey: ['timeline-generation-stats', customTrackingFilter],
     queryFn: async (): Promise<TimelineGenerationStats> => {
-      const result = await api.getTimelineGenerationStats();
+      const result = await api.getTimelineGenerationStats(customTrackingFilter.length > 0 ? customTrackingFilter : undefined);
       return result as TimelineGenerationStats;
     },
     staleTime: 30000, // 30 seconds
@@ -44,7 +45,10 @@ const TimelineGenerationTab: React.FC = () => {
   // Bulk timeline generation mutation
   const generateTimelinesMutation = useMutation({
     mutationFn: async (regenerateAll: boolean = false): Promise<TimelineGenerationResult> => {
-      const result = await api.generateBulkTimelines({ regenerateAll });
+      const result = await api.generateBulkTimelines({ 
+        regenerateAll, 
+        customTrackingFilter: customTrackingFilter.length > 0 ? customTrackingFilter : undefined 
+      });
       return result as TimelineGenerationResult;
     },
     onSuccess: (result: TimelineGenerationResult) => {
@@ -199,6 +203,60 @@ const TimelineGenerationTab: React.FC = () => {
         </div>
       )}
 
+      {/* Filter Controls */}
+      <div className="bg-white border border-dxc-light-gray rounded-dxc p-6">
+        <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Filter Options</h3>
+        
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-dxc-dark-gray mb-2">
+            Custom Tracking Field 2 Filter (Optional)
+          </label>
+          <div className="space-y-2">
+            <p className="text-sm text-dxc-medium-gray mb-3">
+              Select specific custom tracking field 2 values to only generate timelines for those opportunities. Leave unselected to process all opportunities.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {['GREEN', 'AMBER', 'RED'].map((value) => (
+                <label key={value} className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={customTrackingFilter.includes(value)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setCustomTrackingFilter([...customTrackingFilter, value]);
+                      } else {
+                        setCustomTrackingFilter(customTrackingFilter.filter(v => v !== value));
+                      }
+                    }}
+                    className="w-4 h-4 text-dxc-bright-purple border-gray-300 rounded focus:ring-dxc-bright-purple focus:ring-2"
+                  />
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    value === 'GREEN' ? 'bg-green-100 text-green-800' :
+                    value === 'AMBER' ? 'bg-amber-100 text-amber-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {value}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {customTrackingFilter.length > 0 && (
+              <div className="mt-2">
+                <span className="text-sm text-dxc-medium-gray">
+                  Active filter: {customTrackingFilter.join(', ')}
+                </span>
+                <button
+                  onClick={() => setCustomTrackingFilter([])}
+                  className="ml-2 text-sm text-dxc-bright-purple hover:text-dxc-purple"
+                >
+                  Clear Filter
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Generation Controls */}
       <div className="bg-white border border-dxc-light-gray rounded-dxc p-6">
         <h3 className="text-lg font-semibold text-dxc-dark-gray mb-4">Generation Controls</h3>
@@ -215,6 +273,7 @@ const TimelineGenerationTab: React.FC = () => {
                   <li>Regeneration only occurs for timelines in 'Predicted' status</li>
                   <li>Manual and validated timelines are preserved</li>
                   <li>Service line stage effort configurations must be available</li>
+                  <li>Custom tracking field filter will limit processing to selected values only</li>
                 </ul>
               </div>
             </div>
